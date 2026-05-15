@@ -16,7 +16,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.donkeymarble.racing"
+      "bundleIdentifier": "com.donkeymarble.racing",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
