@@ -28,7 +28,8 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.donkeymarble.racing",
-      "versionCode": 3
+      "versionCode": 4,
+      "permissions": ["com.android.vending.BILLING"]
     },
     "web": {
       "favicon": "./assets/favicon.png",
