@@ -1,0 +1,66 @@
+{
+  "seeds": [
+    1000,
+    1001,
+    1003,
+    1004,
+    1005,
+    1006,
+    1010,
+    1015,
+    1016,
+    1023
+  ],
+  "tracks": [
+    {
+      "seed": 1000,
+      "avgTime": 69.85285666666114,
+      "fingerprint": "9-cradles-medium"
+    },
+    {
+      "seed": 1001,
+      "avgTime": 78.2323099999936,
+      "fingerprint": "6-pendulums+trampolines-low"
+    },
+    {
+      "seed": 1003,
+      "avgTime": 75.57066666666054,
+      "fingerprint": "7-ballPits+trampolines-medium"
+    },
+    {
+      "seed": 1004,
+      "avgTime": 48.22630999999674,
+      "fingerprint": "6-none-medium"
+    },
+    {
+      "seed": 1005,
+      "avgTime": 54.67204333332939,
+      "fingerprint": "7-none-low"
+    },
+    {
+      "seed": 1006,
+      "avgTime": 87.96758999999258,
+      "fingerprint": "7-ballPits+cradles-medium"
+    },
+    {
+      "seed": 1010,
+      "avgTime": 73.93144999999404,
+      "fingerprint": "7-none-low"
+    },
+    {
+      "seed": 1015,
+      "avgTime": 53.18285666666288,
+      "fingerprint": "7-ballPits+cradles-medium"
+    },
+    {
+      "seed": 1016,
+      "avgTime": 72.93124999999415,
+      "fingerprint": "9-pendulums+trampolines-low"
+    },
+    {
+      "seed": 1023,
+      "avgTime": 56.227909999995894,
+      "fingerprint": "8-cradles+trampolines-low"
+    }
+  ]
+}

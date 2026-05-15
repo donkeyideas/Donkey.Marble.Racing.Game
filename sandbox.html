@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>DonkeyMarbleRacing — Physics Sandbox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#111; color:#fff; font-family:system-ui,sans-serif; display:flex; height:100vh; overflow:hidden; }
+  #panel { width:230px; padding:14px; background:#1a1a2e; overflow-y:auto; flex-shrink:0; }
+  #panel h2 { margin:0 0 10px; color:#ffc220; font-size:18px; }
+  #panel label { font-size:12px; color:#aaa; margin-top:8px; display:block; }
+  #panel select, #panel button { width:100%; margin:4px 0 8px; padding:7px; font-size:13px; border-radius:4px; }
+  #panel select { background:#0f3460; color:#fff; border:1px solid #4d80ff; }
+  #panel button { border:none; cursor:pointer; color:#fff; font-weight:600; }
+  #startBtn { background:#2ecc71; }
+  #startBtn:hover { background:#27ae60; }
+  #resetBtn { background:#e74c3c; }
+  #resetBtn:hover { background:#c0392b; }
+  #viewBtn { background:#3498db; }
+  #viewBtn:hover { background:#2980b9; }
+  .stat { font-size:12px; margin:3px 0; color:#ccc; }
+  .stat span { color:#ffc220; }
+  h3 { margin:12px 0 4px; color:#4d80ff; font-size:13px; border-bottom:1px solid #333; padding-bottom:3px; }
+  .legend { display:flex; align-items:center; gap:6px; margin:2px 0; font-size:11px; }
+  .ldot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .lrect { width:14px; height:6px; border-radius:2px; flex-shrink:0; }
+  .marble-row { display:flex; align-items:center; gap:6px; margin:2px 0; font-size:11px; }
+  .marble-dot { width:12px; height:12px; border-radius:50%; border:1px solid rgba(255,255,255,0.3); flex-shrink:0; }
+  .marble-status { color:#888; margin-left:auto; }
+  #canvasWrap { flex:1; display:flex; align-items:center; justify-content:center; background:#0a0a15; }
+  canvas { display:block; }
+  .key-hint { font-size:10px; color:#555; margin-top:10px; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h2>Sandbox</h2>
+
+  <label>Track</label>
+  <select id="trackSelect">
+    <option value="classic-zigzag">Classic Zigzag</option>
+    <option value="bumper-blitz">Bumper Blitz</option>
+    <option value="pendulum-alley">Pendulum Alley</option>
+    <option value="ball-pit-run">Ball Pit Run</option>
+    <option value="peg-storm">Peg Storm</option>
+    <option value="cradle-drop">Cradle Drop</option>
+    <option value="trampoline-park">Trampoline Park</option>
+    <option value="terrain-valley">Terrain Valley</option>
+    <option value="gauntlet">The Gauntlet</option>
+  </select>
+
+  <button id="startBtn">Start Race</button>
+  <button id="resetBtn">Reset Track</button>
+  <button id="viewBtn">Full Track View</button>
+
+  <label>Speed</label>
+  <select id="speedSelect">
+    <option value="0.25">0.25x</option>
+    <option value="0.5">0.5x</option>
+    <option value="1" selected>1x</option>
+    <option value="2">2x</option>
+    <option value="4">4x</option>
+  </select>
+
+  <div class="stat">FPS: <span id="fps">--</span></div>
+  <div class="stat">Bodies: <span id="bodies">--</span></div>
+  <div class="stat">Elapsed: <span id="elapsed">0.0s</span></div>
+  <div class="stat">Finished: <span id="finished">0/8</span></div>
+
+  <h3>Legend</h3>
+  <div class="legend"><div class="lrect" style="background:#6b4226"></div>Ramp</div>
+  <div class="legend"><div class="ldot" style="background:#e74c3c"></div>Bumper</div>
+  <div class="legend"><div class="ldot" style="background:#999"></div>Peg</div>
+  <div class="legend"><div class="lrect" style="background:#e67e22"></div>Windmill</div>
+  <div class="legend"><div class="lrect" style="background:#aaff00"></div>Spring</div>
+  <div class="legend"><div class="lrect" style="background:#2ecc71"></div>Trampoline</div>
+  <div class="legend"><div class="ldot" style="background:#8b2500"></div>Pendulum bob</div>
+  <div class="legend"><div class="ldot" style="background:#9b59b6"></div>Pit ball</div>
+  <div class="legend"><div class="ldot" style="background:#4682b4"></div>Cradle bob</div>
+
+  <h3>Marbles</h3>
+  <div id="marbleList"></div>
+
+  <div class="key-hint">
+    Space = start/pause<br>
+    R = reset<br>
+    F = toggle view<br>
+    1-9 = switch track
+  </div>
+</div>
+<div id="canvasWrap"></div>
+
+<script>
+const { Engine, Render, Bodies, Body, Composite, Constraint, Events, Mouse, MouseConstraint } = Matter;
+
+// ═══════════════════════════════════════════
+// CONSTANTS (matching race.ts exactly)
+// ═══════════════════════════════════════════
+const W = 400;
+const ENTRY = -30, GAP = 100;
+const SUBSTEPS = 3;
+const FIXED_DT = (1000/60) / SUBSTEPS;
+const CAT_WALL = 0x0001, CAT_MARBLE = 0x0002, CAT_OBS = 0x0004;
+const MARBLE_F = { category: CAT_MARBLE, mask: CAT_WALL|CAT_MARBLE|CAT_OBS };
+const OBS_F    = { category: CAT_OBS, mask: CAT_WALL|CAT_MARBLE };
+const CRADLE_F = { category: CAT_OBS, mask: CAT_WALL|CAT_MARBLE|CAT_OBS };
+
+const MARBLES = [
+  { id:'rocky',  name:'Rocky',  color:'#e74c3c', stats:{speed:3,power:4,bounce:2,luck:3} },
+  { id:'dash',   name:'Dash',   color:'#228be6', stats:{speed:5,power:2,bounce:3,luck:2} },
+  { id:'lucky',  name:'Lucky',  color:'#2ecc71', stats:{speed:3,power:3,bounce:2,luck:5} },
+  { id:'spike',  name:'Spike',  color:'#ffc220', stats:{speed:2,power:5,bounce:4,luck:2} },
+  { id:'nova',   name:'Nova',   color:'#9b59b6', stats:{speed:4,power:2,bounce:3,luck:4} },
+  { id:'frosty', name:'Frosty', color:'#e67e22', stats:{speed:3,power:3,bounce:4,luck:3} },
+  { id:'aqua',   name:'Aqua',   color:'#17a2b8', stats:{speed:4,power:2,bounce:2,luck:4} },
+  { id:'shadow', name:'Shadow', color:'#495057', stats:{speed:3,power:4,bounce:3,luck:3} },
+];
+
+// ═══════════════════════════════════════════
+// TRACK HELPERS
+// ═══════════════════════════════════════════
+function rampPts(cy, isR, drop) {
+  const sx = isR ? ENTRY : GAP, ex = isR ? W-GAP : W-ENTRY;
+  const sy = isR ? cy-drop : cy+drop, ey = isR ? cy+drop : cy-drop;
+  return [{x:sx,y:sy},{x:ex,y:ey}];
+}
+function mkSprings(cys, drop) {
+  return cys.map((cy,i) => {
+    const isR = i%2===0;
+    return { x: isR ? W-GAP/2 : GAP/2, y: cy+drop+25, w:35, h:12 };
+  });
+}
+function mkPegs(pegY, rows, cols, hs, vs) {
+  const o = [];
+  for (let r=0; r<rows; r++) {
+    const off = r%2===0 ? 0 : hs/2;
+    for (let c=0; c<cols; c++) {
+      const px = 40+off+c*hs, py = pegY-(rows*vs)/2+r*vs;
+      if (px>25 && px<W-25) o.push({x:px,y:py,r:6,type:'peg'});
+    }
+  }
+  return o;
+}
+function mkFunnel(pegY, above, below) {
+  return { y1:pegY-above, y2:pegY-below, lx1:15, lx2:155, rx1:W-15, rx2:W-155 };
+}
+function mkFinish(fy) {
+  const cw=35, cx=W/2, cl=cx-cw/2, cr=cx+cw/2, cd=220;
+  return { cx,cl,cr,cd, funnel:{ y1:fy-160, y2:fy, lx1:0, lx2:cl, rx1:W, rx2:cr } };
+}
+function gapBumpers(cy, sp) {
+  return [
+    {x:130, y:cy-sp*0.5, r:14, type:'bumper'},
+    {x:270, y:cy+sp*0.5, r:14, type:'bumper'},
+  ];
+}
+function gapPegs(cy, rows) { return mkPegs(cy, Math.min(rows,2), 4, 70, 35); }
+function rSign() { return Math.random()>0.5?1:-1; }
+
+// ═══════════════════════════════════════════
+// TRACK BUILDERS (matching tracks.ts)
+// ═══════════════════════════════════════════
+function buildClassicZigzag() {
+  const D=65, CYS=[300,520,740,1500,1720,1940], PZ=[1150,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,4,6,60,35)));
+  const m12=(520+740)/2, m45=(1720+1940)/2;
+  obs.push({x:150,y:m12-40,r:14,type:'bumper'},{x:250,y:m12,r:14,type:'bumper'},{x:150,y:m12+40,r:14,type:'bumper'});
+  obs.push({x:250,y:m45-40,r:14,type:'bumper'},{x:150,y:m45,r:14,type:'bumper'},{x:250,y:m45+40,r:14,type:'bumper'});
+  obs.push(...gapBumpers(950,40), ...gapBumpers(1350,35), ...gapBumpers(2150,40));
+  const wm = [
+    {x:200,y:(300+520)/2,w:340,s:rSign()*(0.005+Math.random()*0.005)},
+    {x:200,y:950,w:200,s:rSign()*(0.008+Math.random()*0.005)},
+    {x:200,y:(1500+1720)/2,w:320,s:rSign()*(0.006+Math.random()*0.005)},
+    {x:200,y:2150,w:200,s:rSign()*(0.007+Math.random()*0.005)},
+  ];
+  PZ.forEach(y => wm.push({x:200,y:y-80,w:120,s:rSign()*(0.03+Math.random()*0.02)}));
+  const fn = PZ.map(y=>mkFunnel(y,200,70));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  return {id:'classic-zigzag',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.2,scale:0.001}};
+}
+
+function buildBumperBlitz() {
+  const D=50, CYS=[300,520,740,1500,1720,1940], PZ=[1150,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,5,7,48,32)));
+  const mids=[(300+520)/2,(520+740)/2,(1500+1720)/2,(1720+1940)/2];
+  mids.forEach(m => obs.push({x:130,y:m,r:14,type:'bumper'},{x:270,y:m,r:14,type:'bumper'}));
+  obs.push({x:150,y:900,r:14,type:'bumper'},{x:300,y:970,r:14,type:'bumper'},{x:200,y:1050,r:14,type:'bumper'});
+  obs.push({x:130,y:1300,r:14,type:'bumper'},{x:270,y:1380,r:14,type:'bumper'});
+  obs.push({x:150,y:2100,r:14,type:'bumper'},{x:300,y:2180,r:14,type:'bumper'},{x:200,y:2260,r:14,type:'bumper'});
+  const wm = [
+    {x:200,y:(300+520)/2,w:300,s:rSign()*(0.006+Math.random()*0.005)},
+    {x:200,y:950,w:280,s:rSign()*(0.005+Math.random()*0.004)},
+    {x:200,y:(1500+1720)/2,w:300,s:rSign()*(0.007+Math.random()*0.005)},
+  ];
+  PZ.forEach(y => wm.push({x:200,y:y-80,w:130,s:rSign()*(0.035+Math.random()*0.02)}));
+  const fn = PZ.map(y=>mkFunnel(y,180,60));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  return {id:'bumper-blitz',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.0,scale:0.001}};
+}
+
+function buildPendulumAlley() {
+  const D=60, CYS=[300,520,740,1500,1720,1940], PZ=[1150,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,3,5,65,35)));
+  obs.push(...gapPegs(900,2), ...gapPegs(1350,2), ...gapPegs(2150,2));
+  const wm = [{x:200,y:(300+520)/2,w:280,s:rSign()*(0.005+Math.random()*0.004)}];
+  const fn = PZ.map(y=>mkFunnel(y,200,70));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  const pend = [
+    {ax:200,ay:380,len:120,br:18,vx:7},{ax:150,ay:620,len:110,br:18,vx:-7},
+    {ax:250,ay:870,len:130,br:20,vx:8},{ax:200,ay:1050,len:100,br:16,vx:-6},
+    {ax:150,ay:1350,len:120,br:18,vx:7},{ax:250,ay:1600,len:115,br:18,vx:-7},
+    {ax:200,ay:1850,len:130,br:20,vx:8},{ax:200,ay:2150,len:110,br:18,vx:-7},
+  ];
+  return {id:'pendulum-alley',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.2,scale:0.001},pend};
+}
+
+function buildBallPitRun() {
+  const D=55, CYS=[300,520,740,1500,1720,1940], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [
+    {x:150,y:950,r:12,type:'bumper'},{x:250,y:950,r:12,type:'bumper'},
+    {x:200,y:1350,r:14,type:'bumper'},{x:150,y:2050,r:12,type:'bumper'},{x:250,y:2050,r:12,type:'bumper'},
+  ];
+  obs.push(...gapPegs(1350,3));
+  const wm = [
+    {x:200,y:(300+520)/2,w:300,s:rSign()*(0.005+Math.random()*0.004)},
+    {x:200,y:(1500+1720)/2,w:280,s:rSign()*(0.006+Math.random()*0.004)},
+  ];
+  const fn = [mkFunnel(1000,160,50),mkFunnel(2200,160,50)];
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  const pits = [
+    {x:30,y:850,w:340,h:200,n:18,br:8},
+    {x:30,y:1250,w:340,h:160,n:12,br:10},
+    {x:30,y:2100,w:340,h:200,n:18,br:8},
+  ];
+  return {id:'ball-pit-run',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.1,scale:0.001},pits};
+}
+
+function buildPegStorm() {
+  const D=55, CYS=[300,520,740,1500,1720,1940], PZ=[1000,1250,2200,2450], FY=2800, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach((pegY,zi) => {
+    const rows=5+(zi%2), cols=7, hs=42+(zi%2)*6, vs=28;
+    for(let r=0;r<rows;r++){const off=r%2===0?0:hs/2;for(let c=0;c<cols;c++){
+      const px=40+off+c*hs, py=pegY-(rows*vs)/2+r*vs;
+      if(px>25&&px<W-25){const rad=(r+c)%5===0?10:(r+c)%3===0?8:5;obs.push({x:px,y:py,r:rad,type:'peg'});}
+    }}
+  });
+  const mids=[(300+520)/2,(520+740)/2,(1500+1720)/2,(1720+1940)/2];
+  mids.forEach(m=>obs.push({x:100,y:m-20,r:12,type:'bumper'},{x:200,y:m,r:14,type:'bumper'},{x:300,y:m-20,r:12,type:'bumper'},{x:150,y:m+30,r:10,type:'bumper'},{x:250,y:m+30,r:10,type:'bumper'}));
+  obs.push(...gapBumpers(900,30),...gapBumpers(1420,25),...gapBumpers(2100,30));
+  const wm = [
+    {x:200,y:(300+520)/2,w:300,s:rSign()*(0.007+Math.random()*0.005)},
+    {x:200,y:(520+740)/2,w:250,s:rSign()*(0.006+Math.random()*0.004)},
+    {x:200,y:880,w:180,s:rSign()*(0.008+Math.random()*0.005)},
+    {x:200,y:(1500+1720)/2,w:280,s:rSign()*(0.008+Math.random()*0.005)},
+    {x:200,y:(1720+1940)/2,w:260,s:rSign()*(0.007+Math.random()*0.004)},
+  ];
+  PZ.forEach(y=>wm.push({x:200,y:y-70,w:140,s:rSign()*(0.04+Math.random()*0.025)}));
+  const fn = PZ.map(y=>mkFunnel(y,160,50));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  return {id:'peg-storm',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.3,scale:0.001}};
+}
+
+function buildCradleDrop() {
+  const D=60, CYS=[300,520,740,1500,1720,1940], PZ=[1150,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,3,5,65,35)));
+  obs.push(...gapPegs(820,2),...gapPegs(1300,2),...gapPegs(2050,2));
+  const wm = [
+    {x:200,y:(300+520)/2,w:300,s:rSign()*(0.005+Math.random()*0.004)},
+    {x:200,y:(1500+1720)/2,w:280,s:rSign()*(0.006+Math.random()*0.004)},
+  ];
+  const fn = PZ.map(y=>mkFunnel(y,200,70));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  const cradles = [
+    {x:200,y:860,n:5,sp:22,len:80,br:11},
+    {x:200,y:1350,n:5,sp:22,len:75,br:11},
+    {x:200,y:2100,n:5,sp:22,len:80,br:11},
+    {x:200,y:2500,n:5,sp:22,len:70,br:11},
+  ];
+  return {id:'cradle-drop',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.2,scale:0.001},cradles};
+}
+
+function buildTrampolinePark() {
+  const D=55, CYS=[300,520,740,1500,1720,1940], PZ=[1150,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,4,6,55,32)));
+  obs.push(...gapPegs(850,2),...gapPegs(1350,2),...gapPegs(2100,2));
+  const wm = [{x:200,y:(1500+1720)/2,w:280,s:rSign()*(0.005+Math.random()*0.004)}];
+  const fn = PZ.map(y=>mkFunnel(y,200,70));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  const tramps = [
+    {x:120,y:460,w:80,str:8},{x:280,y:480,w:70,str:7},{x:200,y:680,w:90,str:9},
+    {x:100,y:860,w:100,str:10},{x:300,y:900,w:100,str:10},{x:200,y:1000,w:80,str:8},
+    {x:150,y:1300,w:90,str:9},{x:250,y:1380,w:90,str:9},
+    {x:150,y:1660,w:80,str:8},{x:250,y:1680,w:80,str:8},{x:200,y:1880,w:90,str:9},
+    {x:120,y:2100,w:90,str:9},{x:280,y:2150,w:90,str:9},{x:200,y:2250,w:80,str:8},
+    {x:120,y:2500,w:80,str:7},{x:280,y:2520,w:80,str:7},
+  ];
+  return {id:'trampoline-park',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.0,scale:0.001},tramps};
+}
+
+function buildTerrainValley() {
+  const D=60, CYS=[300,480,660,850,1050,1500,1680,1860,2050], PZ=[1250,2350], FY=2700, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,4,6,58,34)));
+  const m01=(300+480)/2, m34=(850+1050)/2, m67=(1680+1860)/2;
+  obs.push({x:150,y:m01,r:14,type:'bumper'},{x:250,y:m01+20,r:14,type:'bumper'});
+  obs.push({x:200,y:m34,r:16,type:'bumper'},{x:120,y:m34+30,r:12,type:'bumper'},{x:280,y:m34+30,r:12,type:'bumper'});
+  obs.push({x:150,y:m67,r:14,type:'bumper'},{x:250,y:m67+20,r:14,type:'bumper'});
+  obs.push(...gapPegs(1180,2),...gapBumpers(1420,20),...gapPegs(2200,3));
+  const wm = [
+    {x:200,y:m01,w:300,s:rSign()*(0.005+Math.random()*0.005)},
+    {x:200,y:m34,w:280,s:rSign()*(0.006+Math.random()*0.005)},
+    {x:200,y:m67,w:260,s:rSign()*(0.006+Math.random()*0.005)},
+  ];
+  PZ.forEach(y=>wm.push({x:200,y:y-80,w:120,s:rSign()*(0.03+Math.random()*0.02)}));
+  const fn = PZ.map(y=>mkFunnel(y,200,70));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  return {id:'terrain-valley',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.3,scale:0.001}};
+}
+
+function buildGauntlet() {
+  const D=60, CYS=[300,520,740,1500,1720,1940], PZ=[1100,2300], FY=2750, CD=220;
+  const ramps = CYS.map((cy,i)=>({pts:rampPts(cy,i%2===0,D),cy}));
+  const obs = [];
+  PZ.forEach(y => obs.push(...mkPegs(y,4,6,55,32)));
+  obs.push({x:150,y:(520+740)/2,r:14,type:'bumper'},{x:250,y:(520+740)/2,r:14,type:'bumper'},{x:200,y:(1720+1940)/2,r:16,type:'bumper'});
+  obs.push(...gapBumpers(900,25),...gapPegs(1300,2),...gapBumpers(2100,25));
+  const wm = [
+    {x:200,y:(300+520)/2,w:300,s:rSign()*(0.006+Math.random()*0.005)},
+    {x:200,y:900,w:200,s:rSign()*(0.008+Math.random()*0.005)},
+    {x:200,y:(1500+1720)/2,w:280,s:rSign()*(0.007+Math.random()*0.005)},
+  ];
+  PZ.forEach(y=>wm.push({x:200,y:y-70,w:130,s:rSign()*(0.035+Math.random()*0.02)}));
+  const fn = PZ.map(y=>mkFunnel(y,180,60));
+  const sp = mkSprings(CYS,D), fi = mkFinish(FY);
+  const pend = [
+    {ax:200,ay:860,len:110,br:18,vx:7},{ax:200,ay:2050,len:120,br:20,vx:-8},{ax:150,ay:2500,len:100,br:16,vx:6},
+  ];
+  const tramps = [
+    {x:120,y:460,w:70,str:8},{x:280,y:680,w:70,str:8},{x:200,y:1300,w:80,str:9},{x:150,y:2550,w:70,str:7},{x:250,y:2560,w:70,str:7},
+  ];
+  const cradles = [{x:200,y:1300,n:5,sp:22,len:70,br:11},{x:200,y:2450,n:5,sp:22,len:65,br:11}];
+  const pits = [{x:50,y:1220,w:300,h:150,n:12,br:8}];
+  return {id:'gauntlet',w:W,h:FY+CD+10,fy:FY,...fi,ramps,obs,wm,fn,sp,g:{x:0,y:1.15,scale:0.001},pend,tramps,cradles,pits};
+}
+
+function getTrack(id) {
+  const m = {
+    'classic-zigzag':buildClassicZigzag,'bumper-blitz':buildBumperBlitz,
+    'pendulum-alley':buildPendulumAlley,'ball-pit-run':buildBallPitRun,
+    'peg-storm':buildPegStorm,'cradle-drop':buildCradleDrop,
+    'trampoline-park':buildTrampolinePark,'terrain-valley':buildTerrainValley,
+    'gauntlet':buildGauntlet,
+  };
+  return (m[id]||buildClassicZigzag)();
+}
+
+// ═══════════════════════════════════════════
+// RACE ENGINE
+// ═══════════════════════════════════════════
+let engine, render, track;
+let marbleBodies=[], wmBodies=[], pendulumBobs=[], pitBalls=[], cradleBobs=[], trampBodies=[];
+let springBounce=new Map(), trampBounce=new Map();
+let gateBody, scramblerBody, scramblerWm;
+let running=false, gateOpen=false, elapsed=0;
+let finishTimes={}, stuckTracker=new Map();
+let viewMode='follow';
+
+function createRace(trackId) {
+  // Cleanup
+  if (render) { Render.stop(render); render.canvas.remove(); render=null; }
+  if (engine) { Engine.clear(engine); engine=null; }
+  marbleBodies=[]; wmBodies=[]; pendulumBobs=[]; pitBalls=[]; cradleBobs=[]; trampBodies=[];
+  springBounce=new Map(); trampBounce=new Map();
+  running=false; gateOpen=false; elapsed=0; finishTimes={}; stuckTracker=new Map();
+
+  track = getTrack(trackId);
+
+  engine = Engine.create({
+    gravity: track.g,
+    positionIterations: 10,
+    velocityIterations: 8,
+  });
+
+  const cw = Math.min(window.innerWidth - 230, 900);
+  const ch = window.innerHeight;
+  const scale = cw / W;
+
+  render = Render.create({
+    element: document.getElementById('canvasWrap'),
+    engine: engine,
+    options: {
+      width: cw, height: ch,
+      wireframes: false,
+      background: '#0a0a15',
+      hasBounds: true,
+      showSleeping: false,
+    }
+  });
+
+  // Set initial camera
+  const viewH = ch / scale;
+  render.bounds.min = {x:0, y:-50};
+  render.bounds.max = {x:W, y:-50+viewH};
+
+  const world = engine.world;
+  const rs = { fillStyle:'#333', strokeStyle:'#555', lineWidth:1 };
+
+  // --- WALLS ---
+  Composite.add(world, [
+    Bodies.rectangle(0, track.h/2, 50, track.h+200, {isStatic:true, friction:0.05, restitution:0.3, label:'wall', render:rs}),
+    Bodies.rectangle(W, track.h/2, 50, track.h+200, {isStatic:true, friction:0.05, restitution:0.3, label:'wall', render:rs}),
+    Bodies.rectangle(W/2, -25, W+100, 50, {isStatic:true, friction:0.05, restitution:0.5, label:'ceiling', render:rs}),
+    Bodies.rectangle(W/2, track.h+25, W+100, 50, {isStatic:true, friction:0.5, restitution:0.1, label:'floor', render:rs}),
+  ]);
+
+  // --- RAMPS ---
+  track.ramps.forEach(ramp => {
+    for (let j=0; j<ramp.pts.length-1; j++) {
+      const a=ramp.pts[j], b=ramp.pts[j+1];
+      const dx=b.x-a.x, dy=b.y-a.y, len=Math.sqrt(dx*dx+dy*dy);
+      Composite.add(world, Bodies.rectangle((a.x+b.x)/2,(a.y+b.y)/2, len+6, 14, {
+        isStatic:true, angle:Math.atan2(dy,dx), friction:0.03, restitution:0.1,
+        chamfer:{radius:4}, label:'ramp',
+        render:{fillStyle:'#6b4226',strokeStyle:'#8b5a2b',lineWidth:1},
+      }));
+    }
+  });
+
+  // --- BUMPERS & PEGS ---
+  track.obs.forEach(o => {
+    const isBump = o.type==='bumper';
+    Composite.add(world, Bodies.circle(o.x, o.y, o.r, {
+      isStatic:true, restitution: isBump?1.0:0.5, friction:0.01, label:o.type,
+      render:{ fillStyle: isBump?'#e74c3c':'#999', strokeStyle: isBump?'#c0392b':'#777', lineWidth:1 },
+    }));
+  });
+
+  // --- FUNNELS ---
+  track.fn.forEach(f => {
+    const dy=f.y2-f.y1;
+    const ldx=f.lx2-f.lx1, lLen=Math.sqrt(ldx*ldx+dy*dy);
+    Composite.add(world, Bodies.rectangle((f.lx1+f.lx2)/2,(f.y1+f.y2)/2, lLen, 12, {
+      isStatic:true, angle:Math.atan2(dy,ldx), friction:0.02, restitution:0.3, label:'funnel',
+      render:{fillStyle:'#5a3a1a',strokeStyle:'#7a5a3a',lineWidth:1},
+    }));
+    const rdx=f.rx2-f.rx1, rLen=Math.sqrt(rdx*rdx+dy*dy);
+    Composite.add(world, Bodies.rectangle((f.rx1+f.rx2)/2,(f.y1+f.y2)/2, rLen, 12, {
+      isStatic:true, angle:Math.atan2(dy,rdx), friction:0.02, restitution:0.3, label:'funnel',
+      render:{fillStyle:'#5a3a1a',strokeStyle:'#7a5a3a',lineWidth:1},
+    }));
+  });
+
+  // --- FINISH ZONE ---
+  const ff = track.funnel;
+  const fdy=ff.y2-ff.y1;
+  const fldx=ff.lx2-ff.lx1, flLen=Math.sqrt(fldx*fldx+fdy*fdy);
+  Composite.add(world, Bodies.rectangle((ff.lx1+ff.lx2)/2,(ff.y1+ff.y2)/2,flLen,14,{
+    isStatic:true,angle:Math.atan2(fdy,fldx),friction:0.02,restitution:0.2,label:'finish-funnel',
+    render:{fillStyle:'#8b6914',strokeStyle:'#a88932',lineWidth:2},
+  }));
+  const frdx=ff.rx2-ff.rx1, frLen=Math.sqrt(frdx*frdx+fdy*fdy);
+  Composite.add(world, Bodies.rectangle((ff.rx1+ff.rx2)/2,(ff.y1+ff.y2)/2,frLen,14,{
+    isStatic:true,angle:Math.atan2(fdy,frdx),friction:0.02,restitution:0.2,label:'finish-funnel',
+    render:{fillStyle:'#8b6914',strokeStyle:'#a88932',lineWidth:2},
+  }));
+  // Channel walls
+  Composite.add(world, Bodies.rectangle(track.cl-5, track.fy+track.cd/2, 10, track.cd+20,{
+    isStatic:true,friction:0.02,restitution:0.1,label:'channel',render:{fillStyle:'#8b6914',strokeStyle:'#a88932',lineWidth:1},
+  }));
+  Composite.add(world, Bodies.rectangle(track.cr+5, track.fy+track.cd/2, 10, track.cd+20,{
+    isStatic:true,friction:0.02,restitution:0.1,label:'channel',render:{fillStyle:'#8b6914',strokeStyle:'#a88932',lineWidth:1},
+  }));
+  Composite.add(world, Bodies.rectangle(track.cx, track.fy+track.cd+10, (track.cr-track.cl)+20, 14,{
+    isStatic:true,friction:0.5,restitution:0.1,label:'channel-floor',render:{fillStyle:'#8b6914',strokeStyle:'#a88932',lineWidth:1},
+  }));
+
+  // --- WINDMILLS ---
+  track.wm.forEach(wm => {
+    const blade = Bodies.rectangle(wm.x, wm.y, wm.w, 8, {
+      isStatic:true, friction:0.01, restitution:0.6, label:'windmill',
+      render:{fillStyle:'#e67e22',strokeStyle:'#d35400',lineWidth:1},
+    });
+    Composite.add(world, blade);
+    wmBodies.push({body:blade,...wm});
+  });
+
+  // --- SPRINGS ---
+  track.sp.forEach(sp => {
+    const body = Bodies.rectangle(sp.x, sp.y, sp.w, sp.h, {
+      isStatic:true, restitution:0.3, friction:0, label:'spring', chamfer:{radius:2},
+      render:{fillStyle:'#aaff00',strokeStyle:'#88cc00',lineWidth:1},
+    });
+    springBounce.set(body, 0);
+    Composite.add(world, body);
+  });
+
+  // --- PENDULUMS ---
+  if (track.pend) {
+    track.pend.forEach(p => {
+      const bob = Bodies.circle(p.ax, p.ay+p.len, p.br, {
+        density:0.04, restitution:0.8, friction:0.01, frictionAir:0.005,
+        label:'pendulum-bob', collisionFilter:OBS_F,
+        render:{fillStyle:'#8b2500',strokeStyle:'#ff4500',lineWidth:2},
+      });
+      const con = Constraint.create({
+        pointA:{x:p.ax,y:p.ay}, bodyB:bob, length:p.len,
+        stiffness:1, damping:0,
+        render:{strokeStyle:'#ff6347',lineWidth:2},
+      });
+      Composite.add(world, [bob, con]);
+      Body.setVelocity(bob, {x:p.vx, y:0});
+      pendulumBobs.push({body:bob,config:p});
+    });
+  }
+
+  // --- BALL PITS ---
+  if (track.pits) {
+    track.pits.forEach(pit => {
+      const cols = Math.floor(pit.w/(pit.br*3));
+      const rows = Math.ceil(pit.n/cols);
+      for (let i=0; i<pit.n; i++) {
+        const col=i%cols, row=Math.floor(i/cols);
+        const offX = row%2===0 ? 0 : pit.br*1.5;
+        const bx = pit.x + pit.br*2 + col*(pit.w/cols) + offX;
+        const by = pit.y + pit.br*2 + row*(pit.h/Math.max(1,rows));
+        const ball = Bodies.circle(bx, by, pit.br, {
+          density:0.001, restitution:0.5, friction:0.00001, frictionAir:0.01,
+          label:'pit-ball', collisionFilter:OBS_F,
+          render:{fillStyle:'#9b59b6',strokeStyle:'#8e44ad',lineWidth:1},
+        });
+        Composite.add(world, ball);
+        pitBalls.push({body:ball,r:pit.br});
+      }
+    });
+  }
+
+  // --- CRADLES ---
+  if (track.cradles) {
+    track.cradles.forEach(c => {
+      const startIdx = cradleBobs.length;
+      for (let i=0; i<c.n; i++) {
+        const bx = c.x - (c.n-1)*c.sp/2 + i*c.sp;
+        const bob = Bodies.circle(bx, c.y+c.len, c.br, {
+          inertia:Infinity, restitution:1.0, friction:0, frictionAir:0,
+          slop:c.br*0.02, label:'cradle-bob', collisionFilter:CRADLE_F,
+          render:{fillStyle:'#4682b4',strokeStyle:'#5a9bd5',lineWidth:2},
+        });
+        const con = Constraint.create({
+          pointA:{x:bx,y:c.y}, bodyB:bob, length:c.len,
+          stiffness:1, damping:0,
+          render:{strokeStyle:'#6495ed',lineWidth:1},
+        });
+        Composite.add(world, [bob, con]);
+        cradleBobs.push({body:bob,ax:bx,ay:c.y,br:c.br});
+      }
+      // Pull first ball back
+      if (cradleBobs.length >= c.n) {
+        const first = cradleBobs[startIdx];
+        Body.translate(first.body, {x:-c.sp*1.5, y:-c.len*0.15});
+      }
+    });
+  }
+
+  // --- TRAMPOLINES ---
+  if (track.tramps) {
+    track.tramps.forEach(t => {
+      const body = Bodies.rectangle(t.x, t.y, t.w, 10, {
+        isStatic:true, restitution:0.3, friction:0, label:'trampoline', chamfer:{radius:3},
+        render:{fillStyle:'#2ecc71',strokeStyle:'#27ae60',lineWidth:1},
+      });
+      trampBounce.set(body, 0);
+      Composite.add(world, body);
+      trampBodies.push({body,config:t});
+    });
+  }
+
+  // --- COLLISION EVENTS (spring/trampoline impulse) ---
+  Events.on(engine, 'collisionStart', e => {
+    e.pairs.forEach(pair => {
+      const {bodyA, bodyB} = pair;
+      // Spring
+      let marble=null, spring=null;
+      if (bodyA.label==='spring'&&!bodyB.isStatic) {marble=bodyB;spring=bodyA;}
+      else if (bodyB.label==='spring'&&!bodyA.isStatic) {marble=bodyA;spring=bodyB;}
+      if (marble && spring) {
+        const cnt = springBounce.get(spring)||0;
+        if (cnt>=7) return;
+        springBounce.set(spring, cnt+1);
+        if (cnt+1>=7) spring.restitution=0;
+        const toC = marble.position.x < W/2 ? 1 : -1;
+        Body.setVelocity(marble, {x:marble.velocity.x*0.5+toC*2.5, y:-Math.abs(marble.velocity.y)*0.6-4});
+        return;
+      }
+      // Trampoline
+      let tm=null, tb=null;
+      if (bodyA.label==='trampoline'&&!bodyB.isStatic) {tm=bodyB;tb=bodyA;}
+      else if (bodyB.label==='trampoline'&&!bodyA.isStatic) {tm=bodyA;tb=bodyB;}
+      if (tm && tb) {
+        const cnt = trampBounce.get(tb)||0;
+        if (cnt>=10) return;
+        trampBounce.set(tb, cnt+1);
+        if (cnt+1>=10) tb.restitution=0.1;
+        const tc = trampBodies.find(t=>t.body===tb);
+        const str = tc?tc.config.str:6;
+        Body.setVelocity(tm, {x:tm.velocity.x*0.7+(Math.random()-0.5)*2, y:-str});
+      }
+    });
+  });
+
+  // --- SCRAMBLER + GATE ---
+  scramblerBody = Bodies.rectangle(W/2, 140, 280, 8, {
+    isStatic:true, friction:0.01, restitution:0.6, label:'windmill',
+    render:{fillStyle:'#e67e22',strokeStyle:'#d35400',lineWidth:1},
+  });
+  Composite.add(world, scramblerBody);
+  scramblerWm = {body:scramblerBody,x:W/2,y:140,w:280,s:0.04};
+  wmBodies.push(scramblerWm);
+
+  gateBody = Bodies.rectangle(W/2, 230, W-20, 10, {
+    isStatic:true, friction:0.1, restitution:0.3, label:'gate',
+    render:{fillStyle:'#3498db',strokeStyle:'#2980b9',lineWidth:2},
+  });
+  Composite.add(world, gateBody);
+
+  // --- MARBLES ---
+  const shuffled = [...MARBLES].sort(()=>Math.random()-0.5);
+  shuffled.forEach((m, i) => {
+    const sx = W/2 + (Math.random()-0.5)*160;
+    const sy = 40 + i*16 + (Math.random()-0.5)*8;
+    const body = Bodies.circle(sx, sy, 11, {
+      restitution: 0.1 + m.stats.bounce*0.035,
+      friction: 0.06 - m.stats.speed*0.005,
+      density: 0.0018 + m.stats.power*0.0005,
+      frictionAir: 0.0015 - m.stats.speed*0.00012,
+      label: m.id, collisionFilter: MARBLE_F,
+      render:{fillStyle:m.color, strokeStyle:'#fff', lineWidth:1.5},
+    });
+    Body.setVelocity(body, {x:(Math.random()-0.5)*2, y:0.5+Math.random()*0.5});
+    Composite.add(world, body);
+    marbleBodies.push({body, data:m});
+  });
+
+  // Mouse interaction
+  const mouse = Mouse.create(render.canvas);
+  const mc = MouseConstraint.create(engine, {
+    mouse, constraint:{stiffness:0.2, render:{visible:false}}
+  });
+  Composite.add(world, mc);
+  render.mouse = mouse;
+
+  // Build marble list UI
+  const list = document.getElementById('marbleList');
+  list.innerHTML = '';
+  MARBLES.forEach(m => {
+    const row = document.createElement('div');
+    row.className = 'marble-row';
+    row.innerHTML = `<div class="marble-dot" style="background:${m.color}"></div>${m.name}<span class="marble-status" id="ms-${m.id}">--</span>`;
+    list.appendChild(row);
+  });
+
+  updateUI();
+  requestAnimationFrame(gameLoop);
+}
+
+function releaseGate() {
+  if (gateOpen) return;
+  gateOpen = true; elapsed = 0;
+  Composite.remove(engine.world, gateBody);
+  Composite.remove(engine.world, scramblerBody);
+  const idx = wmBodies.indexOf(scramblerWm);
+  if (idx>=0) wmBodies.splice(idx,1);
+}
+
+// ═══════════════════════════════════════════
+// GAME LOOP
+// ═══════════════════════════════════════════
+let lastTime=0, fpsFrames=0, fpsTime=0, fpsVal=0;
+
+function gameLoop(ts) {
+  requestAnimationFrame(gameLoop);
+  const dt = ts-lastTime||16.67;
+  lastTime = ts;
+
+  // FPS
+  fpsFrames++; fpsTime+=dt;
+  if (fpsTime>500) { fpsVal=Math.round(fpsFrames*1000/fpsTime); fpsFrames=0; fpsTime=0; }
+
+  if (running && gateOpen) {
+    const speed = parseFloat(document.getElementById('speedSelect').value);
+
+    // Windmill rotation
+    wmBodies.forEach(wm => Body.setAngle(wm.body, wm.body.angle + wm.s * speed));
+
+    // Substeps
+    for (let s=0; s<SUBSTEPS; s++) Engine.update(engine, FIXED_DT * speed);
+
+    elapsed += 16.67 * speed;
+
+    // Post-step: marble processing
+    marbleBodies.forEach(({body, data}) => {
+      if (finishTimes[data.id]) return;
+
+      // Luck nudge
+      if (Math.random()<0.015*data.stats.luck) {
+        Body.applyForce(body, body.position, {x:(Math.random()-0.5)*0.0008, y:(Math.random()-0.4)*0.0004});
+      }
+
+      // Stuck detection
+      const last = stuckTracker.get(data.id);
+      if (last) {
+        const dx=body.position.x-last.x, dy=body.position.y-last.y;
+        const dist=Math.sqrt(dx*dx+dy*dy);
+        if (dist<5 && elapsed-last.t>1500) {
+          Body.setVelocity(body, {x:(Math.random()-0.5)*8, y:5+Math.random()*3});
+          stuckTracker.set(data.id, {x:body.position.x,y:body.position.y,t:elapsed});
+        } else if (dist>=5) {
+          stuckTracker.set(data.id, {x:body.position.x,y:body.position.y,t:elapsed});
+        }
+      } else {
+        stuckTracker.set(data.id, {x:body.position.x,y:body.position.y,t:elapsed});
+      }
+
+      // Finish detection
+      if (body.position.y >= track.fy) {
+        finishTimes[data.id] = elapsed;
+        Body.setVelocity(body, {x:0,y:0.5});
+        body.frictionAir = 0.3;
+        body.restitution = 0;
+      }
+    });
+
+    // Auto-finish at 90s
+    const fc = Object.keys(finishTimes).length;
+    if (fc >= MARBLES.length || elapsed > 90000) {
+      marbleBodies.forEach(({data,body}) => {
+        if (!finishTimes[data.id]) finishTimes[data.id] = elapsed + (track.fy-body.position.y)*8;
+      });
+      running = false;
+    }
+  }
+
+  updateCamera();
+  Render.world(render);
+  updateUI();
+}
+
+function updateCamera() {
+  if (!render) return;
+  const cw = render.options.width;
+  const ch = render.options.height;
+
+  if (viewMode === 'full') {
+    render.bounds.min = {x:-10, y:-30};
+    render.bounds.max = {x:W+10, y:track.h+30};
+  } else {
+    const scale = cw / W;
+    const viewH = ch / scale;
+    const active = marbleBodies.filter(m => !finishTimes[m.data.id]);
+    let targetY = 100;
+    if (active.length > 0) {
+      targetY = active.reduce((s,m)=>s+m.body.position.y,0)/active.length;
+    } else if (marbleBodies.length > 0) {
+      targetY = marbleBodies.reduce((s,m)=>s+m.body.position.y,0)/marbleBodies.length;
+    }
+    const minY = Math.max(-30, targetY - viewH*0.4);
+    render.bounds.min = {x:0, y:minY};
+    render.bounds.max = {x:W, y:minY+viewH};
+  }
+}
+
+function updateUI() {
+  document.getElementById('fps').textContent = fpsVal;
+  document.getElementById('bodies').textContent = engine ? Composite.allBodies(engine.world).length : 0;
+  document.getElementById('elapsed').textContent = (elapsed/1000).toFixed(1)+'s';
+  const fc = Object.keys(finishTimes).length;
+  document.getElementById('finished').textContent = fc+'/'+MARBLES.length;
+
+  // Marble positions
+  const sorted = marbleBodies
+    .map(({data,body}) => ({id:data.id, time:finishTimes[data.id]||elapsed+(track.fy-body.position.y)*8}))
+    .sort((a,b)=>a.time-b.time);
+  sorted.forEach((m,i) => {
+    const el = document.getElementById('ms-'+m.id);
+    if (el) {
+      if (finishTimes[m.id]) el.textContent = '#'+(i+1)+' ✓';
+      else el.textContent = '#'+(i+1);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════
+document.getElementById('trackSelect').onchange = function() { createRace(this.value); };
+document.getElementById('startBtn').onclick = function() {
+  if (!gateOpen) { releaseGate(); running=true; this.textContent='Pause'; }
+  else { running=!running; this.textContent=running?'Pause':'Resume'; }
+};
+document.getElementById('resetBtn').onclick = function() {
+  document.getElementById('startBtn').textContent='Start Race';
+  createRace(document.getElementById('trackSelect').value);
+};
+document.getElementById('viewBtn').onclick = function() {
+  viewMode = viewMode==='follow'?'full':'follow';
+  this.textContent = viewMode==='follow'?'Full Track View':'Follow Camera';
+};
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key===' '||e.code==='Space') { e.preventDefault(); document.getElementById('startBtn').click(); }
+  if (e.key==='r'||e.key==='R') document.getElementById('resetBtn').click();
+  if (e.key==='f'||e.key==='F') document.getElementById('viewBtn').click();
+  const n=parseInt(e.key);
+  if (n>=1&&n<=9) {
+    const sel=document.getElementById('trackSelect');
+    sel.selectedIndex=n-1;
+    sel.onchange();
+  }
+});
+
+// Handle resize
+window.addEventListener('resize', () => {
+  if (!render) return;
+  const cw = Math.min(window.innerWidth-230, 900);
+  const ch = window.innerHeight;
+  render.options.width = cw;
+  render.options.height = ch;
+  render.canvas.width = cw;
+  render.canvas.height = ch;
+});
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+createRace('classic-zigzag');
+</script>
+</body>
+</html>

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Donkey Marble Racing — Course Designs</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 40px 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 32px;
+    margin-bottom: 8px;
+    color: #ffc220;
+  }
+  .subtitle {
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 50px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 50px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  .course-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .course-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #fff;
+  }
+  .course-meta {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  .course-desc {
+    font-size: 13px;
+    color: #aaa;
+    max-width: 300px;
+    text-align: center;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  }
+  /* iPhone frame */
+  .phone {
+    width: 280px;
+    height: 560px;
+    border: 3px solid #444;
+    border-radius: 36px;
+    overflow: hidden;
+    position: relative;
+    background: #1a1a2e;
+  }
+  .phone .notch {
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 24px;
+    background: #444;
+    border-radius: 0 0 14px 14px;
+    z-index: 10;
+  }
+  .phone svg {
+    width: 100%;
+    height: 100%;
+  }
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    margin-bottom: 40px;
+    padding: 20px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #ccc;
+  }
+  .legend-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .legend-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+</style>
+</head>
+<body>
+
+<h1>Course Designs</h1>
+<p class="subtitle">10 course concepts for Donkey Marble Racing — tap/scroll to review</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#8B6914"></div> Platform/Ramp</div>
+  <div class="legend-item"><div class="legend-circle" style="background:#ffc220"></div> Bumper</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#e74c3c"></div> Spinner</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#2ecc71"></div> Speed Pad</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#e67e22"></div> Jump Ramp</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#9b59b6"></div> Moving Block</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#3498db"></div> Splitter</div>
+  <div class="legend-item"><div class="legend-circle" style="background:#e0e0e0"></div> Peg</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:repeating-linear-gradient(90deg,#ffc220 0 4px,#333 4px 8px)"></div> Finish Line</div>
+  <div class="legend-item"><div class="legend-circle" style="background:linear-gradient(135deg,#ff6b6b,#4dabf7,#69db7c,#ffd43b)"></div> Marbles</div>
+</div>
+
+<div class="grid">
+
+<!-- ============ COURSE 1: PEBBLE HILL ============ -->
+<div class="course-card">
+  <div class="course-title">1. Pebble Hill</div>
+  <div class="course-meta">Beginner • 45s • Green Meadow</div>
+  <div class="course-desc">Classic zigzag. 5 platforms, gentle slopes. One obstacle per platform. The training course.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <!-- Background -->
+      <defs>
+        <linearGradient id="bg1" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#88c870"/>
+          <stop offset="100%" stop-color="#5a9a4a"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg1)"/>
+      <!-- Side walls -->
+      <rect x="0" y="0" width="6" height="560" fill="#5a3a1e" opacity="0.5"/>
+      <rect x="274" y="0" width="6" height="560" fill="#5a3a1e" opacity="0.5"/>
+      <!-- Start funnel -->
+      <polygon points="110,30 140,65 120,65" fill="#5a3a1e"/>
+      <polygon points="170,30 140,65 160,65" fill="#5a3a1e"/>
+      <rect x="132" y="65" width="16" height="25" fill="#5a3a1e"/>
+      <!-- Marbles in funnel -->
+      <circle cx="140" cy="42" r="5" fill="#ff6b6b"/><circle cx="140" cy="52" r="5" fill="#4dabf7"/>
+      <circle cx="140" cy="62" r="5" fill="#69db7c"/><circle cx="140" cy="72" r="5" fill="#ffd43b"/>
+      <!-- Platform 1: down-right -->
+      <line x1="42" y1="110" x2="238" y2="155" stroke="#8B6914" stroke-width="10" stroke-linecap="round"/>
+      <line x1="42" y1="110" x2="238" y2="155" stroke="#a07818" stroke-width="6" stroke-linecap="round"/>
+      <!-- Spinner on P1 -->
+      <circle cx="154" cy="135" r="4" fill="#555"/>
+      <line x1="120" y1="135" x2="188" y2="135" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+      <!-- Platform 2: down-left -->
+      <line x1="224" y1="195" x2="42" y2="245" stroke="#8B6914" stroke-width="10" stroke-linecap="round"/>
+      <line x1="224" y1="195" x2="42" y2="245" stroke="#a07818" stroke-width="6" stroke-linecap="round"/>
+      <!-- Bumper on P2 -->
+      <circle cx="140" cy="222" r="8" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 3: down-right -->
+      <line x1="28" y1="290" x2="238" y2="340" stroke="#8B6914" stroke-width="10" stroke-linecap="round"/>
+      <line x1="28" y1="290" x2="238" y2="340" stroke="#a07818" stroke-width="6" stroke-linecap="round"/>
+      <!-- Speed pad on P3 -->
+      <rect x="110" y="310" width="42" height="8" rx="4" fill="#2ecc71" opacity="0.7"/>
+      <text x="131" y="317" font-size="6" fill="white" text-anchor="middle">SPEED</text>
+      <!-- Platform 4: down-left -->
+      <line x1="238" y1="385" x2="42" y2="435" stroke="#8B6914" stroke-width="10" stroke-linecap="round"/>
+      <line x1="238" y1="385" x2="42" y2="435" stroke="#a07818" stroke-width="6" stroke-linecap="round"/>
+      <!-- Jump ramp on P4 -->
+      <line x1="100" y1="418" x2="128" y2="406" stroke="#e67e22" stroke-width="6" stroke-linecap="round"/>
+      <!-- Platform 5: down-right (clean) -->
+      <line x1="42" y1="480" x2="238" y2="510" stroke="#8B6914" stroke-width="10" stroke-linecap="round"/>
+      <line x1="42" y1="480" x2="238" y2="510" stroke="#a07818" stroke-width="6" stroke-linecap="round"/>
+      <!-- Finish -->
+      <rect x="20" y="535" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="530" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 2: LAVA DROP ============ -->
+<div class="course-card">
+  <div class="course-title">2. Lava Drop</div>
+  <div class="course-meta">Intermediate • 55s • Volcano</div>
+  <div class="course-desc">Plinko-style vertical drop. Peg rows scatter marbles, spinning hammer creates chaos. Funnel finish forces single-file.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg2" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c84020"/>
+          <stop offset="100%" stop-color="#6a1a00"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg2)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#4a1500" opacity="0.6"/>
+      <rect x="274" y="0" width="6" height="560" fill="#4a1500" opacity="0.6"/>
+      <!-- 8 start chutes (fan-out) -->
+      <rect x="30" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="60" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="90" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="120" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="150" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="180" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="210" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <rect x="240" y="25" width="4" height="20" fill="#8B6914" rx="2"/>
+      <!-- Marbles across top -->
+      <circle cx="32" cy="35" r="4" fill="#ff6b6b"/><circle cx="62" cy="35" r="4" fill="#4dabf7"/>
+      <circle cx="92" cy="35" r="4" fill="#69db7c"/><circle cx="122" cy="35" r="4" fill="#ffd43b"/>
+      <circle cx="152" cy="35" r="4" fill="#da77f2"/><circle cx="182" cy="35" r="4" fill="#ff922b"/>
+      <circle cx="212" cy="35" r="4" fill="#66d9e8"/><circle cx="242" cy="35" r="4" fill="#868e96"/>
+      <!-- Peg row 1 -->
+      <circle cx="56" cy="90" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="112" cy="90" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="140" cy="90" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="168" cy="90" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="224" cy="90" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <!-- S-curve walls -->
+      <line x1="70" y1="140" x2="140" y2="180" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="140" y1="190" x2="210" y2="230" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Spinning hammer -->
+      <circle cx="140" cy="280" r="5" fill="#555" stroke="#333" stroke-width="2"/>
+      <line x1="56" y1="280" x2="224" y2="280" stroke="#e74c3c" stroke-width="7" stroke-linecap="round"/>
+      <text x="140" y="265" font-size="7" fill="#ff6b6b" text-anchor="middle">SPINNER</text>
+      <!-- Peg row 2 (tighter) -->
+      <circle cx="35" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="70" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="105" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="140" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="175" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="210" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="245" cy="340" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Speed pad -->
+      <rect x="70" y="390" width="140" height="10" rx="5" fill="#2ecc71" opacity="0.7"/>
+      <text x="140" y="398" font-size="6" fill="white" text-anchor="middle">BOOST</text>
+      <!-- Funnel -->
+      <line x1="35" y1="430" x2="126" y2="510" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="245" y1="430" x2="154" y2="510" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Narrow channel -->
+      <rect x="122" y="510" width="4" height="30" fill="#8B6914"/>
+      <rect x="154" y="510" width="4" height="30" fill="#8B6914"/>
+      <!-- Finish -->
+      <rect x="20" y="545" width="240" height="5" rx="2" fill="#ffc220"/>
+      <text x="140" y="542" font-size="9" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 3: PINBALL ALLEY ============ -->
+<div class="course-card">
+  <div class="course-title">3. Pinball Alley</div>
+  <div class="course-meta">Intermediate • 50s • Arcade</div>
+  <div class="course-desc">Bumper-heavy course. Marbles bounce between bumper clusters on each platform. Total chaos — luck matters most.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg3" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1a1a3e"/>
+          <stop offset="100%" stop-color="#0d0d2b"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg3)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#ff00ff" opacity="0.3"/>
+      <rect x="274" y="0" width="6" height="560" fill="#ff00ff" opacity="0.3"/>
+      <!-- Start -->
+      <polygon points="115,30 140,55 165,30" fill="#8B6914" stroke="#5a3a1e" stroke-width="2"/>
+      <rect x="133" y="55" width="14" height="20" fill="#8B6914"/>
+      <circle cx="140" cy="42" r="4" fill="#ff6b6b"/>
+      <!-- Platform 1 down-right -->
+      <line x1="30" y1="100" x2="250" y2="145" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Bumper cluster on P1 -->
+      <circle cx="100" cy="115" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="140" cy="108" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="180" cy="120" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 2 down-left -->
+      <line x1="250" y1="185" x2="30" y2="235" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Bumper cluster on P2 -->
+      <circle cx="200" cy="198" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="160" cy="210" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="120" cy="218" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="80" cy="225" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 3 down-right -->
+      <line x1="30" y1="275" x2="250" y2="325" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Bumper triangle on P3 -->
+      <circle cx="120" cy="292" r="8" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="160" cy="300" r="8" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="140" cy="280" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 4 down-left -->
+      <line x1="250" y1="365" x2="30" y2="415" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Double bumpers -->
+      <circle cx="190" cy="380" r="9" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="100" cy="400" r="9" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 5 down-right -->
+      <line x1="30" y1="455" x2="250" y2="495" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Bumper gauntlet -->
+      <circle cx="80" cy="465" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="120" cy="470" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="160" cy="478" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="200" cy="484" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Finish -->
+      <rect x="20" y="530" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="525" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 4: THE FORK ============ -->
+<div class="course-card">
+  <div class="course-title">4. The Fork</div>
+  <div class="course-meta">Intermediate • 50s • Canyon</div>
+  <div class="course-desc">Splitter at mid-course forces marbles left or right. Two different paths rejoin at the bottom. Which path is faster?</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg4" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c4956a"/>
+          <stop offset="100%" stop-color="#8b6b4a"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg4)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#6b4426" opacity="0.6"/>
+      <rect x="274" y="0" width="6" height="560" fill="#6b4426" opacity="0.6"/>
+      <!-- Start funnel -->
+      <polygon points="110,30 140,60 170,30" fill="#8B6914"/>
+      <rect x="133" y="60" width="14" height="20" fill="#8B6914"/>
+      <circle cx="140" cy="45" r="4" fill="#ff6b6b"/>
+      <!-- Platform 1 down-right -->
+      <line x1="40" y1="100" x2="240" y2="145" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="160" cy="124" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 2 down-left -->
+      <line x1="240" y1="185" x2="40" y2="235" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- SPLITTER — wedge in center -->
+      <polygon points="140,240 130,270 150,270" fill="#3498db" stroke="#2980b9" stroke-width="2"/>
+      <text x="140" y="258" font-size="6" fill="white" text-anchor="middle">SPLIT</text>
+      <!-- LEFT PATH -->
+      <line x1="30" y1="280" x2="120" y2="330" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="80" cy="308" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <line x1="120" y1="350" x2="30" y2="400" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <rect x="55" y="370" width="30" height="6" rx="3" fill="#2ecc71" opacity="0.7"/>
+      <!-- RIGHT PATH -->
+      <line x1="160" y1="280" x2="250" y2="330" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <line x1="195" y1="318" x2="225" y2="308" stroke="#e67e22" stroke-width="5" stroke-linecap="round"/>
+      <line x1="250" y1="350" x2="160" y2="400" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="200" cy="378" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <!-- Rejoin -->
+      <line x1="30" y1="430" x2="250" y2="470" stroke="#8B6914" stroke-width="9" stroke-linecap="round"/>
+      <!-- Final platform -->
+      <line x1="250" y1="490" x2="30" y2="515" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Finish -->
+      <rect x="20" y="535" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="530" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 5: TORNADO ALLEY ============ -->
+<div class="course-card">
+  <div class="course-title">5. Tornado Alley</div>
+  <div class="course-meta">Hard • 55s • Storm</div>
+  <div class="course-desc">3 spinners on consecutive platforms. Cascading knockbacks create massive position swings. Bouncy marbles thrive.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg5" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3a4a6b"/>
+          <stop offset="100%" stop-color="#1a2a4b"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg5)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#0d1b30" opacity="0.6"/>
+      <rect x="274" y="0" width="6" height="560" fill="#0d1b30" opacity="0.6"/>
+      <!-- Start -->
+      <polygon points="110,30 140,60 170,30" fill="#8B6914"/>
+      <rect x="133" y="60" width="14" height="20" fill="#8B6914"/>
+      <!-- Platform 1 + spinner -->
+      <line x1="30" y1="105" x2="250" y2="155" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="150" cy="132" r="4" fill="#555"/>
+      <line x1="105" y1="125" x2="195" y2="140" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+      <!-- Platform 2 + spinner -->
+      <line x1="250" y1="195" x2="30" y2="250" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="140" cy="225" r="4" fill="#555"/>
+      <line x1="95" y1="218" x2="185" y2="232" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+      <!-- Platform 3 + spinner -->
+      <line x1="30" y1="290" x2="250" y2="340" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="160" cy="318" r="4" fill="#555"/>
+      <line x1="110" y1="308" x2="210" y2="328" stroke="#e74c3c" stroke-width="6" stroke-linecap="round"/>
+      <!-- Platform 4 + bumpers for recovery -->
+      <line x1="250" y1="380" x2="30" y2="435" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="180" cy="398" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <circle cx="100" cy="418" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 5 clean -->
+      <line x1="30" y1="475" x2="250" y2="505" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <!-- Finish -->
+      <rect x="20" y="535" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="530" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 6: THE GAUNTLET ============ -->
+<div class="course-card">
+  <div class="course-title">6. The Gauntlet</div>
+  <div class="course-meta">Hard • 60s • Dungeon</div>
+  <div class="course-desc">Narrow gates + moving blocks on every platform. Forces single-file passing. Power stat dominates.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg6" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#4a4a5a"/>
+          <stop offset="100%" stop-color="#2a2a3a"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg6)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#1a1a2a"/>
+      <rect x="274" y="0" width="6" height="560" fill="#1a1a2a"/>
+      <!-- Start -->
+      <polygon points="115,30 140,55 165,30" fill="#8B6914"/>
+      <rect x="133" y="55" width="14" height="18" fill="#8B6914"/>
+      <!-- Platform 1 + narrow gate -->
+      <line x1="30" y1="100" x2="250" y2="150" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <rect x="125" y="110" width="10" height="25" fill="#666" rx="2"/>
+      <rect x="155" y="118" width="10" height="25" fill="#666" rx="2"/>
+      <text x="145" y="122" font-size="5" fill="#aaa" text-anchor="middle">GATE</text>
+      <!-- Platform 2 + moving block -->
+      <line x1="250" y1="190" x2="30" y2="245" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <rect x="140" y="208" width="30" height="14" rx="3" fill="#9b59b6" stroke="#7d3c98" stroke-width="1.5"/>
+      <text x="155" y="218" font-size="5" fill="white" text-anchor="middle">MOVE</text>
+      <!-- Platform 3 + gate + bumper -->
+      <line x1="30" y1="285" x2="250" y2="335" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <rect x="100" y="296" width="10" height="22" fill="#666" rx="2"/>
+      <rect x="130" y="302" width="10" height="22" fill="#666" rx="2"/>
+      <circle cx="200" cy="320" r="6" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <!-- Platform 4 + moving block -->
+      <line x1="250" y1="375" x2="30" y2="430" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <rect x="100" y="398" width="35" height="14" rx="3" fill="#9b59b6" stroke="#7d3c98" stroke-width="1.5"/>
+      <!-- Platform 5 + final gate -->
+      <line x1="30" y1="470" x2="250" y2="505" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <rect x="140" y="478" width="8" height="20" fill="#666" rx="2"/>
+      <rect x="165" y="482" width="8" height="20" fill="#666" rx="2"/>
+      <!-- Finish -->
+      <rect x="20" y="535" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="530" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 7: TRAMPOLINE PARK ============ -->
+<div class="course-card">
+  <div class="course-title">7. Trampoline Park</div>
+  <div class="course-meta">Intermediate • 50s • Playground</div>
+  <div class="course-desc">Jump ramps launch marbles between platforms. Marbles fly through the air, skip platforms. Bounce stat is king.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg7" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ff9a9e"/>
+          <stop offset="100%" stop-color="#fad0c4"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg7)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#e88080" opacity="0.5"/>
+      <rect x="274" y="0" width="6" height="560" fill="#e88080" opacity="0.5"/>
+      <!-- Start -->
+      <polygon points="115,30 140,55 165,30" fill="#8B6914"/>
+      <rect x="133" y="55" width="14" height="18" fill="#8B6914"/>
+      <!-- Platform 1 + jump ramp at end -->
+      <line x1="30" y1="100" x2="220" y2="150" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="195" y1="148" x2="225" y2="130" stroke="#e67e22" stroke-width="7" stroke-linecap="round"/>
+      <text x="218" y="124" font-size="6" fill="#d35400">JUMP!</text>
+      <!-- Air arc indicator -->
+      <path d="M225,130 Q240,90 200,180" stroke="#e67e22" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+      <!-- Platform 2 + jump ramp -->
+      <line x1="250" y1="200" x2="60" y2="250" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="85" y1="248" x2="55" y2="232" stroke="#e67e22" stroke-width="7" stroke-linecap="round"/>
+      <!-- Arc -->
+      <path d="M55,232 Q35,190 80,290" stroke="#e67e22" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+      <!-- Platform 3 + jump ramp -->
+      <line x1="30" y1="300" x2="220" y2="345" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="195" y1="342" x2="225" y2="326" stroke="#e67e22" stroke-width="7" stroke-linecap="round"/>
+      <!-- Bumper midair -->
+      <circle cx="230" cy="290" r="8" fill="#ffc220" stroke="#cc9a00" stroke-width="2"/>
+      <!-- Platform 4 + jump ramp -->
+      <line x1="250" y1="385" x2="60" y2="430" stroke="#8B6914" stroke-width="8" stroke-linecap="round"/>
+      <line x1="85" y1="428" x2="55" y2="415" stroke="#e67e22" stroke-width="7" stroke-linecap="round"/>
+      <!-- Platform 5 (landing zone) -->
+      <line x1="30" y1="470" x2="250" y2="505" stroke="#8B6914" stroke-width="9" stroke-linecap="round"/>
+      <!-- Finish -->
+      <rect x="20" y="535" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="530" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 8: ICE SLIDE ============ -->
+<div class="course-card">
+  <div class="course-title">8. Ice Slide</div>
+  <div class="course-meta">Hard • 40s • Frozen</div>
+  <div class="course-desc">Ultra-low friction platforms. Marbles go FAST. Speed pads on every ramp. Short but intense — fastest race in the game.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg8" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#a8e6ff"/>
+          <stop offset="100%" stop-color="#4db8d8"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg8)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#2d8aaa" opacity="0.5"/>
+      <rect x="274" y="0" width="6" height="560" fill="#2d8aaa" opacity="0.5"/>
+      <!-- Start -->
+      <polygon points="115,30 140,55 165,30" fill="#b0d4e8"/>
+      <rect x="133" y="55" width="14" height="18" fill="#b0d4e8"/>
+      <!-- Platform 1 + speed pad (ICE = white/blue platforms) -->
+      <line x1="30" y1="100" x2="250" y2="160" stroke="#cce8f4" stroke-width="9" stroke-linecap="round"/>
+      <line x1="30" y1="100" x2="250" y2="160" stroke="#e8f4fc" stroke-width="5" stroke-linecap="round"/>
+      <rect x="90" y="118" width="50" height="7" rx="3" fill="#2ecc71" opacity="0.8"/>
+      <!-- Platform 2 + speed pad -->
+      <line x1="250" y1="200" x2="30" y2="265" stroke="#cce8f4" stroke-width="9" stroke-linecap="round"/>
+      <line x1="250" y1="200" x2="30" y2="265" stroke="#e8f4fc" stroke-width="5" stroke-linecap="round"/>
+      <rect x="130" y="228" width="50" height="7" rx="3" fill="#2ecc71" opacity="0.8"/>
+      <!-- Platform 3 + speed pad -->
+      <line x1="30" y1="305" x2="250" y2="365" stroke="#cce8f4" stroke-width="9" stroke-linecap="round"/>
+      <line x1="30" y1="305" x2="250" y2="365" stroke="#e8f4fc" stroke-width="5" stroke-linecap="round"/>
+      <rect x="100" y="332" width="50" height="7" rx="3" fill="#2ecc71" opacity="0.8"/>
+      <!-- Platform 4 + speed pad -->
+      <line x1="250" y1="405" x2="30" y2="465" stroke="#cce8f4" stroke-width="9" stroke-linecap="round"/>
+      <line x1="250" y1="405" x2="30" y2="465" stroke="#e8f4fc" stroke-width="5" stroke-linecap="round"/>
+      <rect x="120" y="432" width="50" height="7" rx="3" fill="#2ecc71" opacity="0.8"/>
+      <!-- Finish -->
+      <rect x="20" y="510" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="505" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 9: PLINKO MADNESS ============ -->
+<div class="course-card">
+  <div class="course-title">9. Plinko Madness</div>
+  <div class="course-meta">Hard • 55s • Casino</div>
+  <div class="course-desc">Pure vertical Plinko. No platforms — just rows and rows of pegs. Marbles bounce their way down. Maximum randomness.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg9" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2d1b4e"/>
+          <stop offset="100%" stop-color="#1a0e30"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg9)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#ff00ff" opacity="0.15"/>
+      <rect x="274" y="0" width="6" height="560" fill="#ff00ff" opacity="0.15"/>
+      <!-- Start chutes -->
+      <polygon points="100,25 140,55 180,25" fill="#8B6914"/>
+      <rect x="130" y="55" width="20" height="15" fill="#8B6914"/>
+      <!-- Peg rows (offset pattern like Plinko board) -->
+      <!-- Row 1 (5 pegs) -->
+      <circle cx="56" cy="100" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="112" cy="100" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="168" cy="100" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="224" cy="100" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Row 2 (offset, 5 pegs) -->
+      <circle cx="28" cy="140" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="84" cy="140" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="140" cy="140" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="196" cy="140" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="252" cy="140" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Row 3 -->
+      <circle cx="56" cy="180" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="112" cy="180" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="168" cy="180" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="224" cy="180" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Spinner break -->
+      <circle cx="140" cy="230" r="5" fill="#555"/>
+      <line x1="80" y1="230" x2="200" y2="230" stroke="#e74c3c" stroke-width="5" stroke-linecap="round"/>
+      <!-- Row 4-5 bigger bumpers -->
+      <circle cx="70" cy="280" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="140" cy="280" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="210" cy="280" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="105" cy="320" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="175" cy="320" r="7" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <!-- More peg rows -->
+      <circle cx="56" cy="360" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="112" cy="360" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="168" cy="360" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="224" cy="360" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="28" cy="400" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="84" cy="400" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="140" cy="400" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="196" cy="400" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="252" cy="400" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="56" cy="440" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="112" cy="440" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="168" cy="440" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="224" cy="440" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Final peg row -->
+      <circle cx="84" cy="480" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="140" cy="480" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="196" cy="480" r="5" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Finish -->
+      <rect x="20" y="530" width="240" height="6" rx="3" fill="#ffc220"/>
+      <text x="140" y="525" font-size="10" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+<!-- ============ COURSE 10: GRAND PRIX ============ -->
+<div class="course-card">
+  <div class="course-title">10. Grand Prix</div>
+  <div class="course-meta">Expert • 60s • Championship</div>
+  <div class="course-desc">Everything combined. Zigzag platforms, splitter, spinners, bumper field, speed pads, funnel finish. The ultimate test.</div>
+  <div class="phone">
+    <div class="notch"></div>
+    <svg viewBox="0 0 280 560">
+      <defs>
+        <linearGradient id="bg10" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1a1a2e"/>
+          <stop offset="50%" stop-color="#16213e"/>
+          <stop offset="100%" stop-color="#0f3460"/>
+        </linearGradient>
+      </defs>
+      <rect width="280" height="560" fill="url(#bg10)"/>
+      <rect x="0" y="0" width="6" height="560" fill="#ffc220" opacity="0.2"/>
+      <rect x="274" y="0" width="6" height="560" fill="#ffc220" opacity="0.2"/>
+      <!-- Start funnel -->
+      <polygon points="105,25 140,52 175,25" fill="#ffc220" opacity="0.6"/>
+      <rect x="132" y="52" width="16" height="16" fill="#ffc220" opacity="0.6"/>
+      <!-- Platform 1 + spinner -->
+      <line x1="25" y1="90" x2="230" y2="125" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="140" cy="108" r="3" fill="#555"/>
+      <line x1="100" y1="105" x2="180" y2="112" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
+      <!-- Platform 2 + bumpers -->
+      <line x1="255" y1="150" x2="50" y2="188" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="180" cy="162" r="5" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <circle cx="120" cy="174" r="5" fill="#ffc220" stroke="#cc9a00" stroke-width="1.5"/>
+      <!-- Splitter -->
+      <polygon points="140,200 132,222 148,222" fill="#3498db" stroke="#2980b9" stroke-width="1.5"/>
+      <!-- Left mini-path -->
+      <line x1="30" y1="228" x2="120" y2="258" stroke="#8B6914" stroke-width="6" stroke-linecap="round"/>
+      <rect x="55" y="240" width="25" height="5" rx="2" fill="#2ecc71" opacity="0.7"/>
+      <!-- Right mini-path -->
+      <line x1="160" y1="228" x2="250" y2="258" stroke="#8B6914" stroke-width="6" stroke-linecap="round"/>
+      <line x1="195" y1="248" x2="220" y2="238" stroke="#e67e22" stroke-width="4" stroke-linecap="round"/>
+      <!-- Rejoin platform -->
+      <line x1="250" y1="280" x2="30" y2="315" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <!-- Spinner 2 -->
+      <circle cx="140" cy="300" r="3" fill="#555"/>
+      <line x1="100" y1="296" x2="180" y2="304" stroke="#e74c3c" stroke-width="4" stroke-linecap="round"/>
+      <!-- Peg field -->
+      <circle cx="60" cy="345" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="100" cy="345" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="140" cy="345" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="180" cy="345" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="220" cy="345" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="80" cy="370" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="120" cy="370" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="160" cy="370" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <circle cx="200" cy="370" r="4" fill="#e0e0e0" stroke="#bbb" stroke-width="1"/>
+      <!-- Platform with moving block -->
+      <line x1="30" y1="400" x2="250" y2="435" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <rect x="130" y="412" width="28" height="12" rx="3" fill="#9b59b6" stroke="#7d3c98" stroke-width="1.5"/>
+      <!-- Final platform + speed pad -->
+      <line x1="250" y1="460" x2="30" y2="490" stroke="#8B6914" stroke-width="7" stroke-linecap="round"/>
+      <rect x="100" y="474" width="40" height="6" rx="3" fill="#2ecc71" opacity="0.7"/>
+      <!-- Funnel finish -->
+      <line x1="30" y1="500" x2="125" y2="530" stroke="#8B6914" stroke-width="5" stroke-linecap="round"/>
+      <line x1="250" y1="500" x2="155" y2="530" stroke="#8B6914" stroke-width="5" stroke-linecap="round"/>
+      <!-- Finish -->
+      <rect x="20" y="540" width="240" height="5" rx="2" fill="#ffc220"/>
+      <text x="140" y="537" font-size="8" fill="#ffc220" text-anchor="middle" font-weight="bold">FINISH</text>
+    </svg>
+  </div>
+</div>
+
+</div>
+
+<div style="text-align:center; margin-top:60px; padding:30px; color:#666; font-size:13px; border-top:1px solid #333;">
+  <p style="margin-bottom:8px;">Each course fits in 400x1200 engine units (scrolls on phone).</p>
+  <p style="margin-bottom:8px;">Platforms shown at ~16-19° slope angles with proper overlap for marble flow.</p>
+  <p>Pick the courses you want built and I'll implement them in the physics engine.</p>
+</div>
+
+</body>
+</html>

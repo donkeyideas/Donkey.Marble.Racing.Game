@@ -1,0 +1,110 @@
+name: Build iOS (IPA)
+
+# Local EAS build on a free macOS runner — does NOT consume EAS Build credits.
+# iOS signing certificates and provisioning profiles are pulled from EAS using
+# EXPO_TOKEN, so we don't need to manage Apple certs in GitHub.
+#
+# Note: macOS runner minutes count 10x against your free monthly quota.
+# Each iOS build takes ~25–40 minutes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - preview
+      submit:
+        description: "Auto-submit to TestFlight after build"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  build:
+    name: Build iOS ${{ github.event.inputs.profile }}
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: List available Xcode versions
+        run: ls -d /Applications/Xcode*.app 2>/dev/null || true
+
+      - name: Select best available Xcode
+        run: |
+          for ver in 26.3 26.2 26.1.1 26.1 26.0.1 26.0; do
+            if [ -d "/Applications/Xcode_${ver}.app" ]; then
+              echo "Using Xcode ${ver}"
+              sudo xcode-select -s "/Applications/Xcode_${ver}.app/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve TMPDIR symlink
+        run: |
+          REAL_TMPDIR=$(python3 -c "import os, tempfile; print(os.path.realpath(tempfile.gettempdir()))")
+          echo "TMPDIR=$REAL_TMPDIR" >> $GITHUB_ENV
+          echo "Resolved TMPDIR: $REAL_TMPDIR"
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Run EAS local build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p build
+          eas build \
+            --local \
+            --non-interactive \
+            --platform ios \
+            --profile ${{ github.event.inputs.profile }} \
+            --output ./build/donkeymarble-${{ github.event.inputs.profile }}.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: donkeymarble-ios-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          path: build/*.ipa
+          retention-days: 14
+
+      - name: Decode App Store Connect API key
+        if: ${{ github.event.inputs.submit == 'true' }}
+        env:
+          APPLE_ASC_KEY_P8_BASE64: ${{ secrets.APPLE_ASC_KEY_P8_BASE64 }}
+        run: |
+          if [ -z "$APPLE_ASC_KEY_P8_BASE64" ]; then
+            echo "::error::Missing secret APPLE_ASC_KEY_P8_BASE64"
+            exit 1
+          fi
+          echo "$APPLE_ASC_KEY_P8_BASE64" | base64 --decode > asc-api-key.p8
+
+      - name: Submit to TestFlight
+        if: ${{ github.event.inputs.submit == 'true' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas submit \
+            --non-interactive \
+            --no-wait \
+            --platform ios \
+            --profile production \
+            --path ./build/donkeymarble-${{ github.event.inputs.profile }}.ipa

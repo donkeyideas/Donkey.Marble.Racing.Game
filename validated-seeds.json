@@ -1,0 +1,96 @@
+{
+  "seeds": [
+    1004,
+    1028,
+    1043,
+    1055,
+    1081,
+    1094,
+    1098,
+    1106,
+    1109,
+    1130,
+    1139,
+    1143,
+    1165,
+    1175,
+    1177
+  ],
+  "tracks": [
+    {
+      "seed": 1004,
+      "avgTime": 61.80680333332864,
+      "fingerprint": "6-none-medium"
+    },
+    {
+      "seed": 1028,
+      "avgTime": 34.27351999999819,
+      "fingerprint": "6-pendulums-low"
+    },
+    {
+      "seed": 1043,
+      "avgTime": 54.85541333332938,
+      "fingerprint": "7-cradles-low"
+    },
+    {
+      "seed": 1055,
+      "avgTime": 40.70813999999752,
+      "fingerprint": "6-cradles-low"
+    },
+    {
+      "seed": 1081,
+      "avgTime": 78.8713266666602,
+      "fingerprint": "6-none-low"
+    },
+    {
+      "seed": 1094,
+      "avgTime": 46.85936999999688,
+      "fingerprint": "6-cradles-low"
+    },
+    {
+      "seed": 1098,
+      "avgTime": 59.47855999999555,
+      "fingerprint": "6-ballPits+trampolines-medium"
+    },
+    {
+      "seed": 1106,
+      "avgTime": 50.04889666666321,
+      "fingerprint": "6-none-low"
+    },
+    {
+      "seed": 1109,
+      "avgTime": 49.07092333332997,
+      "fingerprint": "6-none-low"
+    },
+    {
+      "seed": 1130,
+      "avgTime": 73.20352666666078,
+      "fingerprint": "6-cradles+trampolines-low"
+    },
+    {
+      "seed": 1139,
+      "avgTime": 57.422593333329104,
+      "fingerprint": "6-none-medium"
+    },
+    {
+      "seed": 1143,
+      "avgTime": 74.22595333332735,
+      "fingerprint": "6-ballPits-low"
+    },
+    {
+      "seed": 1165,
+      "avgTime": 76.33748666666047,
+      "fingerprint": "6-none-medium"
+    },
+    {
+      "seed": 1175,
+      "avgTime": 71.65321666666095,
+      "fingerprint": "8-pendulums-medium"
+    },
+    {
+      "seed": 1177,
+      "avgTime": 56.73356666666251,
+      "fingerprint": "6-none-medium"
+    }
+  ]
+}
