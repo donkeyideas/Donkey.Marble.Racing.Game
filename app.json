@@ -27,7 +27,8 @@
         "backgroundColor": "#0a3a96"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.donkeymarble.racing"
+      "package": "com.donkeymarble.racing",
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png",

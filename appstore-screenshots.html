@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Donkey Marble Racing - App Store Screenshots (iPhone + iPad)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #111; font-family: 'Fredoka', sans-serif; padding: 40px; }
+
+  .page-title { font-family: 'Lilita One', cursive; font-size: 48px; color: #ffc220; text-align: center; letter-spacing: 4px; margin-bottom: 8px; }
+  .page-subtitle { text-align: center; color: rgba(255,255,255,0.4); font-size: 14px; margin-bottom: 12px; letter-spacing: 2px; text-transform: uppercase; }
+  .page-spec { text-align: center; color: rgba(255,255,255,0.25); font-size: 13px; margin-bottom: 40px; }
+  .slide-label { text-align: center; font-weight: 700; font-size: 16px; letter-spacing: 3px; text-transform: uppercase; color: #ffc220; margin-bottom: 20px; }
+
+  .screenshot-slide {
+    width: 1320px;
+    height: 2868px;
+    position: relative;
+    overflow: hidden;
+    margin: 0 auto 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Phone frame matching basketball style */
+  .phone-frame {
+    width: 380px;
+    height: 820px;
+    background: #0a1230;
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    border: 4px solid #2a3a6a;
+    box-shadow: 0 0 0 2px #111, 0 40px 80px rgba(0,0,0,0.6), 0 20px 40px rgba(0,0,0,0.4);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .phone-frame::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 160px; height: 34px;
+    background: #000;
+    border-radius: 0 0 20px 20px;
+    z-index: 10;
+  }
+
+  .headline { font-family: 'Lilita One', cursive; color: #fff; text-align: center; text-transform: uppercase; letter-spacing: 3px; line-height: 1.1; }
+  .headline .accent { color: #ffc220; }
+  .subheadline { font-family: 'Fredoka', sans-serif; font-weight: 500; color: rgba(255,255,255,0.6); text-align: center; line-height: 1.4; }
+
+  .status-bar { height: 50px; padding: 14px 24px 0; display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .screen-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; padding: 0 16px; }
+
+  /* Decorative */
+  .deco-circle { position: absolute; border-radius: 50%; border: 3px solid rgba(255,194,32,0.15); }
+  .deco-circle-fill { position: absolute; border-radius: 50%; background: rgba(255,194,32,0.04); }
+  .deco-line { position: absolute; height: 3px; background: linear-gradient(90deg, transparent, rgba(255,194,32,0.25), transparent); }
+  .deco-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: rgba(255,194,32,0.3); }
+  .deco-marble { position: absolute; border-radius: 50%; opacity: 0.2; }
+
+  /* Zoom controls */
+  .zoom-controls { position: fixed; top: 20px; right: 20px; display: flex; gap: 8px; z-index: 100; }
+  .zoom-btn { background: #ffc220; color: #0a1a3a; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .zoom-btn:hover { transform: scale(1.05); }
+  .zoom-btn.active { background: #fff; color: #ffc220; }
+
+  /* ===== PHONE SCREEN STYLES ===== */
+  .p-topbar { display: flex; justify-content: space-between; align-items: center; padding: 4px 0 10px; }
+  .p-avatar { width: 36px; height: 36px; border-radius: 50%; background: #ffc220; display: flex; align-items: center; justify-content: center; font-family: 'Lilita One', cursive; color: #0a1a3a; font-size: 16px; border: 2px solid #fff; }
+  .p-player { display: flex; align-items: center; gap: 8px; }
+  .p-name { color: #fff; font-weight: 700; font-size: 14px; }
+  .p-league { font-size: 10px; color: #cd7f32; background: rgba(205,127,50,0.15); padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .p-coin { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,194,32,0.12); border: 1px solid rgba(255,194,32,0.2); padding: 5px 12px; border-radius: 30px; }
+  .p-coin-icon { color: #ffc220; font-size: 14px; font-weight: 700; }
+  .p-coin-val { color: #ffc220; font-family: 'Lilita One', cursive; font-size: 16px; }
+
+  .p-hero { background: linear-gradient(135deg, #1a4fc2, #0d3a8f); border: 2px solid #4d80ff; border-radius: 16px; padding: 14px; margin-bottom: 10px; }
+  .p-live { display: inline-flex; align-items: center; gap: 4px; background: #e74c3c; color: #fff; font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 8px; margin-bottom: 6px; letter-spacing: 1px; }
+  .p-live-dot { width: 5px; height: 5px; background: #fff; border-radius: 50%; }
+  .p-hero-title { font-family: 'Lilita One', cursive; color: #fff; font-size: 20px; margin-bottom: 4px; }
+  .p-hero-desc { color: rgba(255,255,255,0.5); font-size: 12px; margin-bottom: 8px; }
+  .p-hero-btn { background: #ffc220; color: #0a1a3a; font-family: 'Lilita One', cursive; font-size: 14px; padding: 8px 24px; border-radius: 30px; display: inline-block; }
+
+  .p-stats { display: flex; gap: 8px; margin-bottom: 10px; }
+  .p-stat { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 6px; text-align: center; }
+  .p-stat-val { color: #ffc220; font-family: 'Lilita One', cursive; font-size: 18px; }
+  .p-stat-label { color: rgba(255,255,255,0.35); font-size: 10px; font-weight: 600; }
+
+  .p-section { font-family: 'Lilita One', cursive; color: #fff; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; margin: 6px 0; }
+  .p-nav-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .p-nav { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 8px; text-align: center; }
+  .p-nav-label { color: #fff; font-family: 'Lilita One', cursive; font-size: 12px; }
+  .p-nav-sub { color: rgba(255,255,255,0.35); font-size: 9px; }
+
+  /* Betting screen */
+  .p-course { background: linear-gradient(135deg, #1a4fc2, #2d6fff); border-radius: 14px; padding: 14px; margin-bottom: 10px; text-align: center; }
+  .p-course-name { font-family: 'Lilita One', cursive; color: #fff; font-size: 18px; }
+  .p-course-theme { color: rgba(255,255,255,0.45); font-size: 11px; font-weight: 600; }
+  .p-marble-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .p-marble-card { background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 10px; text-align: center; }
+  .p-marble-card.sel { border-color: #ffc220; background: rgba(255,194,32,0.06); }
+  .p-mdot { width: 36px; height: 36px; border-radius: 50%; margin: 0 auto 4px; }
+  .p-mname { color: #fff; font-weight: 700; font-size: 12px; }
+  .p-modds { color: #ffc220; font-family: 'Lilita One', cursive; font-size: 16px; }
+  .p-bet-area { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 14px; text-align: center; }
+  .p-bet-label { color: rgba(255,255,255,0.35); font-size: 10px; font-weight: 600; letter-spacing: 1px; }
+  .p-bet-amount { font-family: 'Lilita One', cursive; color: #ffc220; font-size: 32px; margin: 4px 0; }
+  .p-bet-chips { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .p-chip { background: rgba(255,194,32,0.1); border: 1px solid rgba(255,194,32,0.2); color: #ffc220; padding: 5px 14px; border-radius: 30px; font-weight: 700; font-size: 12px; }
+  .p-chip.act { background: #ffc220; color: #0a1a3a; border-color: #ffc220; }
+  .p-bet-btn { background: linear-gradient(135deg, #ffc220, #ff9a1a); color: #0a1a3a; font-family: 'Lilita One', cursive; font-size: 16px; padding: 10px 36px; border-radius: 30px; display: inline-block; margin-top: 6px; }
+
+  /* Race screen — vertical top-down (actual game) */
+  .rv { height: 100%; position: relative; overflow: hidden; background: linear-gradient(180deg, #6ab840 0%, #7ec850 15%, #8dd860 40%, #7ec850 65%, #6ab840 100%); }
+  /* Wooden side walls */
+  .rv-wall { position: absolute; top: 0; bottom: 0; width: 20px; z-index: 3; }
+  .rv-wl { left: 0; background: linear-gradient(90deg, #5a3218 0%, #8b5a3a 40%, #6b4226 100%); border-right: 3px solid #4a2815; }
+  .rv-wr { right: 0; background: linear-gradient(90deg, #6b4226 0%, #8b5a3a 60%, #5a3218 100%); border-left: 3px solid #4a2815; }
+  /* Pegs */
+  .rv-peg { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #9b7a56, #5a3825); border: 2px solid #4a2815; z-index: 2; }
+  /* Ramps */
+  .rv-ramp { position: absolute; height: 12px; background: linear-gradient(180deg, #b0825a, #8b5a3a 40%, #6b4226); border-radius: 5px; border: 2px solid #4a2815; z-index: 2; }
+  /* Marbles */
+  .rv-marble { position: absolute; width: 30px; height: 30px; border-radius: 50%; box-shadow: 0 3px 6px rgba(0,0,0,0.4); z-index: 4; }
+  .rv-marble::after { content: ''; position: absolute; top: 5px; left: 6px; width: 10px; height: 7px; background: rgba(255,255,255,0.45); border-radius: 50%; transform: rotate(-20deg); }
+  /* HUD */
+  .rv-hud { position: absolute; top: 8px; left: 10px; z-index: 10; }
+  .rv-timer { background: rgba(0,0,0,0.55); color: #fff; font-family: 'Lilita One', cursive; font-size: 16px; padding: 6px 16px; border-radius: 30px; }
+  .rv-badge { position: absolute; top: 8px; right: 10px; background: rgba(0,0,0,0.55); padding: 6px 12px; border-radius: 10px; text-align: right; z-index: 10; }
+  .rv-track-name { color: #fff; font-family: 'Lilita One', cursive; font-size: 12px; }
+  .rv-track-theme { display: inline-block; background: rgba(110,200,80,0.35); color: #a0e870; font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 4px; letter-spacing: 1px; margin-top: 2px; }
+  .rv-bet-info { color: #ffc220; font-weight: 700; font-size: 11px; margin-top: 3px; }
+  /* Scoreboard */
+  .rv-sb { position: absolute; right: 8px; bottom: 80px; display: flex; flex-direction: column; gap: 3px; z-index: 10; }
+  .rv-sb-item { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 8px; }
+  .rv-sb-item.you { border: 2px solid rgba(255,194,32,0.5); }
+  .rv-sb-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .rv-sb-pos { color: rgba(255,255,255,0.5); font-size: 9px; font-weight: 700; width: 10px; }
+  .rv-sb-name { color: #fff; font-size: 10px; font-weight: 600; }
+  /* Finish */
+  .rv-finish { position: absolute; bottom: 55px; left: 20px; right: 20px; height: 10px; background: repeating-linear-gradient(90deg, #fff 0px, #fff 8px, #222 8px, #222 16px); z-index: 3; }
+  .rv-slots { position: absolute; bottom: 18px; left: 20px; right: 20px; display: flex; justify-content: space-evenly; z-index: 3; }
+  .rv-slot { width: 30px; height: 30px; background: rgba(0,0,0,0.25); border: 2px solid rgba(255,255,255,0.12); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.25); font-size: 10px; font-weight: 700; }
+  /* Windmill/Pendulum */
+  .rv-pendulum { position: absolute; z-index: 2; }
+  .rv-pend-pivot { width: 12px; height: 12px; border-radius: 50%; background: #4a2815; }
+  .rv-pend-arm { position: absolute; top: 4px; left: 5px; width: 3px; height: 50px; background: #5a3825; transform-origin: top center; transform: rotate(25deg); }
+  .rv-pend-bob { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #a0714e, #5a3825); border: 2px solid #4a2815; bottom: -8px; left: -8px; }
+  /* Speed burst */
+  .rv-speed { position: absolute; width: 42px; height: 14px; background: linear-gradient(90deg, #ffc220, #ffe066, #ffc220); border-radius: 3px; border: 1px solid #e0a800; z-index: 2; }
+
+  /* Season screen */
+  .p-season-banner { background: linear-gradient(135deg, #1a4fc2, #2d6fff); border-radius: 14px; padding: 14px; margin-bottom: 10px; text-align: center; }
+  .p-season-num { font-family: 'Lilita One', cursive; color: #ffc220; font-size: 11px; letter-spacing: 2px; }
+  .p-season-title { font-family: 'Lilita One', cursive; color: #fff; font-size: 22px; }
+  .p-season-week { color: rgba(255,255,255,0.45); font-size: 12px; font-weight: 600; }
+  .p-season-bar { height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .p-season-fill { height: 100%; background: linear-gradient(90deg, #ffc220, #ff9a1a); border-radius: 3px; }
+  .p-stand-row { display: flex; align-items: center; padding: 8px 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 5px; }
+  .p-stand-row.hl { background: rgba(255,194,32,0.05); border-color: rgba(255,194,32,0.12); }
+  .p-stand-rank { width: 28px; font-family: 'Lilita One', cursive; color: #ffc220; font-size: 16px; }
+  .p-stand-dot { width: 22px; height: 22px; border-radius: 50%; margin-right: 8px; flex-shrink: 0; }
+  .p-stand-name { color: #fff; font-weight: 700; font-size: 13px; flex: 1; }
+  .p-stand-rec { color: rgba(255,255,255,0.4); font-size: 11px; width: 50px; text-align: right; }
+  .p-stand-pts { font-family: 'Lilita One', cursive; color: #ffc220; font-size: 16px; width: 40px; text-align: right; }
+
+  /* Store screen */
+  .p-store-bal { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; background: rgba(255,194,32,0.06); border: 1px solid rgba(255,194,32,0.12); border-radius: 12px; margin-bottom: 12px; }
+  .p-store-coins { color: #ffc220; font-family: 'Lilita One', cursive; font-size: 20px; }
+  .p-store-label { color: rgba(255,255,255,0.3); font-size: 11px; font-weight: 700; }
+  .p-sp { background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; position: relative; overflow: hidden; }
+  .p-sp.pop { border-color: rgba(255,194,32,0.25); background: rgba(255,194,32,0.04); }
+  .p-sp.pop::before { content: 'MOST POPULAR'; position: absolute; top: 0; right: 0; background: #ffc220; color: #0a1a3a; font-size: 7px; font-weight: 700; padding: 2px 8px; border-radius: 0 0 0 8px; letter-spacing: 0.5px; }
+  .p-sp.best { border-color: rgba(155,89,182,0.25); background: rgba(155,89,182,0.04); }
+  .p-sp.best::before { content: 'BEST VALUE'; position: absolute; top: 0; right: 0; background: #c084fc; color: #fff; font-size: 7px; font-weight: 700; padding: 2px 8px; border-radius: 0 0 0 8px; letter-spacing: 0.5px; }
+  .p-sp-icon { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .p-sp-info { flex: 1; }
+  .p-sp-name { color: #fff; font-weight: 700; font-size: 13px; }
+  .p-sp-coins { color: #ffc220; font-family: 'Lilita One', cursive; font-size: 15px; }
+  .p-sp-bonus { color: rgba(46,204,113,0.8); font-size: 10px; font-weight: 700; }
+  .p-sp-price { font-family: 'Lilita One', cursive; color: #fff; font-size: 14px; background: rgba(255,255,255,0.06); padding: 5px 12px; border-radius: 30px; }
+
+  /* Roster screen */
+  .p-roster-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .p-roster-card { background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 12px 8px; text-align: center; }
+  .p-roster-dot { width: 40px; height: 40px; border-radius: 50%; margin: 0 auto 6px; box-shadow: 0 3px 8px rgba(0,0,0,0.3); }
+  .p-roster-name { color: #fff; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .p-roster-stat { display: flex; justify-content: space-between; font-size: 9px; margin-bottom: 2px; }
+  .p-roster-stat-l { color: rgba(255,255,255,0.35); }
+  .p-roster-stat-v { color: #ffc220; font-weight: 700; }
+  .p-roster-bar { height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; margin-bottom: 6px; overflow: hidden; }
+  .p-roster-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #ffc220, #ff9a1a); }
+</style>
+</head>
+<body>
+
+<div class="zoom-controls">
+  <button class="zoom-btn" onclick="setZoom(0.35)">35%</button>
+  <button class="zoom-btn active" onclick="setZoom(0.5)">50%</button>
+  <button class="zoom-btn" onclick="setZoom(0.75)">75%</button>
+  <button class="zoom-btn" onclick="setZoom(1)">100%</button>
+</div>
+
+<h1 class="page-title">DONKEY MARBLE RACING</h1>
+<p class="page-subtitle">Apple App Store Screenshots</p>
+<p class="page-spec">iPhone 6.9" (1320x2868) &bull; iPhone 6.5" (1284x2778) &bull; iPad 12.9" (2048x2732) -- PNG</p>
+
+<!-- SLIDE 1: HERO / LOBBY -->
+<div class="slide-label">1 / 6 -- HERO</div>
+<div id="slide-1" class="screenshot-slide" style="background:linear-gradient(165deg,#0a2a6e 0%,#1d56d4 40%,#0a3a96 100%);">
+  <div class="deco-circle" style="width:400px;height:400px;top:-80px;right:-100px;"></div>
+  <div class="deco-circle" style="width:250px;height:250px;bottom:200px;left:-60px;"></div>
+  <div class="deco-circle-fill" style="width:800px;height:800px;top:50%;left:50%;transform:translate(-50%,-50%);"></div>
+  <div class="deco-marble" style="width:120px;height:120px;top:100px;right:100px;background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b);"></div>
+  <div class="deco-marble" style="width:80px;height:80px;bottom:220px;left:80px;background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3);"></div>
+  <div class="deco-marble" style="width:60px;height:60px;top:400px;left:200px;background:radial-gradient(circle at 35% 30%,#55efc4,#00b894);"></div>
+  <div class="deco-dot" style="top:250px;left:300px;"></div>
+  <div class="deco-dot" style="top:500px;right:150px;width:12px;height:12px;"></div>
+  <div class="deco-line" style="width:300px;top:200px;left:50px;transform:rotate(-15deg);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:92px;margin-bottom:24px;">RACE. BET.<br><span class="accent">WIN.</span></div>
+      <div class="subheadline" style="font-size:28px;">8 unique marbles, 112 courses, full seasons.<br>Physics-powered marble racing & betting.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:linear-gradient(180deg,#1d56d4,#0a3a96);">
+        <div class="status-bar"><span style="font-size:14px;">9:41</span><div style="font-size:11px;color:rgba(255,255,255,0.6);">||||&nbsp;100%</div></div>
+        <div class="screen-content">
+          <div class="p-topbar"><div class="p-player"><div class="p-avatar">P</div><div><div class="p-name">Player1</div><div class="p-league">BRONZE</div></div></div><div class="p-coin"><span class="p-coin-icon">$</span><span class="p-coin-val">4,850</span></div></div>
+          <div class="p-hero"><div class="p-live"><div class="p-live-dot"></div> LIVE</div><div class="p-hero-title">Ready to Race?</div><div class="p-hero-desc">Pick your marble and place your bet</div><div class="p-hero-btn">PLACE A BET</div></div>
+          <div class="p-stats"><div class="p-stat"><div class="p-stat-val">24</div><div class="p-stat-label">Races</div></div><div class="p-stat"><div class="p-stat-val">58%</div><div class="p-stat-label">Win Rate</div></div><div class="p-stat"><div class="p-stat-val">S1</div><div class="p-stat-label">Season</div></div></div>
+          <div class="p-section">Explore</div>
+          <div class="p-nav-grid">
+            <div class="p-nav"><div class="p-nav-label">SEASON</div><div class="p-nav-sub">10-week competition</div></div>
+            <div class="p-nav"><div class="p-nav-label">TOURNAMENT</div><div class="p-nav-sub">Bracket battles</div></div>
+            <div class="p-nav"><div class="p-nav-label">NATIONAL</div><div class="p-nav-sub">Grand Prix events</div></div>
+            <div class="p-nav"><div class="p-nav-label">QUICK RACE</div><div class="p-nav-sub">Jump right in</div></div>
+            <div class="p-nav"><div class="p-nav-label">ROSTER</div><div class="p-nav-sub">Meet the marbles</div></div>
+            <div class="p-nav"><div class="p-nav-label">LEADERBOARDS</div><div class="p-nav-sub">Top players</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;text-align:center;">
+      <div style="font-family:'Lilita One',cursive;font-size:36px;color:#ffc220;letter-spacing:4px;">DONKEY MARBLE RACING</div>
+      <div style="font-weight:500;font-size:22px;color:rgba(255,255,255,0.4);letter-spacing:3px;margin-top:8px;">RACE. BET. WIN.</div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 2: BETTING -->
+<div class="slide-label">2 / 6 -- BETTING</div>
+<div id="slide-2" class="screenshot-slide" style="background:linear-gradient(170deg,#071e5c 0%,#0d2a7a 50%,#0a1a3a 100%);">
+  <div class="deco-circle" style="width:500px;height:500px;top:-150px;left:-150px;"></div>
+  <div class="deco-circle" style="width:300px;height:300px;bottom:100px;right:-80px;"></div>
+  <div class="deco-marble" style="width:100px;height:100px;top:150px;left:120px;background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7);"></div>
+  <div class="deco-marble" style="width:150px;height:150px;bottom:200px;right:120px;background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12);"></div>
+  <div class="deco-dot" style="top:350px;right:200px;width:10px;height:10px;"></div>
+  <div class="deco-line" style="width:350px;top:300px;right:50px;transform:rotate(5deg);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:86px;margin-bottom:24px;">PICK YOUR<br><span class="accent">MARBLE</span></div>
+      <div class="subheadline" style="font-size:26px;">Study the odds, pick your champion,<br>and place your bet on every race.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:#0a1230;">
+        <div class="status-bar"><span style="font-size:14px;">9:41</span><div style="font-size:11px;color:rgba(255,255,255,0.6);">||||&nbsp;100%</div></div>
+        <div class="screen-content">
+          <div class="p-topbar"><div style="color:rgba(255,255,255,0.4);font-size:14px;">&#8249; LOBBY</div><div class="p-coin"><span class="p-coin-icon">$</span><span class="p-coin-val">4,850</span></div></div>
+          <div class="p-course"><div class="p-course-name">Alpine Cascade</div><div class="p-course-theme">GRASS &bull; HAND-CRAFTED</div></div>
+          <div class="p-marble-grid">
+            <div class="p-marble-card sel"><div class="p-mdot" style="background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b)"></div><div class="p-mname">Dash</div><div class="p-modds">3.2x</div></div>
+            <div class="p-marble-card"><div class="p-mdot" style="background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7)"></div><div class="p-mname">Spike</div><div class="p-modds">4.1x</div></div>
+            <div class="p-marble-card"><div class="p-mdot" style="background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12)"></div><div class="p-mname">Rocky</div><div class="p-modds">2.8x</div></div>
+            <div class="p-marble-card"><div class="p-mdot" style="background:radial-gradient(circle at 35% 30%,#55efc4,#00b894)"></div><div class="p-mname">Lucky</div><div class="p-modds">5.0x</div></div>
+          </div>
+          <div class="p-bet-area">
+            <div class="p-bet-label">BET AMOUNT</div>
+            <div class="p-bet-amount">250</div>
+            <div class="p-bet-chips"><div class="p-chip">50</div><div class="p-chip">100</div><div class="p-chip act">250</div><div class="p-chip">500</div></div>
+            <div style="color:rgba(255,255,255,0.3);font-size:11px;margin-bottom:4px;">Potential payout: <span style="color:#2ecc71;font-weight:700;">800</span></div>
+            <div class="p-bet-btn">PLACE BET ON DASH</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;display:flex;gap:80px;">
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">8</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Marbles</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">112</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Courses</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">LIVE</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Odds</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 3: RACE -->
+<div class="slide-label">3 / 6 -- RACE</div>
+<div id="slide-3" class="screenshot-slide" style="background:linear-gradient(165deg,#2d6420 0%,#3a8a2e 40%,#1e5a18 100%);">
+  <div class="deco-circle" style="width:450px;height:450px;bottom:-100px;left:-100px;border-color:rgba(255,255,255,0.1);"></div>
+  <div class="deco-circle" style="width:350px;height:350px;top:100px;right:-80px;border-color:rgba(255,255,255,0.1);"></div>
+  <div class="deco-marble" style="width:130px;height:130px;top:130px;left:80px;background:radial-gradient(circle at 35% 30%,#81ecec,#00cec9);"></div>
+  <div class="deco-marble" style="width:90px;height:90px;bottom:250px;right:100px;background:radial-gradient(circle at 35% 30%,#2d3436,#636e72);"></div>
+  <div class="deco-dot" style="top:400px;left:300px;width:14px;height:14px;background:rgba(255,255,255,0.2);"></div>
+  <div class="deco-line" style="width:280px;bottom:250px;left:100px;transform:rotate(-8deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:86px;margin-bottom:24px;">PHYSICS<br><span class="accent">POWERED</span></div>
+      <div class="subheadline" style="font-size:26px;">Watch marbles bounce off pegs, slide down ramps,<br>and sprint through speed bursts to the finish.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:#7ec850;border-color:#5a8a38;">
+        <div class="screen-content" style="padding:0;">
+          <div class="rv">
+            <!-- Wooden walls -->
+            <div class="rv-wall rv-wl"></div>
+            <div class="rv-wall rv-wr"></div>
+            <!-- Ramps (angled brown planks) -->
+            <div class="rv-ramp" style="left:50px;top:130px;width:90px;transform:rotate(-18deg);"></div>
+            <div class="rv-ramp" style="right:40px;top:260px;width:100px;transform:rotate(15deg);"></div>
+            <div class="rv-ramp" style="left:60px;top:400px;width:80px;transform:rotate(-12deg);"></div>
+            <div class="rv-ramp" style="right:50px;top:520px;width:95px;transform:rotate(20deg);"></div>
+            <!-- Pegs -->
+            <div class="rv-peg" style="left:100px;top:80px;"></div>
+            <div class="rv-peg" style="left:200px;top:80px;"></div>
+            <div class="rv-peg" style="left:300px;top:90px;"></div>
+            <div class="rv-peg" style="left:150px;top:190px;"></div>
+            <div class="rv-peg" style="left:250px;top:200px;"></div>
+            <div class="rv-peg" style="left:70px;top:300px;"></div>
+            <div class="rv-peg" style="left:180px;top:320px;"></div>
+            <div class="rv-peg" style="left:300px;top:310px;"></div>
+            <div class="rv-peg" style="left:120px;top:460px;"></div>
+            <div class="rv-peg" style="left:230px;top:450px;"></div>
+            <div class="rv-peg" style="left:310px;top:470px;"></div>
+            <div class="rv-peg" style="left:160px;top:580px;"></div>
+            <div class="rv-peg" style="left:280px;top:570px;"></div>
+            <!-- Pendulum -->
+            <div class="rv-pendulum" style="left:210px;top:340px;">
+              <div class="rv-pend-pivot"></div>
+              <div class="rv-pend-arm">
+                <div class="rv-pend-bob"></div>
+              </div>
+            </div>
+            <!-- Speed burst -->
+            <div class="rv-speed" style="left:100px;top:620px;"></div>
+            <!-- 8 Marbles at various positions (racing downward) -->
+            <div class="rv-marble" style="left:130px;top:110px;background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3)"></div>
+            <div class="rv-marble" style="left:240px;top:150px;background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b)"></div>
+            <div class="rv-marble" style="left:80px;top:240px;background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7)"></div>
+            <div class="rv-marble" style="left:270px;top:290px;background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12)"></div>
+            <div class="rv-marble" style="left:170px;top:370px;background:radial-gradient(circle at 35% 30%,#55efc4,#00b894)"></div>
+            <div class="rv-marble" style="left:60px;top:480px;background:radial-gradient(circle at 35% 30%,#dfe6e9,#b2bec3)"></div>
+            <div class="rv-marble" style="left:200px;top:530px;background:radial-gradient(circle at 35% 30%,#2d3436,#636e72)"></div>
+            <div class="rv-marble" style="left:290px;top:590px;background:radial-gradient(circle at 35% 30%,#81ecec,#00cec9)"></div>
+            <!-- Finish -->
+            <div class="rv-finish"></div>
+            <div class="rv-slots">
+              <div class="rv-slot">1</div><div class="rv-slot">2</div><div class="rv-slot">3</div><div class="rv-slot">4</div>
+              <div class="rv-slot">5</div><div class="rv-slot">6</div><div class="rv-slot">7</div><div class="rv-slot">8</div>
+            </div>
+            <!-- HUD -->
+            <div class="rv-hud"><div class="rv-timer">12.4s</div></div>
+            <div class="rv-badge">
+              <div class="rv-track-name">Alpine Cascade</div>
+              <div class="rv-track-theme">GRASS</div>
+              <div class="rv-bet-info">DASH - 2nd</div>
+            </div>
+            <!-- Scoreboard -->
+            <div class="rv-sb">
+              <div class="rv-sb-item"><div class="rv-sb-pos">1</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3)"></div><span class="rv-sb-name">Frosty</span></div>
+              <div class="rv-sb-item you"><div class="rv-sb-pos">2</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b)"></div><span class="rv-sb-name" style="color:#ffc220;">Dash</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">3</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7)"></div><span class="rv-sb-name">Spike</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">4</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12)"></div><span class="rv-sb-name">Rocky</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">5</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#55efc4,#00b894)"></div><span class="rv-sb-name">Lucky</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">6</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#dfe6e9,#b2bec3)"></div><span class="rv-sb-name">Nova</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">7</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#2d3436,#636e72)"></div><span class="rv-sb-name">Shadow</span></div>
+              <div class="rv-sb-item"><div class="rv-sb-pos">8</div><div class="rv-sb-dot" style="background:radial-gradient(circle at 35% 30%,#81ecec,#00cec9)"></div><span class="rv-sb-name">Aqua</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;display:flex;gap:80px;">
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">60</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">FPS</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">REAL</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Physics</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">4</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Themes</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 4: SEASON -->
+<div class="slide-label">4 / 6 -- SEASON</div>
+<div id="slide-4" class="screenshot-slide" style="background:linear-gradient(170deg,#0a1a3a 0%,#0d2a7a 50%,#071e5c 100%);">
+  <div class="deco-circle" style="width:400px;height:400px;top:-100px;left:-100px;"></div>
+  <div class="deco-circle" style="width:300px;height:300px;bottom:150px;right:-80px;"></div>
+  <div class="deco-marble" style="width:110px;height:110px;top:180px;right:100px;background:radial-gradient(circle at 35% 30%,#ffeaa7,#fdcb6e);"></div>
+  <div class="deco-marble" style="width:70px;height:70px;bottom:300px;left:100px;background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b);"></div>
+  <div class="deco-dot" style="top:400px;left:250px;width:10px;height:10px;"></div>
+  <div class="deco-line" style="width:300px;top:350px;right:100px;transform:rotate(-5deg);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:86px;margin-bottom:24px;">FULL <span class="accent">SEASON</span><br>MODE</div>
+      <div class="subheadline" style="font-size:26px;">10 weeks of races, standings, playoffs,<br>and a championship showdown.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:#0a1230;">
+        <div class="status-bar"><span style="font-size:14px;">9:41</span><div style="font-size:11px;color:rgba(255,255,255,0.6);">||||&nbsp;100%</div></div>
+        <div class="screen-content">
+          <div class="p-topbar"><div style="color:rgba(255,255,255,0.4);font-size:14px;">&#8249; LOBBY</div><div class="p-coin"><span class="p-coin-icon">$</span><span class="p-coin-val">4,850</span></div></div>
+          <div class="p-season-banner"><div class="p-season-num">SEASON 1</div><div class="p-season-title">Season Hub</div><div class="p-season-week">Week 4 of 10</div><div class="p-season-bar"><div class="p-season-fill" style="width:40%"></div></div></div>
+          <div class="p-section">Standings</div>
+          <div class="p-stand-row hl"><div class="p-stand-rank">1</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b)"></div><div class="p-stand-name">Dash</div><div class="p-stand-rec">14-6</div><div class="p-stand-pts">87</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">2</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12)"></div><div class="p-stand-name">Rocky</div><div class="p-stand-rec">12-8</div><div class="p-stand-pts">78</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">3</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3)"></div><div class="p-stand-name">Frosty</div><div class="p-stand-rec">11-9</div><div class="p-stand-pts">72</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">4</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#55efc4,#00b894)"></div><div class="p-stand-name">Lucky</div><div class="p-stand-rec">10-10</div><div class="p-stand-pts">65</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">5</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7)"></div><div class="p-stand-name">Spike</div><div class="p-stand-rec">9-11</div><div class="p-stand-pts">58</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">6</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#ffeaa7,#fdcb6e)"></div><div class="p-stand-name">Nova</div><div class="p-stand-rec">8-12</div><div class="p-stand-pts">51</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">7</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#2d3436,#636e72)"></div><div class="p-stand-name">Shadow</div><div class="p-stand-rec">7-13</div><div class="p-stand-pts">44</div></div>
+          <div class="p-stand-row"><div class="p-stand-rank">8</div><div class="p-stand-dot" style="background:radial-gradient(circle at 35% 30%,#81ecec,#00cec9)"></div><div class="p-stand-name">Aqua</div><div class="p-stand-rec">6-14</div><div class="p-stand-pts">38</div></div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;display:flex;gap:80px;">
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">10</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Weeks</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">50</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Races</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">Bo5</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Finals</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 5: STORE -->
+<div class="slide-label">5 / 6 -- STORE</div>
+<div id="slide-5" class="screenshot-slide" style="background:linear-gradient(165deg,#1a1400 0%,#0d1a3a 50%,#0a1230 100%);">
+  <div class="deco-circle" style="width:400px;height:400px;top:-80px;right:-100px;border-color:rgba(255,194,32,0.2);"></div>
+  <div class="deco-circle" style="width:300px;height:300px;bottom:200px;left:-60px;border-color:rgba(155,89,182,0.15);"></div>
+  <div class="deco-circle-fill" style="width:600px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,194,32,0.03);"></div>
+  <div class="deco-dot" style="top:250px;left:200px;background:rgba(255,194,32,0.4);"></div>
+  <div class="deco-dot" style="top:500px;right:150px;width:12px;height:12px;background:rgba(155,89,182,0.3);"></div>
+  <div class="deco-line" style="width:300px;top:200px;left:50px;transform:rotate(-15deg);background:linear-gradient(90deg,transparent,rgba(255,194,32,0.2),transparent);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:86px;margin-bottom:24px;">POWER <span class="accent">UP</span><br>YOUR GAME</div>
+      <div class="subheadline" style="font-size:26px;">Grab coin packs and season passes.<br>Virtual coins only — no real money gambling.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:#0a1230;">
+        <div class="status-bar"><span style="font-size:14px;">9:41</span><div style="font-size:11px;color:rgba(255,255,255,0.6);">||||&nbsp;100%</div></div>
+        <div class="screen-content">
+          <div class="p-topbar"><div style="color:rgba(255,255,255,0.4);font-size:14px;">&#8249; PROFILE</div><div style="font-family:'Lilita One',cursive;color:#fff;font-size:18px;">STORE</div><div style="width:50px;"></div></div>
+          <div class="p-store-bal"><span class="p-coin-icon">$</span><span class="p-store-coins">4,850</span><span class="p-store-label">COINS</span></div>
+          <div class="p-sp"><div class="p-sp-icon" style="background:rgba(255,194,32,0.1);color:#ffc220;">$</div><div class="p-sp-info"><div class="p-sp-name">Starter Pack</div><div class="p-sp-coins">1,000 coins</div></div><div class="p-sp-price">$0.99</div></div>
+          <div class="p-sp pop"><div class="p-sp-icon" style="background:rgba(255,194,32,0.15);color:#ffc220;">$$</div><div class="p-sp-info"><div class="p-sp-name">Popular Pack</div><div class="p-sp-coins">6,000 coins</div><div class="p-sp-bonus">+20% bonus</div></div><div class="p-sp-price">$4.99</div></div>
+          <div class="p-sp"><div class="p-sp-icon" style="background:rgba(46,204,113,0.1);color:#2ecc71;">$$$</div><div class="p-sp-info"><div class="p-sp-name">Big Spender</div><div class="p-sp-coins">15,000 coins</div><div class="p-sp-bonus">+50% bonus</div></div><div class="p-sp-price">$9.99</div></div>
+          <div class="p-sp best"><div class="p-sp-icon" style="background:rgba(155,89,182,0.15);color:#c084fc;">$$$$</div><div class="p-sp-info"><div class="p-sp-name">Whale Pack</div><div class="p-sp-coins">40,000 coins</div><div class="p-sp-bonus">+60% bonus</div></div><div class="p-sp-price">$24.99</div></div>
+          <div class="p-section" style="font-size:12px;">Season Pass</div>
+          <div class="p-sp" style="border-color:rgba(255,194,32,0.2);"><div class="p-sp-icon" style="background:rgba(255,194,32,0.12);color:#ffc220;">&#9733;</div><div class="p-sp-info"><div class="p-sp-name" style="color:#ffc220;">Premium</div><div style="color:rgba(255,255,255,0.35);font-size:10px;">Unlock premium rewards</div></div><div class="p-sp-price">$9.99</div></div>
+          <div class="p-sp" style="border-color:rgba(155,89,182,0.2);"><div class="p-sp-icon" style="background:rgba(155,89,182,0.12);color:#c084fc;">&#9733;</div><div class="p-sp-info"><div class="p-sp-name" style="color:#c084fc;">Plus</div><div style="color:rgba(255,255,255,0.35);font-size:10px;">Premium + elite skins + XP</div></div><div class="p-sp-price">$24.99</div></div>
+          <div style="text-align:center;color:rgba(255,255,255,0.15);font-size:9px;margin-top:6px;">Virtual coins only &bull; Not a subscription</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;display:flex;gap:80px;">
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">$0.99</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Starting</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">60%</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Max Bonus</div></div>
+      <div style="text-align:center;"><div style="font-family:'Lilita One',cursive;font-size:48px;color:#ffc220;">30</div><div style="font-weight:600;font-size:18px;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;">Pass Levels</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 6: ROSTER -->
+<div class="slide-label">6 / 6 -- ROSTER</div>
+<div id="slide-6" class="screenshot-slide" style="background:linear-gradient(170deg,#1a0a3a 0%,#0d1a3a 50%,#0a1230 100%);">
+  <div class="deco-circle" style="width:450px;height:450px;top:-100px;left:-120px;border-color:rgba(155,89,182,0.15);"></div>
+  <div class="deco-circle" style="width:350px;height:350px;bottom:100px;right:-80px;border-color:rgba(255,194,32,0.12);"></div>
+  <div class="deco-marble" style="width:100px;height:100px;top:120px;right:120px;background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b);"></div>
+  <div class="deco-marble" style="width:80px;height:80px;top:300px;left:100px;background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3);"></div>
+  <div class="deco-marble" style="width:60px;height:60px;bottom:300px;left:200px;background:radial-gradient(circle at 35% 30%,#55efc4,#00b894);"></div>
+  <div class="deco-marble" style="width:70px;height:70px;bottom:250px;right:150px;background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7);"></div>
+  <div class="deco-dot" style="top:450px;left:300px;width:10px;height:10px;"></div>
+  <div class="deco-line" style="width:300px;bottom:200px;right:100px;transform:rotate(8deg);"></div>
+  <div style="position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:100%;height:100%;">
+    <div style="padding-top:150px;text-align:center;flex-shrink:0;">
+      <div class="headline" style="font-size:86px;margin-bottom:24px;">MEET THE<br><span class="accent">MARBLES</span></div>
+      <div class="subheadline" style="font-size:26px;">8 unique competitors with different<br>speed, weight, bounce, and grip stats.</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:60px 0;">
+      <div class="phone-frame" style="transform:scale(2.15);background:#0a1230;">
+        <div class="status-bar"><span style="font-size:14px;">9:41</span><div style="font-size:11px;color:rgba(255,255,255,0.6);">||||&nbsp;100%</div></div>
+        <div class="screen-content">
+          <div class="p-topbar"><div style="color:rgba(255,255,255,0.4);font-size:14px;">&#8249; LOBBY</div><div style="font-family:'Lilita One',cursive;color:#fff;font-size:18px;">ROSTER</div><div style="width:50px;"></div></div>
+          <div class="p-roster-grid">
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#ff6b6b,#c0392b)"></div><div class="p-roster-name">Dash</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">92</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:92%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Weight</span><span class="p-roster-stat-v">45</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:45%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#a29bfe,#6c5ce7)"></div><div class="p-roster-name">Spike</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">78</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:78%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Bounce</span><span class="p-roster-stat-v">88</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:88%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#fdcb6e,#f39c12)"></div><div class="p-roster-name">Rocky</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">65</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:65%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Weight</span><span class="p-roster-stat-v">95</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:95%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#55efc4,#00b894)"></div><div class="p-roster-name">Lucky</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">70</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:70%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Grip</span><span class="p-roster-stat-v">85</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:85%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#74b9ff,#0984e3)"></div><div class="p-roster-name">Frosty</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">82</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:82%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Bounce</span><span class="p-roster-stat-v">75</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:75%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#ffeaa7,#fdcb6e)"></div><div class="p-roster-name">Nova</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">88</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:88%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Weight</span><span class="p-roster-stat-v">55</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:55%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#2d3436,#636e72)"></div><div class="p-roster-name">Shadow</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">75</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:75%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Grip</span><span class="p-roster-stat-v">90</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:90%"></div></div></div>
+            <div class="p-roster-card"><div class="p-roster-dot" style="background:radial-gradient(circle at 35% 30%,#81ecec,#00cec9)"></div><div class="p-roster-name">Aqua</div><div class="p-roster-stat"><span class="p-roster-stat-l">Speed</span><span class="p-roster-stat-v">80</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:80%"></div></div><div class="p-roster-stat"><span class="p-roster-stat-l">Bounce</span><span class="p-roster-stat-v">82</span></div><div class="p-roster-bar"><div class="p-roster-fill" style="width:82%"></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="padding-bottom:120px;flex-shrink:0;text-align:center;">
+      <div style="font-family:'Lilita One',cursive;font-size:36px;color:#ffc220;letter-spacing:4px;">DONKEY MARBLE RACING</div>
+      <div style="font-weight:500;font-size:22px;color:rgba(255,255,255,0.4);letter-spacing:3px;margin-top:8px;">WHICH MARBLE IS YOURS?</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function setZoom(z) {
+  document.querySelectorAll('.screenshot-slide').forEach(s => s.style.transform = `scale(${z})`);
+  document.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+setZoom(0.5);
+</script>
+</body>
+</html>
