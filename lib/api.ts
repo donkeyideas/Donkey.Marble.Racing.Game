@@ -50,8 +50,58 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return res.json();
 }
 
+export interface SupportTicketSummary {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  category: string;
+  status: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  messageCount: number;
+  lastMessage: { authorType: 'player' | 'admin'; content: string; createdAt: string } | null;
+  hasUnreadAdminReply: boolean;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  authorName: string;
+  authorType: 'player' | 'admin';
+  content: string;
+  createdAt: string;
+}
+
+export interface SupportTicketDetail {
+  id: string;
+  ticketNumber: string;
+  subject: string;
+  category: string;
+  status: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolution: string | null;
+  messages: SupportTicketMessage[];
+}
+
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
   post: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+
+  support: {
+    listTickets: () =>
+      apiFetch<{ tickets: SupportTicketSummary[] }>('/support/tickets'),
+    getTicket: (id: string) =>
+      apiFetch<{ ticket: SupportTicketDetail }>(`/support/tickets/${id}`),
+    createTicket: (data: { subject: string; category: string; message: string }) =>
+      apiFetch<{ ticket: { id: string; ticketNumber: string } }>(
+        '/support/tickets',
+        { method: 'POST', body: JSON.stringify(data) },
+      ),
+    replyToTicket: (id: string, content: string) =>
+      apiFetch<{ message: SupportTicketMessage }>(
+        `/support/tickets/${id}`,
+        { method: 'POST', body: JSON.stringify({ content }) },
+      ),
+  },
 };

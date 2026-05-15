@@ -121,9 +121,9 @@ function computeTrackVisuals(track: TrackConfig) {
 
   const speedBurstVis = (track.speedBursts || []).map(sb => ({
     left: ex(sb.x) - ex(sb.width) / 2,
-    top: ex(sb.y) - ex(6),
+    top: ex(sb.y) - ex(10),
     width: ex(sb.width),
-    height: ex(12),
+    height: ex(20),
     ey: sb.y,
     direction: sb.direction,
   }));
@@ -838,13 +838,17 @@ export default function RaceScreen() {
               <View key={`sb${i}`} style={{
                 position: 'absolute', left: sb.left, top: sb.top,
                 width: sb.width, height: sb.height,
+                backgroundColor: isActive ? '#ffaa00' : '#ffc220',
+                borderRadius: 4,
+                borderWidth: 2,
+                borderColor: isActive ? '#ff8800' : '#e6a800',
                 zIndex: 6, opacity: isActive ? 1 : 0.85,
                 flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center',
               }}>
                 {[0, 1, 2].map(ci => (
                   <Image key={ci} source={themeSprites.speedburst} resizeMode="contain" style={{
-                    width: sb.height - 2, height: sb.height - 2,
-                    opacity: isActive ? 1 : 0.7,
+                    width: sb.height - 4, height: sb.height - 4,
+                    opacity: isActive ? 1 : 0.8,
                   }} />
                 ))}
               </View>

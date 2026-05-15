@@ -11,6 +11,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
+import { scheduleIfAlreadyPermitted } from '../utils/eventNotifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +27,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) {
       SplashScreen.hideAsync();
+      // Re-schedule event notifications if permission already granted (no prompt)
+      scheduleIfAlreadyPermitted().catch(() => {});
     }
   }, [fontsLoaded]);
 

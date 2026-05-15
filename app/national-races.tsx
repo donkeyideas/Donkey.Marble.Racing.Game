@@ -25,6 +25,7 @@ import {
   getEventTimeText,
   getScheduleText,
 } from '../data/nationalRaces';
+import { scheduleEventNotifications, hasNotificationPermission } from '../utils/eventNotifications';
 
 export default function NationalRacesScreen() {
   const router = useRouter();
@@ -40,11 +41,19 @@ export default function NationalRacesScreen() {
   const [modalEvent, setModalEvent] = useState<NationalEvent | null>(null);
   const [pulseAnim] = useState(() => new Animated.Value(1));
 
-  // Refresh events on mount if empty
+  // Refresh events on mount if empty + set up notifications
   useEffect(() => {
     if (!nationalRaces || Object.keys(nationalRaces).length === 0) {
       refreshNationalEvents();
     }
+    // First time on national races screen: ask for notification permission
+    // iOS will show the system prompt. If already granted, silently re-schedules.
+    hasNotificationPermission().then(granted => {
+      if (!granted) {
+        // Small delay so user sees the screen first before iOS prompt
+        setTimeout(() => scheduleEventNotifications().catch(() => {}), 1500);
+      }
+    });
   }, []);
 
   // Pulse animation for LIVE badges

@@ -121,7 +121,13 @@ export default function SettingsScreen() {
           {LEGAL_PAGES.map((item) => (
             <Pressable
               key={item.page}
-              onPress={() => router.push({ pathname: '/legal', params: { page: item.page } })}
+              onPress={() => {
+                if (item.page === 'support') {
+                  router.push('/support');
+                } else {
+                  router.push({ pathname: '/legal', params: { page: item.page } });
+                }
+              }}
               style={({ pressed }) => [styles.linkCard, pressed && { opacity: 0.7 }]}
             >
               <View style={{ flex: 1 }}>
