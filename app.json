@@ -19,8 +19,7 @@
       "bundleIdentifier": "com.donkeymarble.racing",
       "buildNumber": "6",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
