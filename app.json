@@ -31,6 +31,7 @@
       "package": "com.donkeymarble.racing",
       "versionCode": 6,
       "permissions": [
+        "android.permission.VIBRATE",
         "com.android.vending.BILLING"
       ]
     },

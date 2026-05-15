@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Donkey Marble Racing — IAP Screenshots</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    font-family: 'Fredoka', sans-serif;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    padding: 40px;
+    justify-content: center;
+  }
+  h1 {
+    width: 100%;
+    text-align: center;
+    color: #fff;
+    font-family: 'Lilita One', cursive;
+    font-size: 28px;
+    margin-bottom: 10px;
+  }
+  .instructions {
+    width: 100%;
+    text-align: center;
+    color: rgba(255,255,255,0.5);
+    font-size: 14px;
+    margin-bottom: 20px;
+  }
+
+  /* Each IAP screenshot card — 640x920 per Apple spec */
+  .iap-card {
+    width: 640px;
+    height: 920px;
+    border-radius: 24px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 50px 40px;
+  }
+
+  /* === COIN PACK CARDS === */
+  .iap-starter { background: linear-gradient(180deg, #0d1a3a 0%, #0a1230 60%, #1a0f30 100%); }
+  .iap-popular { background: linear-gradient(180deg, #1a1400 0%, #0d1a3a 40%, #0a1230 100%); }
+  .iap-big     { background: linear-gradient(180deg, #0a1a1a 0%, #0d1a3a 40%, #0a1230 100%); }
+  .iap-whale   { background: linear-gradient(180deg, #1a0a2e 0%, #0d1a3a 40%, #0a1230 100%); }
+  .iap-premium { background: linear-gradient(180deg, #1a1400 0%, #0d1a3a 40%, #0a1230 100%); }
+  .iap-plus    { background: linear-gradient(180deg, #1a0a2e 0%, #0d1a3a 40%, #0a1230 100%); }
+
+  /* Glow effect behind icon */
+  .glow {
+    position: absolute;
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.3;
+    top: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .glow-gold   { background: #ffc220; }
+  .glow-green  { background: #2ecc71; }
+  .glow-purple { background: #9b59b6; }
+
+  /* App branding */
+  .app-brand {
+    position: absolute;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  .app-brand-name {
+    font-family: 'Lilita One', cursive;
+    color: #ffc220;
+    font-size: 18px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Big icon */
+  .big-icon {
+    width: 160px;
+    height: 160px;
+    border-radius: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 64px;
+    margin-bottom: 36px;
+    position: relative;
+    z-index: 1;
+    border: 3px solid rgba(255,255,255,0.1);
+  }
+  .big-icon-gold   { background: rgba(255,194,32,0.12); color: #ffc220; }
+  .big-icon-green  { background: rgba(46,204,113,0.12); color: #2ecc71; }
+  .big-icon-purple { background: rgba(155,89,182,0.12); color: #c084fc; }
+
+  /* Badge ribbon */
+  .badge {
+    position: absolute;
+    top: 28px;
+    right: -2px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 18px;
+    border-radius: 0 24px 0 14px;
+    letter-spacing: 1.5px;
+    z-index: 2;
+  }
+  .badge-gold   { background: #ffc220; color: #0a1a3a; }
+  .badge-purple { background: #c084fc; color: #fff; }
+
+  /* Pack name */
+  .pack-name {
+    font-family: 'Lilita One', cursive;
+    color: #fff;
+    font-size: 42px;
+    text-align: center;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Coin amount */
+  .coin-amount {
+    font-family: 'Lilita One', cursive;
+    color: #ffc220;
+    font-size: 56px;
+    text-align: center;
+    margin-bottom: 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .coin-amount-green  { color: #2ecc71; }
+  .coin-amount-purple { color: #c084fc; }
+
+  .coin-label {
+    color: rgba(255,255,255,0.4);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Bonus tag */
+  .bonus-tag {
+    display: inline-block;
+    padding: 8px 24px;
+    border-radius: 50px;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 30px;
+    position: relative;
+    z-index: 1;
+  }
+  .bonus-green {
+    background: rgba(46,204,113,0.15);
+    border: 1px solid rgba(46,204,113,0.3);
+    color: #2ecc71;
+  }
+
+  /* Price button */
+  .price-btn {
+    display: inline-block;
+    padding: 16px 60px;
+    border-radius: 50px;
+    font-family: 'Lilita One', cursive;
+    font-size: 32px;
+    color: #fff;
+    position: relative;
+    z-index: 1;
+    border: none;
+  }
+  .price-gold {
+    background: linear-gradient(135deg, #ffc220, #ff9a1a);
+    color: #0a1a3a;
+  }
+  .price-green {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    color: #fff;
+  }
+  .price-purple {
+    background: linear-gradient(135deg, #9b59b6, #8e44ad);
+    color: #fff;
+  }
+
+  /* Description text */
+  .desc-text {
+    color: rgba(255,255,255,0.4);
+    font-size: 14px;
+    text-align: center;
+    margin-top: 24px;
+    position: relative;
+    z-index: 1;
+    max-width: 400px;
+    line-height: 1.5;
+  }
+
+  /* Bullet features for season pass */
+  .features {
+    list-style: none;
+    margin-bottom: 30px;
+    position: relative;
+    z-index: 1;
+  }
+  .features li {
+    color: rgba(255,255,255,0.7);
+    font-size: 17px;
+    padding: 8px 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .features li .check {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .check-gold   { background: rgba(255,194,32,0.2); color: #ffc220; }
+  .check-purple { background: rgba(155,89,182,0.2); color: #c084fc; }
+
+  /* Divider line */
+  .divider {
+    width: 80px;
+    height: 3px;
+    border-radius: 2px;
+    margin: 16px auto;
+    position: relative;
+    z-index: 1;
+  }
+  .divider-gold   { background: rgba(255,194,32,0.3); }
+  .divider-green  { background: rgba(46,204,113,0.3); }
+  .divider-purple { background: rgba(155,89,182,0.3); }
+
+  /* Footer */
+  .card-footer {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    color: rgba(255,255,255,0.2);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>IAP Screenshots for App Store Connect</h1>
+<p class="instructions">Right-click each card &rarr; Save as image, or screenshot each one at 640&times;920px.<br>Upload to App Store Connect under each In-App Purchase product.</p>
+
+<!-- ============ IAP 1: STARTER PACK ============ -->
+<div class="iap-card iap-starter">
+  <div class="glow glow-gold"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-gold">$</div>
+  <div class="pack-name">Starter Pack</div>
+  <div class="coin-amount">1,000</div>
+  <div class="coin-label">COINS</div>
+  <div class="divider divider-gold"></div>
+  <div class="price-btn price-gold">$0.99</div>
+  <div class="desc-text">Get started with 1,000 virtual coins to place bets and join races.</div>
+  <div class="card-footer">Virtual coins only &bull; No real money gambling</div>
+</div>
+
+<!-- ============ IAP 2: POPULAR PACK ============ -->
+<div class="iap-card iap-popular">
+  <div class="badge badge-gold">MOST POPULAR</div>
+  <div class="glow glow-gold"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-gold">$$</div>
+  <div class="pack-name">Popular Pack</div>
+  <div class="coin-amount">6,000</div>
+  <div class="coin-label">COINS</div>
+  <div class="bonus-tag bonus-green">+20% BONUS</div>
+  <div class="price-btn price-gold">$4.99</div>
+  <div class="desc-text">Our most popular pack — 6,000 coins with a 20% bonus to fuel your races.</div>
+  <div class="card-footer">Virtual coins only &bull; No real money gambling</div>
+</div>
+
+<!-- ============ IAP 3: BIG SPENDER ============ -->
+<div class="iap-card iap-big">
+  <div class="glow glow-green"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-green">$$$</div>
+  <div class="pack-name">Big Spender</div>
+  <div class="coin-amount coin-amount-green">15,000</div>
+  <div class="coin-label">COINS</div>
+  <div class="bonus-tag bonus-green">+50% BONUS</div>
+  <div class="price-btn price-green">$9.99</div>
+  <div class="desc-text">Serious racers get 15,000 coins with a massive 50% bonus.</div>
+  <div class="card-footer">Virtual coins only &bull; No real money gambling</div>
+</div>
+
+<!-- ============ IAP 4: WHALE PACK ============ -->
+<div class="iap-card iap-whale">
+  <div class="badge badge-purple">BEST VALUE</div>
+  <div class="glow glow-purple"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-purple">$$$$</div>
+  <div class="pack-name">Whale Pack</div>
+  <div class="coin-amount coin-amount-purple">40,000</div>
+  <div class="coin-label">COINS</div>
+  <div class="bonus-tag bonus-green">+60% BONUS</div>
+  <div class="price-btn price-purple">$24.99</div>
+  <div class="desc-text">The ultimate coin pack — 40,000 coins with our biggest 60% bonus.</div>
+  <div class="card-footer">Virtual coins only &bull; No real money gambling</div>
+</div>
+
+<!-- ============ IAP 5: SEASON PASS PREMIUM ============ -->
+<div class="iap-card iap-premium">
+  <div class="glow glow-gold"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-gold" style="font-size:52px">&#9733;</div>
+  <div class="pack-name" style="color:#ffc220">Premium Pass</div>
+  <div class="divider divider-gold"></div>
+  <ul class="features">
+    <li><span class="check check-gold">&#10003;</span> Unlock premium rewards track</li>
+    <li><span class="check check-gold">&#10003;</span> Exclusive marble skins</li>
+    <li><span class="check check-gold">&#10003;</span> Bonus coin rewards per level</li>
+    <li><span class="check check-gold">&#10003;</span> 30 levels of seasonal content</li>
+  </ul>
+  <div class="price-btn price-gold">$9.99</div>
+  <div class="desc-text">One-time purchase per season &bull; Not a subscription</div>
+  <div class="card-footer">Unlocks premium reward track for the current season</div>
+</div>
+
+<!-- ============ IAP 6: SEASON PASS PLUS ============ -->
+<div class="iap-card iap-plus">
+  <div class="badge badge-purple">ELITE</div>
+  <div class="glow glow-purple"></div>
+  <div class="app-brand">
+    <div class="app-brand-name">Donkey Marble Racing</div>
+  </div>
+  <div class="big-icon big-icon-purple" style="font-size:52px">&#9733;</div>
+  <div class="pack-name" style="color:#c084fc">Plus Pass</div>
+  <div class="divider divider-purple"></div>
+  <ul class="features">
+    <li><span class="check check-purple">&#10003;</span> Everything in Premium</li>
+    <li><span class="check check-purple">&#10003;</span> Elite exclusive skins</li>
+    <li><span class="check check-purple">&#10003;</span> Bonus XP on every race</li>
+    <li><span class="check check-purple">&#10003;</span> Champion's Crown cosmetic</li>
+  </ul>
+  <div class="price-btn price-purple">$24.99</div>
+  <div class="desc-text">One-time purchase per season &bull; Not a subscription</div>
+  <div class="card-footer">Includes all Premium rewards + exclusive elite content</div>
+</div>
+
+</body>
+</html>

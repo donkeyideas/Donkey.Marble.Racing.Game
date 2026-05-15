@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
 import { useGameStore, SeasonStandingEntry } from '../state/gameStore';
+import { raceHaptics } from '../utils/haptics';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import { SEASON_POINTS } from '../data/seasonSchedule';
 import MarbleDot from '../components/MarbleDot';
@@ -280,6 +281,7 @@ export default function BettingScreen() {
     }
     const success = placeBet();
     if (success) {
+      raceHaptics.betPlaced();
       router.push('/race');
     }
   };

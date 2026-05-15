@@ -81,7 +81,23 @@ const CRADLE_FILTER   = { category: CAT_OBSTACLE, mask: CAT_WALL | CAT_MARBLE | 
 
 // === ENGINE ===
 
-export function createRaceEngine(config?: TrackConfig, raceMarbles?: MarbleData[]) {
+export interface RaceEngineOptions {
+  config?: TrackConfig;
+  raceMarbles?: MarbleData[];
+  onHaptic?: (type: 'bumper' | 'trampoline' | 'speedBurst' | 'pendulum' | 'cradle', marbleId: string) => void;
+}
+
+export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions, raceMarbles?: MarbleData[]) {
+  // Support both old signature (config, marbles) and new options object
+  let opts: RaceEngineOptions;
+  if (configOrOpts && 'onHaptic' in configOrOpts) {
+    opts = configOrOpts as RaceEngineOptions;
+  } else {
+    opts = { config: configOrOpts as TrackConfig | undefined, raceMarbles };
+  }
+  const onHaptic = opts.onHaptic;
+  const config = opts.config;
+  raceMarbles = opts.raceMarbles ?? raceMarbles;
   const track = config || DEFAULT_TRACK;
   const engine = Matter.Engine.create({
     gravity: track.gravity,
@@ -286,6 +302,10 @@ export function createRaceEngine(config?: TrackConfig, raceMarbles?: MarbleData[
           x: (Math.random() - 0.5) * 0.001 * tMarble.mass,
           y: -strength * 0.0008 * tMarble.mass,
         });
+        if (onHaptic) {
+          const mEntry = marbleBodies.find(m => m.body === tMarble);
+          if (mEntry) onHaptic('trampoline', mEntry.data.id);
+        }
       }
 
       // Speed burst — gentle directional push
@@ -309,6 +329,23 @@ export function createRaceEngine(config?: TrackConfig, raceMarbles?: MarbleData[
           }
           Matter.Body.applyForce(sbMarble, sbMarble.position, { x: fx, y: fy });
           sbEntry.activeUntil = elapsed + 300;
+          if (onHaptic) {
+            const mEntry = marbleBodies.find(m => m.body === sbMarble);
+            if (mEntry) onHaptic('speedBurst', mEntry.data.id);
+          }
+        }
+      }
+
+      // Haptic feedback for bumpers, pendulums, cradles
+      if (onHaptic) {
+        const mA = marbleBodies.find(m => m.body === bodyA);
+        const mB = marbleBodies.find(m => m.body === bodyB);
+        const mEntry = mA || mB;
+        const otherBody = mA ? bodyB : mB ? bodyA : null;
+        if (mEntry && otherBody) {
+          if (otherBody.label === 'bumper') onHaptic('bumper', mEntry.data.id);
+          else if (otherBody.label === 'pendulum-bob') onHaptic('pendulum', mEntry.data.id);
+          else if (otherBody.label === 'cradle-bob') onHaptic('cradle', mEntry.data.id);
         }
       }
     });

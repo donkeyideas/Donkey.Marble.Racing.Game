@@ -5,6 +5,7 @@ import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
 import { getSkinnedMarble } from '../data/skins';
 import { useGameStore } from '../state/gameStore';
 import { createRaceEngine, RaceState, PendulumState, BallPitBallState, TrampolineState, SpeedBurstState } from '../engine/race';
+import { triggerRaceHaptic, raceHaptics, HapticType } from '../utils/haptics';
 import { buildTrack, TrackConfig } from '../engine/tracks';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../assets/kenney/spriteMap';
@@ -527,6 +528,7 @@ export default function RaceScreen() {
     setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
+    if (selectedMarble) { won ? raceHaptics.playerWin() : raceHaptics.playerLose(); }
     setTimeout(() => router.replace('/results'), 800);
   }, [selectedMarble, betAmount, setLastResult, addCoins, getOdds, router, activeMode]);
 
@@ -591,7 +593,14 @@ export default function RaceScreen() {
       raceMarbles = raceMarbles.map(m => getSkinnedMarble(m, equippedSkins));
     }
 
-    const eng = createRaceEngine(trackConfig, raceMarbles ? raceMarbles : MARBLES.map(m => getSkinnedMarble(m, equippedSkins)));
+    const playerPickId = useGameStore.getState().selectedMarble?.id;
+    const eng = createRaceEngine({
+      config: trackConfig,
+      raceMarbles: raceMarbles ? raceMarbles : MARBLES.map(m => getSkinnedMarble(m, equippedSkins)),
+      onHaptic: playerPickId
+        ? (type: HapticType, marbleId: string) => { if (marbleId === playerPickId) triggerRaceHaptic(type); }
+        : undefined,
+    });
     engRef.current = eng;
     let last = performance.now();
     const totalH = trackConfig.totalHeight;
