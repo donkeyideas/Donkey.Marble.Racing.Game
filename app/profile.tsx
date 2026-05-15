@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -55,50 +54,6 @@ export default function ProfileScreen() {
   const passLevel = useGameStore((s) => s.passLevel);
   const passXp = useGameStore((s) => s.passXp);
   const marbleStats = useGameStore((s) => s.marbleStats);
-
-  const resetCoins = useGameStore((s) => s.resetCoins);
-  const [confirmReset, setConfirmReset] = useState(false);
-
-  const handleReset = () => {
-    if (!confirmReset) {
-      setConfirmReset(true);
-      setTimeout(() => setConfirmReset(false), 3000);
-      return;
-    }
-    // Nuclear reset: clear persisted storage then reset in-memory state
-    AsyncStorage.removeItem('dmr-game-state');
-    resetCoins();
-    useGameStore.setState({
-      playerName: '',
-      totalRaces: 0,
-      totalWins: 0,
-      passLevel: 1,
-      passXp: 0,
-      marbleStats: {},
-      coinHistory: [],
-      season: null,
-      nationalRaces: {},
-      tournaments: null,
-      currentStreak: 0,
-      bestStreak: 0,
-      raceHistory: [],
-      dailyStreak: 0,
-      lastPlayedDate: null,
-      seasonWeek: 0,
-      seasonStandings: {},
-      betsToday: 0,
-      lastBetDate: '',
-      storePurchasesToday: 0,
-      storeCoinsPurchasedToday: 0,
-      storeLastPurchaseDate: '',
-      achievements: {},
-      equippedSkins: {},
-      customTracks: [],
-      challenges: { daily: [], weekly: [], lastDailyReset: '', lastWeeklyReset: '' },
-    } as any);
-    setConfirmReset(false);
-    router.push('/lobby');
-  };
 
   const winRate = totalRaces > 0 ? Math.round((totalWins / totalRaces) * 100) : 0;
 
@@ -222,11 +177,6 @@ export default function ProfileScreen() {
               label="VIEW ROSTER"
               variant="ghost"
               onPress={() => router.push('/roster')}
-            />
-            <PrimaryButton
-              label={confirmReset ? 'TAP AGAIN TO CONFIRM' : 'RESET ACCOUNT (1000 COINS)'}
-              variant="ghost"
-              onPress={handleReset}
             />
           </View>
         </ScrollView>

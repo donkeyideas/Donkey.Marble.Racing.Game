@@ -145,6 +145,13 @@ export default function LobbyScreen() {
             onPress={() => router.push('/custom-track')}
           />
 
+          <ModeCard
+            title="PROFILE"
+            subtitle="Your stats, league progress & favorite marble"
+            colors={['#34495e', '#2c3e50']}
+            onPress={() => router.push('/profile')}
+          />
+
           {/* ===== EXPLORE ===== */}
           <Text style={styles.sectionTitle}>EXPLORE</Text>
 
@@ -193,10 +200,10 @@ export default function LobbyScreen() {
 
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/profile')}
+              onPress={() => router.push('/settings')}
             >
-              <Text style={styles.navLabel}>PROFILE</Text>
-              <Text style={styles.navSub}>Stats</Text>
+              <Text style={styles.navLabel}>SETTINGS</Text>
+              <Text style={styles.navSub}>Legal</Text>
             </Pressable>
           </View>
 
@@ -226,15 +233,6 @@ export default function LobbyScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.navRow}>
-            <Pressable
-              style={({ pressed }) => [styles.navCard, { flex: 1 }, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/settings')}
-            >
-              <Text style={styles.navLabel}>SETTINGS</Text>
-              <Text style={styles.navSub}>Legal & account</Text>
-            </Pressable>
-          </View>
 
           {/* ===== FOOTER ===== */}
           <Text style={styles.disclaimer}>

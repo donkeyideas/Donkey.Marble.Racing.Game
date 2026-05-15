@@ -130,13 +130,14 @@ export function createRaceEngine(config?: TrackConfig, raceMarbles?: MarbleData[
     }
   });
 
-  // === BUMPERS & PEGS — natural energy loss on contact ===
+  // === BUMPERS & PEGS — bumpers deflect marbles with satisfying kick ===
   track.obstacles.forEach(obs => {
     Matter.Composite.add(world,
       Matter.Bodies.circle(obs.x, obs.y, obs.r, {
         isStatic: true,
-        restitution: obs.type === 'bumper' ? 0.6 : 0.3, // bumpers: satisfying bounce, pegs: absorb energy
-        friction: 0.005,
+        restitution: obs.type === 'bumper' ? 1.2 : 0.3, // bumpers: strong bounce, pegs: absorb energy
+        friction: 0.001,
+        collisionFilter: { category: CAT_WALL, mask: CAT_MARBLE | CAT_OBSTACLE },
         label: obs.type,
       }),
     );

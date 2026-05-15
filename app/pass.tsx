@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,17 +9,28 @@ import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
 import { PASS_REWARDS, PassTrack, XP_PER_LEVEL } from '../data/seasonPass';
 
-const TRACK_TABS: { label: string; sublabel?: string; value: PassTrack }[] = [
-  { label: 'FREE', value: 'free' },
-  { label: 'PREMIUM', sublabel: '$9.99', value: 'premium' },
-  { label: 'PLUS', sublabel: '$24.99', value: 'plus' },
-];
+function getTrackTabs(passTrack: PassTrack): { label: string; sublabel?: string; value: PassTrack }[] {
+  return [
+    { label: 'FREE', value: 'free' },
+    {
+      label: 'PREMIUM',
+      sublabel: passTrack === 'premium' || passTrack === 'plus' ? 'OWNED' : '$9.99',
+      value: 'premium',
+    },
+    {
+      label: 'PLUS',
+      sublabel: passTrack === 'plus' ? 'OWNED' : '$24.99',
+      value: 'plus',
+    },
+  ];
+}
 
 export default function PassScreen() {
   const router = useRouter();
   const coins = useGameStore((s) => s.coins);
   const passLevel = useGameStore((s) => s.passLevel);
   const passXp = useGameStore((s) => s.passXp);
+  const passTrack = useGameStore((s) => s.passTrack);
   const season = useGameStore((s) => s.season);
   const [activeTrack, setActiveTrack] = useState<PassTrack>('free');
 
@@ -70,7 +81,7 @@ export default function PassScreen() {
 
           {/* Track tabs */}
           <View style={styles.trackTabs}>
-            {TRACK_TABS.map((tab) => {
+            {getTrackTabs(passTrack).map((tab) => {
               const isActive = activeTrack === tab.value;
               const tabStyle =
                 tab.value === 'free'
@@ -113,9 +124,15 @@ export default function PassScreen() {
 
           {/* Reward rows */}
           {filteredRewards.map((reward) => {
-            const isEarned = passLevel > reward.level;
+            const levelReached = passLevel > reward.level;
             const isCurrent = passLevel === reward.level;
-            const isLocked = passLevel < reward.level;
+            const levelLocked = passLevel < reward.level;
+            // Check if user has access to this reward's track
+            const hasTrackAccess = reward.track === 'free'
+              || (reward.track === 'premium' && (passTrack === 'premium' || passTrack === 'plus'))
+              || (reward.track === 'plus' && passTrack === 'plus');
+            const isEarned = levelReached && hasTrackAccess;
+            const isLocked = levelLocked || !hasTrackAccess;
 
             return (
               <View
@@ -170,26 +187,47 @@ export default function PassScreen() {
           })}
 
           {/* Upgrade banner */}
-          <View style={styles.upgradeBox}>
-            <Text style={styles.upgradeTitle}>Unlock Premium</Text>
-            <Text style={styles.upgradeDesc}>
-              You've earned {earnedFreeCount} free rewards. See what you're missing!
-            </Text>
-            <View style={styles.upgradeBtns}>
-              <Pressable style={styles.upgradeBtnPrem} onPress={() => router.push('/store')}>
-                <LinearGradient
-                  colors={['#ffd84d', '#ffc220']}
-                  style={styles.upgradeBtnPremGrad}
-                >
-                  <Text style={styles.upgradeBtnPremText}>Premium $9.99</Text>
-                </LinearGradient>
-              </Pressable>
-              <Pressable style={styles.upgradeBtnPlus} onPress={() => router.push('/store')}>
-                <Text style={styles.upgradeBtnPlusText}>Plus $24.99</Text>
-              </Pressable>
+          {passTrack === 'plus' ? (
+            <View style={[styles.upgradeBox, { borderColor: 'rgba(155,89,182,0.3)' }]}>
+              <Text style={[styles.upgradeTitle, { color: '#c084fc' }]}>PLUS PASS ACTIVE</Text>
+              <Text style={styles.upgradeDesc}>
+                You have full access to all reward tracks including exclusive Plus rewards.
+              </Text>
             </View>
-            <Text style={styles.upgradeNote}>One-time per season — Not a subscription</Text>
-          </View>
+          ) : passTrack === 'premium' ? (
+            <View style={styles.upgradeBox}>
+              <Text style={styles.upgradeTitle}>PREMIUM PASS ACTIVE</Text>
+              <Text style={styles.upgradeDesc}>
+                You have access to Free + Premium rewards. Upgrade to Plus for exclusive content!
+              </Text>
+              <View style={styles.upgradeBtns}>
+                <Pressable style={styles.upgradeBtnPlus} onPress={() => router.push('/store')}>
+                  <Text style={styles.upgradeBtnPlusText}>Upgrade to Plus $24.99</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.upgradeBox}>
+              <Text style={styles.upgradeTitle}>Unlock Premium</Text>
+              <Text style={styles.upgradeDesc}>
+                You've earned {earnedFreeCount} free rewards. See what you're missing!
+              </Text>
+              <View style={styles.upgradeBtns}>
+                <Pressable style={styles.upgradeBtnPrem} onPress={() => router.push('/store')}>
+                  <LinearGradient
+                    colors={['#ffd84d', '#ffc220']}
+                    style={styles.upgradeBtnPremGrad}
+                  >
+                    <Text style={styles.upgradeBtnPremText}>Premium $9.99</Text>
+                  </LinearGradient>
+                </Pressable>
+                <Pressable style={styles.upgradeBtnPlus} onPress={() => router.push('/store')}>
+                  <Text style={styles.upgradeBtnPlusText}>Plus $24.99</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.upgradeNote}>One-time per season — Not a subscription</Text>
+            </View>
+          )}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>

@@ -16,28 +16,26 @@ import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
 
-const BASE_URL = 'https://www.donkeyideas.com/games/marble-racing';
-
-const LEGAL_LINKS = [
+const LEGAL_PAGES = [
   {
     label: 'Privacy Policy',
     sub: 'How we collect, use, and protect your data',
-    url: `${BASE_URL}/privacy`,
+    page: 'privacy',
   },
   {
     label: 'Terms of Service',
     sub: 'Rules governing use of the app',
-    url: `${BASE_URL}/terms`,
+    page: 'terms',
   },
   {
     label: 'Responsible Gaming',
     sub: 'Our commitment to safe gameplay',
-    url: `${BASE_URL}/responsible-gaming`,
+    page: 'responsible-gaming',
   },
   {
     label: 'Support & FAQ',
     sub: 'Get help, report bugs, contact us',
-    url: `${BASE_URL}/support`,
+    page: 'support',
   },
 ];
 
@@ -46,12 +44,6 @@ export default function SettingsScreen() {
   const playerName = useGameStore((s) => s.playerName);
   const resetCoins = useGameStore((s) => s.resetCoins);
   const [deleting, setDeleting] = useState(false);
-
-  const openLink = (url: string) => {
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Could not open link. Please visit:\n' + url);
-    });
-  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -118,23 +110,23 @@ export default function SettingsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.accountName}>{playerName || 'Player'}</Text>
-                <Text style={styles.accountSub}>v1.0.0</Text>
+                <Text style={styles.accountSub}>v1.0.1</Text>
               </View>
             </View>
           </View>
 
-          {/* Legal & Compliance */}
+          {/* Legal & Compliance — in-app pages */}
           <Text style={styles.sectionTitle}>LEGAL</Text>
 
-          {LEGAL_LINKS.map((link) => (
+          {LEGAL_PAGES.map((item) => (
             <Pressable
-              key={link.label}
-              onPress={() => openLink(link.url)}
+              key={item.page}
+              onPress={() => router.push({ pathname: '/legal', params: { page: item.page } })}
               style={({ pressed }) => [styles.linkCard, pressed && { opacity: 0.7 }]}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.linkLabel}>{link.label}</Text>
-                <Text style={styles.linkSub}>{link.sub}</Text>
+                <Text style={styles.linkLabel}>{item.label}</Text>
+                <Text style={styles.linkSub}>{item.sub}</Text>
               </View>
               <Text style={styles.linkArrow}>{'\u203A'}</Text>
             </Pressable>
@@ -142,17 +134,6 @@ export default function SettingsScreen() {
 
           {/* Danger Zone */}
           <Text style={styles.sectionTitle}>ACCOUNT ACTIONS</Text>
-
-          <Pressable
-            onPress={() => openLink(`${BASE_URL}/delete-account`)}
-            style={({ pressed }) => [styles.linkCard, pressed && { opacity: 0.7 }]}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.linkLabel}>Request Account Deletion</Text>
-              <Text style={styles.linkSub}>Submit a deletion request online (30-day process)</Text>
-            </View>
-            <Text style={styles.linkArrow}>{'\u203A'}</Text>
-          </Pressable>
 
           <Pressable
             onPress={handleDeleteAccount}
@@ -175,19 +156,19 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>CONTACT</Text>
 
           <Pressable
-            onPress={() => Linking.openURL('mailto:support@donkeyideas.com')}
+            onPress={() => Linking.openURL('mailto:info@donkeyideas.com')}
             style={({ pressed }) => [styles.linkCard, pressed && { opacity: 0.7 }]}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.linkLabel}>Email Support</Text>
-              <Text style={styles.linkSub}>support@donkeyideas.com</Text>
+              <Text style={styles.linkSub}>info@donkeyideas.com</Text>
             </View>
             <Text style={styles.linkArrow}>{'\u203A'}</Text>
           </Pressable>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Donkey Marble Racing v1.0.0</Text>
+            <Text style={styles.footerText}>Donkey Marble Racing v1.0.1</Text>
             <Text style={styles.footerText}>{'\u00A9'} {new Date().getFullYear()} Donkey Ideas LLC</Text>
             <Text style={styles.footerDisclaimer}>
               Virtual coins only {'\u2014'} No real money gambling {'\u2014'} Ages 17+

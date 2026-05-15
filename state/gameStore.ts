@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MARBLES, MarbleData } from '../theme';
-import { XP_PER_LEVEL } from '../data/seasonPass';
+import { XP_PER_LEVEL, PassTrack } from '../data/seasonPass';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import {
   SeasonSchedule, SeasonWeek, SeasonRace,
@@ -221,6 +221,8 @@ interface GameState {
   // Pass
   passLevel: number;
   passXp: number;
+  passTrack: PassTrack;
+  purchaseSeasonPass: (track: 'premium' | 'plus') => void;
 
   // Structured Season
   season: SeasonState | null;
@@ -501,6 +503,37 @@ export const useGameStore = create<GameState>()(
 
   passLevel: 1,
   passXp: 0,
+  passTrack: 'free' as PassTrack,
+
+  purchaseSeasonPass: (track: 'premium' | 'plus') => {
+    const { passTrack, coinHistory } = get();
+    // Plus is the highest tier — don't downgrade
+    if (passTrack === 'plus') return;
+    // Don't re-purchase same tier
+    if (passTrack === track) return;
+
+    const label = track === 'premium' ? 'Premium Pass' : 'Plus Pass';
+    const price = track === 'premium' ? 9.99 : 24.99;
+
+    const newCoinHistory = [...coinHistory, {
+      type: 'purchase' as const,
+      amount: 0,
+      description: `Purchased ${label} ($${price})`,
+      timestamp: Date.now(),
+    }];
+    while (newCoinHistory.length > 50) newCoinHistory.shift();
+
+    set({ passTrack: track, coinHistory: newCoinHistory });
+
+    // Sync to server
+    syncPurchase({
+      productId: track === 'premium' ? 'season_pass' : 'season_pass_premium',
+      productName: label,
+      priceUsd: price,
+      coinsGranted: 0,
+      currentCoins: get().coins,
+    });
+  },
 
   // ── Structured Season ──
   season: null,
@@ -1282,6 +1315,7 @@ export const useGameStore = create<GameState>()(
         raceHistory: state.raceHistory,
         passLevel: state.passLevel,
         passXp: state.passXp,
+        passTrack: state.passTrack,
         coinHistory: state.coinHistory,
         season: state.season,
         nationalRaces: state.nationalRaces,
@@ -1294,7 +1328,7 @@ export const useGameStore = create<GameState>()(
         customTracks: state.customTracks,
         challenges: state.challenges,
       }),
-      version: 4,
+      version: 5,
       migrate: (persisted: any, version: number) => {
         if (version < 3 && persisted?.season) {
           persisted.season = null;
@@ -1306,6 +1340,9 @@ export const useGameStore = create<GameState>()(
           persisted.challenges = persisted.challenges ?? {
             daily: [], weekly: [], lastDailyReset: '', lastWeeklyReset: '',
           };
+        }
+        if (version < 5) {
+          persisted.passTrack = persisted.passTrack ?? 'free';
         }
         return persisted;
       },

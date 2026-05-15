@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Animated } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,15 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
 import { COIN_PACKS, CoinPack } from '../state/gameStore';
+import {
+  initConnection,
+  fetchProducts,
+  requestPurchase,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  finishTransaction,
+} from 'react-native-iap';
+import type { Purchase, PurchaseError } from 'react-native-iap';
 
 const PACK_STYLES: Record<string, { iconBg: string; iconColor: string; iconText: string; borderColor?: string }> = {
   starter:  { iconBg: 'rgba(255,194,32,0.1)',  iconColor: Colors.yellow, iconText: '$' },
@@ -23,16 +32,48 @@ const PACK_NAMES: Record<string, string> = {
   whale: 'Whale Pack',
 };
 
+// Platform-specific product ID maps (must match App Store Connect / Google Play Console)
+const APPLE_IDS: Record<string, string> = {
+  starter: 'com.donkeymarble.racing.coins.starter',
+  popular: 'com.donkeymarble.racing.coins.popular',
+  big: 'com.donkeymarble.racing.coins.big',
+  whale: 'com.donkeymarble.racing.coins.whale',
+  season_pass: 'com.donkeymarble.racing.pass.premium.v1',
+  season_pass_premium: 'com.donkeymarble.racing.pass.plus.v1',
+};
+
+const GOOGLE_IDS: Record<string, string> = {
+  starter: 'starter',
+  popular: 'popular',
+  big: 'big',
+  whale: 'whale',
+  season_pass: 'season_pass1',
+  season_pass_premium: 'season_pass_premium1',
+};
+
+const STORE_IDS = Platform.OS === 'ios' ? APPLE_IDS : GOOGLE_IDS;
+const STORE_PRODUCT_IDS = Object.values(STORE_IDS);
+
+// Reverse lookup: store product ID → internal pack ID
+const STORE_ID_TO_PACK: Record<string, string> = {};
+for (const [packId, storeId] of Object.entries(STORE_IDS)) {
+  STORE_ID_TO_PACK[storeId] = packId;
+}
+
 export default function StoreScreen() {
   const router = useRouter();
   const coins = useGameStore((s) => s.coins);
   const purchaseCoinPack = useGameStore((s) => s.purchaseCoinPack);
+  const purchaseSeasonPass = useGameStore((s) => s.purchaseSeasonPass);
+  const passTrack = useGameStore((s) => s.passTrack);
   const storePurchasesToday = useGameStore((s) => s.storePurchasesToday);
   const storeCoinsPurchasedToday = useGameStore((s) => s.storeCoinsPurchasedToday);
   const storeLastPurchaseDate = useGameStore((s) => s.storeLastPurchaseDate);
 
   const [successPack, setSuccessPack] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [iapReady, setIapReady] = useState(false);
 
   // Reset daily counters display if new day
   const today = new Date().toISOString().slice(0, 10);
@@ -41,15 +82,90 @@ export default function StoreScreen() {
   const coinsUsed = isNewDay ? 0 : storeCoinsPurchasedToday;
   const capPercent = Math.round((purchasesUsed / 3) * 100);
 
-  const handlePurchase = (packId: string) => {
-    const result = purchaseCoinPack(packId);
-    if (result.success) {
-      setSuccessPack(packId);
-      setErrorMsg(null);
-      setTimeout(() => setSuccessPack(null), 2000);
-    } else {
-      setErrorMsg(result.error || 'Purchase failed');
-      setTimeout(() => setErrorMsg(null), 3000);
+  // Initialize IAP connection
+  useEffect(() => {
+    let purchaseUpdateSub: ReturnType<typeof purchaseUpdatedListener> | null = null;
+    let purchaseErrorSub: ReturnType<typeof purchaseErrorListener> | null = null;
+
+    const init = async () => {
+      try {
+        await initConnection();
+        await fetchProducts({ skus: STORE_PRODUCT_IDS });
+        setIapReady(true);
+      } catch (err) {
+        console.warn('IAP init failed:', err);
+      }
+    };
+
+    // Listen for successful purchases — granted ONLY after payment confirmed
+    purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
+      const packId = STORE_ID_TO_PACK[purchase.productId] || purchase.productId;
+      const isPass = packId === 'season_pass' || packId === 'season_pass_premium';
+      try {
+        await finishTransaction({ purchase, isConsumable: !isPass });
+        if (isPass) {
+          const track = packId === 'season_pass' ? 'premium' : 'plus';
+          purchaseSeasonPass(track);
+          setSuccessPack(packId);
+          setTimeout(() => setSuccessPack(null), 2000);
+        } else {
+          const result = purchaseCoinPack(packId);
+          if (result.success) {
+            setSuccessPack(packId);
+            setTimeout(() => setSuccessPack(null), 2000);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to finish transaction:', err);
+      }
+      setPurchasing(null);
+    });
+
+    purchaseErrorSub = purchaseErrorListener((error: PurchaseError) => {
+      if (error.code !== 'user-cancelled') {
+        setErrorMsg('Purchase failed. Please try again.');
+        setTimeout(() => setErrorMsg(null), 3000);
+      }
+      setPurchasing(null);
+    });
+
+    init();
+
+    return () => {
+      purchaseUpdateSub?.remove();
+      purchaseErrorSub?.remove();
+    };
+  }, []);
+
+  const handlePurchase = async (packId: string) => {
+    if (!iapReady) {
+      Alert.alert(
+        'Store Not Available',
+        'In-app purchases are not available right now. Please make sure you are signed into your app store account and try again.'
+      );
+      return;
+    }
+
+    setPurchasing(packId);
+    setErrorMsg(null);
+
+    const appleId = APPLE_IDS[packId] || packId;
+    const googleId = GOOGLE_IDS[packId] || packId;
+
+    try {
+      await requestPurchase({
+        request: {
+          apple: { sku: appleId },
+          google: { skus: [googleId] },
+        },
+        type: 'in-app',
+      });
+    } catch (err: any) {
+      if (err?.code !== 'user-cancelled') {
+        setErrorMsg('Purchase failed. Please try again.');
+        setTimeout(() => setErrorMsg(null), 3000);
+      }
+      setPurchasing(null);
     }
   };
 
@@ -91,7 +207,8 @@ export default function StoreScreen() {
           {COIN_PACKS.map((pack) => {
             const style = PACK_STYLES[pack.id];
             const isSuccess = successPack === pack.id;
-            const isDisabled = purchasesUsed >= 3 || coinsUsed + pack.coins > 25000;
+            const isPurchasing = purchasing === pack.id;
+            const isDisabled = isPurchasing || purchasesUsed >= 3 || coinsUsed + pack.coins > 25000;
 
             return (
               <Pressable
@@ -139,10 +256,14 @@ export default function StoreScreen() {
                   )}
                 </View>
 
-                {/* Price / Success */}
+                {/* Price / Success / Purchasing */}
                 {isSuccess ? (
                   <View style={styles.successPill}>
                     <Text style={styles.successText}>ADDED!</Text>
+                  </View>
+                ) : isPurchasing ? (
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>...</Text>
                   </View>
                 ) : (
                   <View style={[styles.pricePill, isDisabled && { opacity: 0.4 }]}>
@@ -167,45 +288,93 @@ export default function StoreScreen() {
           {/* Season Pass upsell */}
           <Text style={styles.sectionTitle}>SEASON PASS</Text>
 
-          <Pressable
-            onPress={() => router.push('/pass')}
-            style={({ pressed }) => [
-              styles.packCard,
-              { borderColor: 'rgba(255,194,32,0.25)' },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <View style={[styles.packIcon, { backgroundColor: 'rgba(255,194,32,0.15)' }]}>
-              <Text style={[styles.packIconText, { color: Colors.yellow }]}>*</Text>
-            </View>
-            <View style={styles.packInfo}>
-              <Text style={[styles.packName, { color: Colors.yellow }]}>Premium Pass</Text>
-              <Text style={styles.packSubDesc}>Unlock premium rewards track</Text>
-            </View>
-            <View style={styles.pricePill}>
-              <Text style={styles.priceText}>$9.99</Text>
-            </View>
-          </Pressable>
+          {/* Premium Pass */}
+          {(() => {
+            const premOwned = passTrack === 'premium' || passTrack === 'plus';
+            const premPurchasing = purchasing === 'season_pass';
+            const premSuccess = successPack === 'season_pass';
+            return (
+              <Pressable
+                onPress={() => premOwned ? router.push('/pass') : handlePurchase('season_pass')}
+                disabled={premPurchasing}
+                style={({ pressed }) => [
+                  styles.packCard,
+                  { borderColor: 'rgba(255,194,32,0.25)' },
+                  premSuccess && styles.packCardSuccess,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <View style={[styles.packIcon, { backgroundColor: 'rgba(255,194,32,0.15)' }]}>
+                  <Text style={[styles.packIconText, { color: Colors.yellow }]}>*</Text>
+                </View>
+                <View style={styles.packInfo}>
+                  <Text style={[styles.packName, { color: Colors.yellow }]}>Premium Pass</Text>
+                  <Text style={styles.packSubDesc}>Unlock premium rewards track</Text>
+                </View>
+                {premOwned ? (
+                  <View style={styles.successPill}>
+                    <Text style={styles.successText}>OWNED</Text>
+                  </View>
+                ) : premSuccess ? (
+                  <View style={styles.successPill}>
+                    <Text style={styles.successText}>UNLOCKED!</Text>
+                  </View>
+                ) : premPurchasing ? (
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>$9.99</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })()}
 
-          <Pressable
-            onPress={() => router.push('/pass')}
-            style={({ pressed }) => [
-              styles.packCard,
-              { borderColor: 'rgba(155,89,182,0.25)' },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <View style={[styles.packIcon, { backgroundColor: 'rgba(155,89,182,0.15)' }]}>
-              <Text style={[styles.packIconText, { color: '#c084fc' }]}>*</Text>
-            </View>
-            <View style={styles.packInfo}>
-              <Text style={[styles.packName, { color: '#c084fc' }]}>Plus Pass</Text>
-              <Text style={styles.packSubDesc}>Premium + exclusive skins + bonus XP</Text>
-            </View>
-            <View style={styles.pricePill}>
-              <Text style={styles.priceText}>$24.99</Text>
-            </View>
-          </Pressable>
+          {/* Plus Pass */}
+          {(() => {
+            const plusOwned = passTrack === 'plus';
+            const plusPurchasing = purchasing === 'season_pass_premium';
+            const plusSuccess = successPack === 'season_pass_premium';
+            return (
+              <Pressable
+                onPress={() => plusOwned ? router.push('/pass') : handlePurchase('season_pass_premium')}
+                disabled={plusPurchasing}
+                style={({ pressed }) => [
+                  styles.packCard,
+                  { borderColor: 'rgba(155,89,182,0.25)' },
+                  plusSuccess && styles.packCardSuccess,
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <View style={[styles.packIcon, { backgroundColor: 'rgba(155,89,182,0.15)' }]}>
+                  <Text style={[styles.packIconText, { color: '#c084fc' }]}>*</Text>
+                </View>
+                <View style={styles.packInfo}>
+                  <Text style={[styles.packName, { color: '#c084fc' }]}>Plus Pass</Text>
+                  <Text style={styles.packSubDesc}>Premium + exclusive skins + bonus XP</Text>
+                </View>
+                {plusOwned ? (
+                  <View style={styles.successPill}>
+                    <Text style={styles.successText}>OWNED</Text>
+                  </View>
+                ) : plusSuccess ? (
+                  <View style={styles.successPill}>
+                    <Text style={styles.successText}>UNLOCKED!</Text>
+                  </View>
+                ) : plusPurchasing ? (
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>$24.99</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })()}
 
           {/* Footer disclaimer */}
           <Text style={styles.disclaimer}>
