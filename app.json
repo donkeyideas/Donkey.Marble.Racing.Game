@@ -28,8 +28,10 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.donkeymarble.racing",
-      "versionCode": 4,
-      "permissions": ["com.android.vending.BILLING"]
+      "versionCode": 5,
+      "permissions": [
+        "com.android.vending.BILLING"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -37,7 +39,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      "react-native-iap"
     ],
     "extra": {
       "router": {},
