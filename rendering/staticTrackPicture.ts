@@ -4,6 +4,7 @@
  */
 import { Skia, SkPicture, SkImage, SkPaint } from '@shopify/react-native-skia';
 import { SkiaThemeSprites } from './skiaSprites';
+import { drawThemeBackground } from './themeBackgrounds';
 
 /** Matches computeTrackVisuals() output from race.tsx */
 export interface TrackVisuals {
@@ -83,12 +84,19 @@ export function createStaticTrackPicture(
   totalScreenH: number,
   ENGINE_W: number,
   themeColors?: ThemeElementColors,
+  themeId?: string,
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(
     Skia.XYWHRect(0, 0, totalScreenW, totalScreenH)
   );
   const defaultPaint = Skia.Paint();
+
+  // Theme background scenery — drawn first so track elements overlay it.
+  // All shapes baked into this picture, so the cost is paid once at race start.
+  if (themeId) {
+    drawThemeBackground(canvas, themeId, totalScreenW, totalScreenH);
+  }
 
   // Theme-aware element colors (fall back to defaults if not provided)
   const tc = themeColors || { ramp: '#8B5E3C', bumper: '#e74c3c', peg: '#7f8c8d', spring: '#2ecc71', funnel: '#5a3a1a' };

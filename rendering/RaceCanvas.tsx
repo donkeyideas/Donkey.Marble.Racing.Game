@@ -121,9 +121,9 @@ function RaceCanvasInner(props: RaceCanvasProps) {
     if (useSprites && !areSpritesReady(sprites)) return null;
     return createStaticTrackPicture(
       tv, sprites, useSprites, RAMP_H, ex,
-      SW, totalScreenH, engineW, themeElementColors,
+      SW, totalScreenH, engineW, themeElementColors, bgImage,
     );
-  }, [tv, sprites, useSprites, totalScreenH, engineW, themeElementColors]);
+  }, [tv, sprites, useSprites, totalScreenH, engineW, themeElementColors, bgImage]);
 
   // Viewport culling (uses prop cameraY for culling decisions)
   const vBuf = SH / SCALE * 0.7;
