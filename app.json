@@ -52,9 +52,6 @@
           "sounds": []
         }
       ],
-      "@react-native-firebase/app",
-      "./plugins/withModularHeaders",
-      "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
       "expo-apple-authentication"
     ],

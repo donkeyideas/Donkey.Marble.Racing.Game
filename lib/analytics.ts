@@ -1,28 +1,18 @@
 /**
- * Firebase Analytics — auto-tracks screen views, sessions, retention.
- * Custom events below give extra insight in the GA4 dashboard.
- * Guarded by isExpoGo check to avoid crash in Expo Go.
+ * Firebase Analytics — Web SDK.
+ *
+ * All functions are async + guarded — Analytics may be null in environments
+ * where the Web SDK's isSupported() returns false. Logged events flow into the
+ * same GA4 project as the native SDK did; no dashboard changes needed.
  */
+import { logEvent as fbLogEvent, setUserProperties as fbSetUserProperties } from 'firebase/analytics';
+import { getFbAnalytics } from './firebase';
 
-import Constants from 'expo-constants';
-
-const isExpoGo = Constants.appOwnership === 'expo';
-
-let _analytics: any = null;
-function getAnalytics() {
-  if (isExpoGo) return null;
-  if (_analytics) return _analytics;
-  try {
-    _analytics = require('@react-native-firebase/analytics').default;
-    return _analytics;
-  } catch {
-    return null;
-  }
-}
-function analytics() {
-  const mod = getAnalytics();
-  return mod ? mod() : null;
-}
+// firebase/analytics's logEvent has overloads with reserved event-name unions
+// that don't typecheck well with dynamic strings. Cast once and reuse.
+const logEvent = fbLogEvent as unknown as (
+  analytics: any, eventName: string, params?: Record<string, any>,
+) => void;
 
 export async function logRaceComplete(data: {
   courseId: string;
@@ -33,7 +23,9 @@ export async function logRaceComplete(data: {
   placement: number;
 }) {
   try {
-    await analytics()?.logEvent('race_complete', {
+    const a = await getFbAnalytics();
+    if (!a) return;
+    logEvent(a, 'race_complete', {
       course_id: data.courseId,
       game_mode: data.gameMode,
       won: data.won,
@@ -50,7 +42,9 @@ export async function logPurchase(data: {
   coinsGranted: number;
 }) {
   try {
-    await analytics()?.logPurchase({
+    const a = await getFbAnalytics();
+    if (!a) return;
+    logEvent(a, 'purchase', {
       currency: 'USD',
       value: data.priceUsd,
       items: [{ item_id: data.productId, quantity: 1 }],
@@ -60,7 +54,9 @@ export async function logPurchase(data: {
 
 export async function logScreenView(screenName: string) {
   try {
-    await analytics()?.logScreenView({
+    const a = await getFbAnalytics();
+    if (!a) return;
+    logEvent(a, 'screen_view', {
       screen_name: screenName,
       screen_class: screenName,
     });
@@ -73,7 +69,9 @@ export async function logBetPlaced(data: {
   courseId: string;
 }) {
   try {
-    await analytics()?.logEvent('bet_placed', {
+    const a = await getFbAnalytics();
+    if (!a) return;
+    logEvent(a, 'bet_placed', {
       amount: data.amount,
       marble_id: data.marbleId,
       course_id: data.courseId,
@@ -83,7 +81,9 @@ export async function logBetPlaced(data: {
 
 export async function logSeasonStart(seasonNumber: number, mode: string) {
   try {
-    await analytics()?.logEvent('season_start', {
+    const a = await getFbAnalytics();
+    if (!a) return;
+    logEvent(a, 'season_start', {
       season_number: seasonNumber,
       mode,
     });
@@ -96,14 +96,12 @@ export async function setUserProperties(data: {
   totalSpent?: number;
 }) {
   try {
-    if (data.passLevel != null) {
-      await analytics()?.setUserProperty('pass_level', String(data.passLevel));
-    }
-    if (data.totalRaces != null) {
-      await analytics()?.setUserProperty('total_races', String(data.totalRaces));
-    }
-    if (data.totalSpent != null) {
-      await analytics()?.setUserProperty('total_spent', String(data.totalSpent));
-    }
+    const a = await getFbAnalytics();
+    if (!a) return;
+    const props: Record<string, string> = {};
+    if (data.passLevel != null) props.pass_level = String(data.passLevel);
+    if (data.totalRaces != null) props.total_races = String(data.totalRaces);
+    if (data.totalSpent != null) props.total_spent = String(data.totalSpent);
+    if (Object.keys(props).length > 0) fbSetUserProperties(a, props);
   } catch {}
 }
