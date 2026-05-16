@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CLIENT_ID</key>
+	<string>791385622060-i2hc8dntmhvfm91gkr0g131ha0abk3j8.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.791385622060-i2hc8dntmhvfm91gkr0g131ha0abk3j8</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>791385622060-tutdr5lldpl3rme6bo1cgqnn70ogdi4j.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyCRJLTl5c9SK20ctIeviJywSMqePjcToOU</string>
 	<key>GCM_SENDER_ID</key>
@@ -17,7 +23,7 @@
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
-	<true></true>
+	<false></false>
 	<key>IS_APPINVITE_ENABLED</key>
 	<true></true>
 	<key>IS_GCM_ENABLED</key>
@@ -26,5 +32,7 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:791385622060:ios:7312407145171009377389</string>
+	<key>DATABASE_URL</key>
+	<string>https://donkey-marble-racing-default-rtdb.firebaseio.com</string>
 </dict>
 </plist>

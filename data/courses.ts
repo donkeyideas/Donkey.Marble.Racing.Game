@@ -1,4 +1,7 @@
-export type CourseTheme = 'meadow' | 'volcano' | 'frozen' | 'cyber';
+export type CourseTheme =
+  | 'meadow' | 'volcano' | 'frozen' | 'cyber'
+  | 'beach' | 'forest' | 'desert' | 'sunset' | 'night'
+  | 'candy' | 'ocean' | 'volcanic' | 'neon' | 'snow';
 
 export interface CourseData {
   id: string;
@@ -59,6 +62,16 @@ export const THEME_COLORS: Record<CourseTheme, string> = {
   volcano: '#e74c3c',
   frozen: '#3498db',
   cyber: '#9b59b6',
+  beach: '#f0c040',
+  forest: '#1a8a1a',
+  desert: '#d4a840',
+  sunset: '#ff6b35',
+  night: '#4a4a8a',
+  candy: '#ff69b4',
+  ocean: '#0077b6',
+  volcanic: '#cc0000',
+  neon: '#00ff87',
+  snow: '#b0d0f0',
 };
 
 // ── Generated tracks ──
@@ -133,13 +146,27 @@ const DESCRIPTIONS = [
   'Balance of speed and obstacle control',
 ];
 
-const THEMES: CourseTheme[] = ['meadow', 'volcano', 'frozen', 'cyber'];
+const THEMES: CourseTheme[] = [
+  'meadow', 'volcano', 'frozen', 'cyber',
+  'beach', 'forest', 'desert', 'sunset', 'night',
+  'candy', 'ocean', 'volcanic', 'neon', 'snow',
+];
 
 const THEME_GRADIENTS: Record<CourseTheme, [string, string][]> = {
   meadow: [['#1a4a1a', '#3a8a3a'], ['#2d6b2d', '#4a9a4a'], ['#3a7a3a', '#5aaa5a']],
   volcano: [['#5a1a0a', '#c44000'], ['#6a1a00', '#e74c3c'], ['#3a0a0a', '#aa2020']],
   frozen: [['#0a2a4a', '#4a9aca'], ['#0a3a6a', '#3498db'], ['#1a3a5a', '#5a8aba']],
   cyber: [['#2a0a4a', '#9b59b6'], ['#1a0a3a', '#8a2aca'], ['#0a0a2a', '#5a2a8a']],
+  beach: [['#4a90d9', '#c2b280'], ['#5aa0e0', '#d0c090'], ['#3a80c0', '#b0a070']],
+  forest: [['#0a3a0a', '#2d5a2d'], ['#0a4a0a', '#3a6a3a'], ['#0a2a0a', '#1a4a1a']],
+  desert: [['#a08030', '#d4a840'], ['#b09040', '#e0b850'], ['#907020', '#c09030']],
+  sunset: [['#cc4420', '#8a2060'], ['#dd5530', '#9a3070'], ['#bb3310', '#7a1050']],
+  night: [['#0a0a2a', '#1a1a4a'], ['#0a0a3a', '#2a2a5a'], ['#050520', '#101040']],
+  candy: [['#cc1080', '#ff69b4'], ['#dd2090', '#ff79c4'], ['#bb0070', '#ff59a4']],
+  ocean: [['#001a4a', '#0077b6'], ['#002a5a', '#0087c6'], ['#000a3a', '#0067a6']],
+  volcanic: [['#3a0000', '#8b0000'], ['#4a0000', '#9b1010'], ['#2a0000', '#7b0000']],
+  neon: [['#0a2a1a', '#00cc66'], ['#0a3a2a', '#00dd77'], ['#0a1a0a', '#00bb55']],
+  snow: [['#a0b8d0', '#d0e0f0'], ['#b0c8e0', '#e0f0ff'], ['#90a8c0', '#c0d0e0']],
 };
 
 export function getGeneratedCourses(): CourseData[] {

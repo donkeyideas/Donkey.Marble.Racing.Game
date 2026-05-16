@@ -90,7 +90,17 @@ export function useSkiaThemeSprites(bgImage: string): SkiaThemeSprites {
   const ice = useIceSprites();
   const cyber = useCyberSprites();
 
-  switch (bgImage) {
+  // Map new themes to their sprite material
+  const MATERIAL_MAP: Record<string, 'grass' | 'lava' | 'ice' | 'cyber'> = {
+    grass: 'grass', lava: 'lava', ice: 'ice', cyber: 'cyber',
+    beach: 'grass', forest: 'grass',
+    desert: 'lava', sunset: 'lava', volcanic: 'lava',
+    candy: 'ice', ocean: 'ice', snow: 'ice',
+    night: 'cyber', neon: 'cyber',
+  };
+  const material = MATERIAL_MAP[bgImage] || 'grass';
+
+  switch (material) {
     case 'lava':  return lava;
     case 'ice':   return ice;
     case 'cyber': return cyber;
@@ -105,10 +115,11 @@ export function useSkiaBgImage(bgImage: string): SkImage | null {
   const cyber = useImage(require('../assets/kenney/backgrounds/bg_cyber.png'));
 
   switch (bgImage) {
+    case 'grass': return grass;
     case 'lava':  return lava;
     case 'ice':   return ice;
     case 'cyber': return cyber;
-    default:      return grass;
+    default:      return null; // New themes use gradient backgrounds
   }
 }
 

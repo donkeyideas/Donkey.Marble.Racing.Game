@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
+import { signInWithGoogle, signInWithApple, signOut } from '../lib/firebase-auth';
 
 const LEGAL_PAGES = [
   {
@@ -47,9 +48,65 @@ export default function SettingsScreen() {
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
   const resetCoins = useGameStore((s) => s.resetCoins);
+  const firebaseUid = useGameStore((s) => s.firebaseUid);
+  const firebaseDisplayName = useGameStore((s) => s.firebaseDisplayName);
+  const firebaseEmail = useGameStore((s) => s.firebaseEmail);
+  const setFirebaseUser = useGameStore((s) => s.setFirebaseUser);
   const [deleting, setDeleting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(playerName || '');
+  const [signingIn, setSigningIn] = useState(false);
+
+  const isSignedIn = !!firebaseUid;
+
+  const handleGoogleSignIn = async () => {
+    setSigningIn(true);
+    try {
+      const user = await signInWithGoogle();
+      if (user) {
+        setFirebaseUser({
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          email: user.email,
+        });
+      }
+    } catch {
+      Alert.alert('Sign-In Failed', 'Could not sign in with Google. Please try again.');
+    }
+    setSigningIn(false);
+  };
+
+  const handleAppleSignIn = async () => {
+    setSigningIn(true);
+    try {
+      const user = await signInWithApple();
+      if (user) {
+        setFirebaseUser({
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          email: user.email,
+        });
+      }
+    } catch {
+      Alert.alert('Sign-In Failed', 'Could not sign in with Apple. Please try again.');
+    }
+    setSigningIn(false);
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert('Sign Out', 'You will be signed out of your account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        onPress: async () => {
+          await signOut();
+          setFirebaseUser(null);
+        },
+      },
+    ]);
+  };
 
   const handleNameSave = () => {
     const trimmed = nameInput.trim();
@@ -164,6 +221,66 @@ export default function SettingsScreen() {
               </Pressable>
             )}
           </View>
+
+          {/* Sign In / Account Link */}
+          <Text style={styles.sectionTitle}>ONLINE ACCOUNT</Text>
+
+          {isSignedIn ? (
+            <View style={styles.card}>
+              <View style={styles.accountRow}>
+                <View style={[styles.avatar, { backgroundColor: '#2ecc71' }]}>
+                  <Text style={styles.avatarLetter}>{'\u2713'}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accountName}>
+                    {firebaseDisplayName || 'Connected'}
+                  </Text>
+                  <Text style={styles.accountSub}>
+                    {firebaseEmail || 'Signed in'}
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={handleSignOut}
+                style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.signOutBtnText}>SIGN OUT</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              <Pressable
+                onPress={handleGoogleSignIn}
+                disabled={signingIn}
+                style={({ pressed }) => [
+                  styles.signInBtn,
+                  pressed && { opacity: 0.7 },
+                  signingIn && { opacity: 0.4 },
+                ]}
+              >
+                <Text style={styles.signInBtnText}>
+                  {signingIn ? 'SIGNING IN...' : 'SIGN IN WITH GOOGLE'}
+                </Text>
+                <Text style={styles.linkSub}>Required for multiplayer tournaments</Text>
+              </Pressable>
+
+              {Platform.OS === 'ios' && (
+                <Pressable
+                  onPress={handleAppleSignIn}
+                  disabled={signingIn}
+                  style={({ pressed }) => [
+                    styles.signInBtn,
+                    { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.2)' },
+                    pressed && { opacity: 0.7 },
+                    signingIn && { opacity: 0.4 },
+                  ]}
+                >
+                  <Text style={styles.signInBtnText}>SIGN IN WITH APPLE</Text>
+                  <Text style={styles.linkSub}>Required for multiplayer tournaments</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
 
           {/* Legal & Compliance — in-app pages */}
           <Text style={styles.sectionTitle}>LEGAL</Text>
@@ -369,6 +486,36 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display,
     fontSize: 24,
     color: Colors.whiteAlpha35,
+  },
+
+  /* Sign in / out */
+  signInBtn: {
+    backgroundColor: 'rgba(66,133,244,0.15)',
+    borderWidth: 2,
+    borderColor: 'rgba(66,133,244,0.3)',
+    borderRadius: BorderRadius.md,
+    padding: 16,
+    alignItems: 'center' as const,
+  },
+  signInBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+  signOutBtn: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center' as const,
+  },
+  signOutBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    letterSpacing: 0.5,
   },
 
   /* Delete button */

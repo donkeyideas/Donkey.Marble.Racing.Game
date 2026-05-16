@@ -97,6 +97,17 @@ const THEME_MAP: Record<string, ThemeSprites> = {
   lava:  LAVA_SPRITES,
   ice:   ICE_SPRITES,
   cyber: CYBER_SPRITES,
+  // New themes mapped to existing sprite materials
+  beach:    GRASS_SPRITES,   // wood on sand
+  forest:   GRASS_SPRITES,   // wood in forest
+  desert:   LAVA_SPRITES,    // stone in desert
+  sunset:   LAVA_SPRITES,    // stone at sunset
+  night:    CYBER_SPRITES,   // metal at night
+  candy:    ICE_SPRITES,     // glass in candy
+  ocean:    ICE_SPRITES,     // glass in ocean
+  volcanic: LAVA_SPRITES,    // stone in volcanic
+  neon:     CYBER_SPRITES,   // metal in neon
+  snow:     ICE_SPRITES,     // glass in snow
 };
 
 export function getThemeSprites(bgImage: string): ThemeSprites {
@@ -112,4 +123,15 @@ export const THEME_OVERLAYS: Record<string, string | null> = {
   lava:  'rgba(180, 40, 20, 0.15)',
   ice:   'rgba(100, 180, 255, 0.12)',
   cyber: 'rgba(120, 50, 180, 0.18)',
+  // New themes
+  beach:    'rgba(255, 200, 100, 0.10)',
+  forest:   'rgba(30, 120, 30, 0.12)',
+  desert:   'rgba(200, 160, 60, 0.10)',
+  sunset:   'rgba(255, 100, 50, 0.12)',
+  night:    'rgba(40, 40, 100, 0.15)',
+  candy:    'rgba(255, 100, 180, 0.10)',
+  ocean:    'rgba(0, 100, 180, 0.12)',
+  volcanic: 'rgba(200, 0, 0, 0.15)',
+  neon:     'rgba(0, 255, 130, 0.08)',
+  snow:     'rgba(200, 220, 255, 0.10)',
 };

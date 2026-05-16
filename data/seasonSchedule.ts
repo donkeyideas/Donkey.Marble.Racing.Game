@@ -128,9 +128,19 @@ function getHeadline(a: string, b: string): string {
 export function generateSeasonSchedule(seasonNumber: number): SeasonSchedule {
   const rng = mulberry32(seasonNumber * 7919 + 31337);
 
-  // Pick 10 unique courses (1 per week)
-  const shuffledCourses = shuffle(ALL_COURSES, rng);
-  const selectedCourses = shuffledCourses.slice(0, TOTAL_SEASON_RACES);
+  // Guarantee 2 Grand Prix tracks per season
+  const gpCourses = ALL_COURSES.filter(c => c.id.startsWith('grand-prix') || c.id.startsWith('gp-'));
+  const nonGpCourses = ALL_COURSES.filter(c => !c.id.startsWith('grand-prix') && !c.id.startsWith('gp-'));
+
+  const shuffledGp = shuffle(gpCourses, rng);
+  const shuffledNonGp = shuffle(nonGpCourses, rng);
+
+  const GP_GUARANTEED = 2;
+  const pickedGp = shuffledGp.slice(0, GP_GUARANTEED);
+  const pickedNonGp = shuffledNonGp.slice(0, TOTAL_SEASON_RACES - GP_GUARANTEED);
+
+  // Combine and shuffle positions so GP tracks aren't always first
+  const selectedCourses = shuffle([...pickedGp, ...pickedNonGp], rng);
 
   // Shuffle matchups and cycle them for 10 races
   const allMatchups = shuffle(getAllMatchups(), rng);

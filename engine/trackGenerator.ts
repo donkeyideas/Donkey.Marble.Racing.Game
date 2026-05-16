@@ -29,7 +29,7 @@ function createRNG(seed: number): () => number {
 
 type FeatureType = 'pendulums' | 'trampolines' | 'cradles' | 'ballPits';
 type PegDensity = 'low' | 'medium';
-type BgImage = 'grass' | 'lava' | 'ice' | 'cyber';
+type BgImage = string;
 
 interface GapZone {
   startY: number;
@@ -74,7 +74,11 @@ function selectParameters(rng: () => number): TrackBlueprint {
 
   const bumperCount = 2 + Math.floor(rng() * 7); // 2-8
   const windmillCount = 1 + Math.floor(rng() * 4); // 1-4
-  const bgImages: BgImage[] = ['grass', 'lava', 'ice', 'cyber'];
+  const bgImages: BgImage[] = [
+    'grass', 'lava', 'ice', 'cyber',
+    'beach', 'forest', 'desert', 'sunset', 'night',
+    'candy', 'ocean', 'volcanic', 'neon', 'snow',
+  ];
   const bgImage = bgImages[Math.floor(rng() * bgImages.length)];
 
   const useSpeedBursts = rng() < 0.3;

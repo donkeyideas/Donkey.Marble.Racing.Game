@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -63,6 +63,35 @@ export default function PlayoffsScreen() {
     : [];
   const marblesLeft = remainingIds.length;
 
+  // Entrance animations
+  const titleScale = useRef(new Animated.Value(0.8)).current;
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const seedAnimations = useRef(
+    Array.from({ length: 6 }, () => new Animated.Value(0)),
+  ).current;
+  const buttonSlide = useRef(new Animated.Value(40)).current;
+  const buttonOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Title entrance
+    Animated.parallel([
+      Animated.spring(titleScale, { toValue: 1, tension: 60, friction: 8, useNativeDriver: true }),
+      Animated.timing(titleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+    ]).start();
+
+    // Stagger seed rows
+    const seedAnims = seedAnimations.map((anim, i) =>
+      Animated.timing(anim, { toValue: 1, duration: 300, delay: 200 + i * 80, useNativeDriver: true }),
+    );
+    Animated.stagger(80, seedAnims).start();
+
+    // Button slide up
+    Animated.parallel([
+      Animated.timing(buttonSlide, { toValue: 0, duration: 500, delay: 600, useNativeDriver: true }),
+      Animated.timing(buttonOpacity, { toValue: 1, duration: 400, delay: 600, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
     <LinearGradient colors={['#0d1a3a', '#0a1230']} style={styles.fill}>
       <SafeAreaView style={styles.fill}>
@@ -77,23 +106,27 @@ export default function PlayoffsScreen() {
             <CoinPill amount={coins} />
           </View>
 
-          {/* Title */}
-          <Text style={styles.title}>KING OF THE HILL</Text>
-          <Text style={styles.subtitle}>
-            {!playoffs
-              ? 'Complete the regular season to seed the playoffs'
-              : playoffs.status === 'complete'
-                ? 'The champion has been crowned!'
-                : `Round ${playoffs.currentRound + 1} · ${marblesLeft} marbles racing`}
-          </Text>
+          {/* Title — animated entrance */}
+          <Animated.View style={{ opacity: titleOpacity, transform: [{ scale: titleScale }] }}>
+            <Text style={styles.title}>KING OF THE HILL</Text>
+            <Text style={styles.subtitle}>
+              {!playoffs
+                ? 'Complete the regular season to seed the playoffs'
+                : playoffs.status === 'complete'
+                  ? 'The champion has been crowned!'
+                  : `Round ${playoffs.currentRound + 1} \u00B7 ${marblesLeft} marbles racing`}
+            </Text>
+          </Animated.View>
 
-          {/* Status banners */}
+          {/* Champion banner — animated */}
           {playoffs?.status === 'complete' && playoffs.championId && (
-            <View style={styles.championBanner}>
-              <Text style={styles.championText}>SEASON {season?.seasonNumber} CHAMPION!</Text>
-              <MarbleDot marble={getMarble(playoffs.championId)} size={48} />
-              <Text style={styles.championName}>{getMarble(playoffs.championId).name}</Text>
-            </View>
+            <Animated.View style={{ opacity: titleOpacity, transform: [{ scale: titleScale }] }}>
+              <View style={styles.championBanner}>
+                <Text style={styles.championText}>SEASON {season?.seasonNumber} CHAMPION!</Text>
+                <MarbleDot marble={getMarble(playoffs.championId)} size={48} />
+                <Text style={styles.championName}>{getMarble(playoffs.championId).name}</Text>
+              </View>
+            </Animated.View>
           )}
 
           {/* Franchise status */}
@@ -129,7 +162,7 @@ export default function PlayoffsScreen() {
                         <Text style={[styles.seedName, isPlayer && styles.seedNamePlayer]}>{marble.name}</Text>
                         <View style={styles.livesRow}>
                           {Array.from({ length: lives }).map((_, j) => (
-                            <Text key={j} style={styles.lifeIcon}>&#x1F6E1;</Text>
+                            <View key={j} style={styles.lifeDot} />
                           ))}
                         </View>
                       </View>
@@ -159,30 +192,36 @@ export default function PlayoffsScreen() {
                   const isEliminated = playoffs.eliminatedIds.includes(id);
                   const livesLeft = playoffs.lives[id] ?? 0;
                   const isPlayer = isFranchise && id === playerMarbleId;
+                  const seedAnim = seedAnimations[i] || seedAnimations[0];
                   return (
-                    <View key={id} style={[
-                      styles.seedRow,
-                      isPlayer && styles.seedRowPlayer,
-                      isEliminated && styles.seedRowEliminated,
-                    ]}>
-                      <Text style={[styles.seedNum, isEliminated && styles.seedNumElim]}>#{i + 1}</Text>
-                      <MarbleDot marble={marble} size={22} />
-                      <Text style={[
-                        styles.seedName,
-                        isPlayer && styles.seedNamePlayer,
-                        isEliminated && styles.seedNameElim,
-                      ]}>{marble.name}</Text>
-                      {isEliminated ? (
-                        <Text style={styles.eliminatedTag}>OUT</Text>
-                      ) : (
-                        <View style={styles.livesRow}>
-                          {Array.from({ length: livesLeft }).map((_, j) => (
-                            <Text key={j} style={styles.lifeIcon}>&#x1F6E1;</Text>
-                          ))}
-                          {livesLeft === 0 && <Text style={styles.noLives}>0</Text>}
-                        </View>
-                      )}
-                    </View>
+                    <Animated.View key={id} style={{
+                      opacity: seedAnim,
+                      transform: [{ translateX: seedAnim.interpolate({ inputRange: [0, 1], outputRange: [-30, 0] }) }],
+                    }}>
+                      <View style={[
+                        styles.seedRow,
+                        isPlayer && styles.seedRowPlayer,
+                        isEliminated && styles.seedRowEliminated,
+                      ]}>
+                        <Text style={[styles.seedNum, isEliminated && styles.seedNumElim]}>#{i + 1}</Text>
+                        <MarbleDot marble={marble} size={22} />
+                        <Text style={[
+                          styles.seedName,
+                          isPlayer && styles.seedNamePlayer,
+                          isEliminated && styles.seedNameElim,
+                        ]}>{marble.name}</Text>
+                        {isEliminated ? (
+                          <Text style={styles.eliminatedTag}>OUT</Text>
+                        ) : (
+                          <View style={styles.livesRow}>
+                            {Array.from({ length: livesLeft }).map((_, j) => (
+                              <View key={j} style={styles.lifeDot} />
+                            ))}
+                            {livesLeft === 0 && <Text style={styles.noLives}>0</Text>}
+                          </View>
+                        )}
+                      </View>
+                    </Animated.View>
                   );
                 })}
               </View>
@@ -280,10 +319,12 @@ export default function PlayoffsScreen() {
           {/* Action buttons */}
           <View style={{ height: 20 }} />
           {playoffs?.status === 'active' && (
-            <PrimaryButton
-              label={`RACE · ROUND ${playoffs.currentRound + 1}`}
-              onPress={handleRace}
-            />
+            <Animated.View style={{ opacity: buttonOpacity, transform: [{ translateY: buttonSlide }] }}>
+              <PrimaryButton
+                label={`RACE \u00B7 ROUND ${playoffs.currentRound + 1}`}
+                onPress={handleRace}
+              />
+            </Animated.View>
           )}
 
           {playoffs?.status === 'complete' && (
@@ -386,7 +427,14 @@ const styles = StyleSheet.create({
   seedNamePlayer: { color: Colors.yellow },
   seedNameElim: { color: Colors.whiteAlpha40, textDecorationLine: 'line-through' },
   livesRow: { flexDirection: 'row', gap: 2, alignItems: 'center' },
-  lifeIcon: { fontSize: 14 },
+  lifeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.green,
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.5)',
+  },
   noLives: { fontFamily: Fonts.body, fontSize: 11, color: Colors.whiteAlpha25 },
   eliminatedTag: { fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.red, letterSpacing: 0.5 },
   livesNote: { fontFamily: Fonts.body, fontSize: 11, color: Colors.whiteAlpha25, textAlign: 'center', marginBottom: 16 },

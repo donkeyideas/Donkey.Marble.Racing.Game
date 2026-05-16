@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
-import { useGameStore, SeasonStandingEntry, SeasonMarbleStats } from '../state/gameStore';
+import { useGameStore, SeasonStandingEntry, SeasonMarbleStats, TrainingSession } from '../state/gameStore';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import BackButton from '../components/BackButton';
@@ -292,6 +292,129 @@ export default function SeasonScreen() {
               </View>
             </View>
           )}
+
+          {/* ===== MARBLE TRAINING (franchise only) ===== */}
+          {isFranchise && season.seasonMarbleId && !seasonComplete && (() => {
+            const marble = getMarble(season.seasonMarbleId!);
+            const condition = season.condition?.[season.seasonMarbleId!] ?? 100;
+            const stats = season.seasonStats?.[season.seasonMarbleId!] ?? { speed: 0, power: 0, bounce: 0, luck: 0 };
+            const trainCost = 200 + (season.trainingHistory?.length ?? 0) * 100;
+            const canTrain = !season.trainedThisWeek && coins >= trainCost && !!nextRace;
+            const rival = season.rivalMarbleId ? getMarble(season.rivalMarbleId) : null;
+
+            const statKeys: (keyof SeasonMarbleStats)[] = ['speed', 'power', 'bounce', 'luck'];
+            const STAT_LABELS: Record<string, string> = { speed: 'SPD', power: 'PWR', bounce: 'BNC', luck: 'LCK' };
+            const STAT_COLORS: Record<string, string> = { speed: '#4dabf7', power: '#ff6b6b', bounce: '#69db7c', luck: '#da77f2' };
+
+            return (
+              <>
+                <Text style={styles.sectionTitle}>MARBLE STATUS</Text>
+                <View style={styles.card}>
+                  {/* Marble + Condition */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                    <MarbleDot marble={marble} size={36} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={{ fontFamily: Fonts.display, fontSize: 16, color: Colors.white }}>{marble.name}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                        <Text style={{ fontFamily: Fonts.bodySemiBold, fontSize: 11, color: Colors.whiteAlpha50, width: 65 }}>
+                          CONDITION
+                        </Text>
+                        <View style={{ flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                          <View style={{
+                            height: 6, borderRadius: 3, width: `${condition}%`,
+                            backgroundColor: condition > 60 ? '#2ecc71' : condition > 30 ? '#f39c12' : '#e74c3c',
+                          }} />
+                        </View>
+                        <Text style={{ fontFamily: Fonts.bodySemiBold, fontSize: 11, color: Colors.whiteAlpha50, marginLeft: 8 }}>
+                          {condition}%
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Stats */}
+                  {statKeys.map(key => {
+                    const val = stats[key];
+                    const pct = Math.min((val / 3.0) * 100, 100);
+                    return (
+                      <View key={key} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.whiteAlpha50, width: 28 }}>
+                          {STAT_LABELS[key]}
+                        </Text>
+                        <View style={{ flex: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, marginHorizontal: 6, overflow: 'hidden' }}>
+                          <View style={{ height: 4, borderRadius: 2, width: `${Math.max(2, pct)}%`, backgroundColor: STAT_COLORS[key] }} />
+                        </View>
+                        <Text style={{ fontFamily: Fonts.bodySemiBold, fontSize: 10, color: Colors.whiteAlpha50, width: 28, textAlign: 'right' }}>
+                          {val.toFixed(1)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+
+                  {/* Training buttons */}
+                  {nextRace && (
+                    <View style={{ marginTop: 10 }}>
+                      <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 11, color: Colors.whiteAlpha35, letterSpacing: 0.5, marginBottom: 6 }}>
+                        {season.trainedThisWeek ? 'TRAINED THIS WEEK' : `TRAIN (${trainCost} COINS)`}
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {statKeys.map(key => (
+                          <Pressable
+                            key={key}
+                            disabled={!canTrain}
+                            onPress={() => {
+                              const result = useGameStore.getState().trainMarble(key);
+                              if (result.success) {
+                                // Force re-render
+                                setDailyBonus(prev => prev);
+                              }
+                            }}
+                            style={{
+                              flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center',
+                              backgroundColor: canTrain ? STAT_COLORS[key] + '30' : 'rgba(255,255,255,0.05)',
+                              borderWidth: 1,
+                              borderColor: canTrain ? STAT_COLORS[key] + '50' : 'rgba(255,255,255,0.08)',
+                            }}
+                          >
+                            <Text style={{
+                              fontFamily: Fonts.bodyBold, fontSize: 10,
+                              color: canTrain ? STAT_COLORS[key] : Colors.whiteAlpha25,
+                            }}>
+                              {STAT_LABELS[key]}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Rest button */}
+                  {condition < 70 && (
+                    <Pressable
+                      onPress={() => useGameStore.getState().restMarble(season.seasonMarbleId!)}
+                      style={{ marginTop: 8, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: 'rgba(46,204,113,0.15)', borderWidth: 1, borderColor: 'rgba(46,204,113,0.3)' }}
+                    >
+                      <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 11, color: '#2ecc71' }}>
+                        REST (+30% CONDITION)
+                      </Text>
+                    </Pressable>
+                  )}
+
+                  {/* Rival info */}
+                  {rival && (
+                    <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' }}>
+                      <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.whiteAlpha35, letterSpacing: 0.5, marginRight: 8 }}>RIVAL</Text>
+                      <MarbleDot marble={rival} size={16} />
+                      <Text style={{ fontFamily: Fonts.bodySemiBold, fontSize: 12, color: Colors.whiteAlpha70, marginLeft: 6, flex: 1 }}>{rival.name}</Text>
+                      <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: '#2ecc71' }}>{season.rivalWins ?? 0}W</Text>
+                      <Text style={{ fontFamily: Fonts.body, fontSize: 10, color: Colors.whiteAlpha35, marginHorizontal: 4 }}>-</Text>
+                      <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: '#e74c3c' }}>{season.rivalLosses ?? 0}L</Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            );
+          })()}
 
           {/* ===== SEASON SCHEDULE ===== */}
           <Text style={styles.sectionTitle}>

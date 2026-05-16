@@ -511,6 +511,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   const FRAME_DT = 1000 / 60;  // Physics runs at fixed 60fps regardless of screen refresh rate
   const finishTimes: Record<string, number> = {};
   let firstFinishTime = 0;
+  // Finish-rank counter — increments as each marble crosses finishY so we can
+  // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
+  let finishRankCounter = 0;
+  // Slot height in engine units — must match `slotH: ex(26)` in app/race.tsx trackVisuals.
+  const SLOT_H = 26;
 
   // No anti-stuck hacks — physics must flow naturally. Doomsday bar is the only safety net.
 
@@ -614,21 +619,50 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         });
       }
 
-      // Finish detection — gradual slowdown instead of instant velocity override
+      // Finish detection — sub-frame precision time, then snap to numbered slot.
       if (body.position.y >= track.finishY) {
-        finishTimes[data.id] = elapsed;
-        if (!firstFinishTime) firstFinishTime = elapsed;
-        body.frictionAir = 0.15;
-        body.restitution = 0.1;
-        body.friction = 0.3;
+        const overshoot = body.position.y - track.finishY;
+        const vy = Math.max(Math.abs(body.velocity.y), 0.1);
+        finishTimes[data.id] = elapsed - (overshoot / vy);
+        if (!firstFinishTime) firstFinishTime = finishTimes[data.id];
+
+        // Snap to numbered slot: rank 1 = bottom slot, rank N = N slots up.
+        // Make the body static & disable marble–marble collisions so it stays
+        // put and incoming marbles don't bump it out of its slot. Without this,
+        // marbles pile up chaotically and the slot numbers are meaningless.
+        finishRankCounter++;
+        const rank = finishRankCounter;
+        const slotCenterY = track.finishY + track.channelDepth - (rank - 0.5) * SLOT_H;
+        Matter.Body.setPosition(body, { x: track.channelCX, y: slotCenterY });
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(body, 0);
+        Matter.Body.setStatic(body, true);
+        // Only the doomsday bar (different category) and walls should still
+        // interact; marble↔marble collisions are disabled so a stacking marble
+        // can pass through a finished one if physics drifts it slightly.
+        body.collisionFilter = { ...body.collisionFilter, mask: CAT_WALL };
       }
     });
 
     const finishedCount = Object.keys(finishTimes).length;
     const isFinished = finishedCount >= totalMarbleCount || elapsed > DOOMSDAY_DEADLINE_MS;
     if (isFinished) {
-      marbleBodies.forEach(({ data, body }) => {
-        if (!finishTimes[data.id]) finishTimes[data.id] = elapsed + (track.finishY - body.position.y) * 8;
+      // Sort unfinished marbles by current Y (highest first = closest to finish)
+      // so doomsday-assigned ranks roughly reflect race position, and snap each
+      // one into its slot just like the organic finish path does.
+      const unfinished = marbleBodies
+        .filter(mb => !finishTimes[mb.data.id])
+        .sort((a, b) => b.body.position.y - a.body.position.y);
+      unfinished.forEach(({ data, body }) => {
+        finishTimes[data.id] = elapsed + (track.finishY - body.position.y) * 8;
+        finishRankCounter++;
+        const rank = finishRankCounter;
+        const slotCenterY = track.finishY + track.channelDepth - (rank - 0.5) * SLOT_H;
+        Matter.Body.setPosition(body, { x: track.channelCX, y: slotCenterY });
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        Matter.Body.setAngularVelocity(body, 0);
+        Matter.Body.setStatic(body, true);
+        body.collisionFilter = { ...body.collisionFilter, mask: CAT_WALL };
       });
     }
 
@@ -675,13 +709,56 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   }
 
   function getPositions(): { marble: MarbleData; time: number }[] {
+    // Primary sort: finishTime (lower = finished earlier).
+    // Tiebreakers (in order) for marbles with identical times:
+    //  1. body.position.y DESC — further past finishY = ahead
+    //  2. body.position.x — leftmost in the finish channel = ahead (deterministic)
+    //  3. marble.id — final deterministic fallback
+    // This guarantees a stable, deterministic order even if physics produces identical finishTimes.
     return marbleBodies
       .map(({ data, body }) => ({
-        marble: data, time: finishTimes[data.id] || elapsed + (track.finishY - body.position.y) * 8,
+        marble: data,
+        time: finishTimes[data.id] || elapsed + (track.finishY - body.position.y) * 8,
+        _y: body.position.y,
+        _x: body.position.x,
       }))
-      .sort((a, b) => a.time - b.time);
+      .sort((a, b) => {
+        if (a.time !== b.time) return a.time - b.time;
+        if (a._y !== b._y) return b._y - a._y;
+        if (a._x !== b._x) return a._x - b._x;
+        return a.marble.id.localeCompare(b.marble.id);
+      })
+      .map(({ marble, time }) => ({ marble, time }));
   }
 
   function destroy() { Matter.Engine.clear(engine); }
-  return { step, getPositions, destroy, releaseGate, track };
+  // Expose the marbles in the engine's internal (shuffled) order so the renderer
+  // can match each visual index to the correct marble identity. Without this,
+  // marble colors get drawn at the wrong physics positions and the leaderboard
+  // looks inconsistent with the on-screen marbles.
+  const marbles = marbleBodies.map(({ data }) => data);
+
+  // Pure read of all static (non-animated) element configs. No side effects —
+  // safe to call before the race starts. The renderer captures this once and
+  // uses it for the lifetime of the race, with SharedValues driving animation.
+  function getStaticConfig() {
+    return {
+      windmills: wmBodies.map(wm => ({ x: wm.x, y: wm.y, width: wm.width })),
+      pendulums: pendulumBobs.map(p => ({
+        anchorX: p.config.anchorX, anchorY: p.config.anchorY, bobRadius: p.config.bobRadius,
+      })),
+      cradles: cradleBobs.map(c => ({
+        anchorX: c.anchorX, anchorY: c.anchorY, bobRadius: c.ballRadius,
+      })),
+      ballPitRadii: pitBallBodies.map(b => b.r),
+      trampolines: trampolineBodies.map(t => ({
+        x: t.config.x, y: t.config.y, width: t.config.width,
+      })),
+      speedBursts: speedBurstBodies.map(sb => ({
+        x: sb.config.x, y: sb.config.y, width: sb.config.width, direction: sb.config.direction,
+      })),
+    };
+  }
+
+  return { step, getPositions, destroy, releaseGate, track, marbles, getStaticConfig };
 }

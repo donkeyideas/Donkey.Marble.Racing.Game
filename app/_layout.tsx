@@ -35,8 +35,7 @@ export default function RootLayout() {
     fetchAllLiveOps().catch(() => {});
 
     // Configure Google Sign-In (webClientId from Firebase Console)
-    // TODO: Replace with your actual webClientId from Firebase Console → Authentication → Sign-in method → Google
-    configureGoogleSignIn('YOUR_WEB_CLIENT_ID.apps.googleusercontent.com');
+    configureGoogleSignIn('791385622060-goted95ii4ea0emlb046qeni65icb8a1.apps.googleusercontent.com');
 
     // Sync Firebase auth state → Zustand store
     const unsubAuth = onAuthStateChanged((user) => {

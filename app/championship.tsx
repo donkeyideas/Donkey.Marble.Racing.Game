@@ -70,8 +70,7 @@ export default function ChampionshipScreen() {
             <CoinPill amount={coins} />
           </View>
 
-          {/* Trophy */}
-          <Text style={styles.trophy}>🏆</Text>
+          {/* Title */}
           <Text style={styles.headlineText}>
             SEASON {season?.seasonNumber ?? 1} CHAMPIONSHIP
           </Text>
@@ -108,6 +107,30 @@ export default function ChampionshipScreen() {
                     {getMarble(playerMarbleId).name} went {season.standings[playerMarbleId]?.wins ?? 0}-{season.standings[playerMarbleId]?.losses ?? 0} in the regular season
                   </Text>
                 )}
+
+                {/* Playoff reward display */}
+                {isFranchise && playerMarbleId && (() => {
+                  const allEliminated = [...(playoffs?.eliminatedIds ?? [])];
+                  const placement = playerIsChampion
+                    ? 1
+                    : allEliminated.length > 0 && allEliminated.includes(playerMarbleId)
+                      ? allEliminated.length - allEliminated.indexOf(playerMarbleId)
+                      : 0;
+                  const reward = placement === 1 ? 5000 : placement === 2 ? 2500 : placement === 3 ? 1000 : 0;
+                  if (reward <= 0) return null;
+                  return (
+                    <View style={styles.rewardBadge}>
+                      <Text style={styles.rewardText}>
+                        +{reward.toLocaleString()} coins ({placement === 1 ? 'Champion' : placement === 2 ? 'Runner-Up' : 'Top 3'})
+                      </Text>
+                    </View>
+                  );
+                })()}
+                {!isFranchise && (
+                  <View style={styles.rewardBadge}>
+                    <Text style={styles.rewardText}>+500 coins (Season Complete)</Text>
+                  </View>
+                )}
               </View>
 
               {/* Lives summary */}
@@ -122,11 +145,11 @@ export default function ChampionshipScreen() {
                   return (
                     <View key={id} style={styles.gameRow}>
                       <MarbleDot marble={getMarble(id)} size={18} />
-                      <Text style={styles.gameWinner}>
+                      <Text style={[styles.gameWinner, { flex: 1 }]}>
                         {getMarble(id).name}
                       </Text>
-                      <Text style={styles.gameNum}>
-                        Used {used} of {initialLives} {initialLives === 1 ? 'life' : 'lives'}
+                      <Text style={styles.livesUsedText}>
+                        {used}/{initialLives}
                       </Text>
                     </View>
                   );
@@ -166,6 +189,9 @@ export default function ChampionshipScreen() {
                 label={`START SEASON ${(season?.seasonNumber ?? 1) + 1}`}
                 onPress={handleNewSeason}
               />
+              <Text style={styles.newSeasonBonus}>
+                +{Math.min(2500, 500 + ((season?.seasonNumber ?? 1) - 1) * 250).toLocaleString()} coin starter bonus
+              </Text>
             </>
           ) : (
             // ── Playoffs in progress ──
@@ -220,8 +246,7 @@ const styles = StyleSheet.create({
 
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
 
-  /* Trophy / headline */
-  trophy: { textAlign: 'center', fontSize: 56, marginBottom: 4 },
+  /* Headline */
   headlineText: {
     textAlign: 'center',
     fontFamily: Fonts.display,
@@ -305,6 +330,20 @@ const styles = StyleSheet.create({
     color: Colors.whiteAlpha40,
     marginTop: 4,
   },
+  rewardBadge: {
+    backgroundColor: 'rgba(46,204,113,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.25)',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginTop: 12,
+  },
+  rewardText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.green,
+  },
 
   /* Games card */
   gamesCard: {
@@ -335,7 +374,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.white,
   },
-
+  livesUsedText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: Colors.whiteAlpha40,
+  },
 
   /* Section title */
   sectionTitle: {
@@ -379,5 +422,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.whiteAlpha25,
     paddingVertical: 8,
+  },
+  newSeasonBonus: {
+    textAlign: 'center',
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: Colors.yellow,
+    marginTop: 8,
   },
 });

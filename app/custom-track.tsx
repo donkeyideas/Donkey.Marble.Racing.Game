@@ -11,6 +11,9 @@ import BackButton from '../components/BackButton';
 
 const BG_THEME_LABELS: Record<string, string> = {
   grass: 'Meadow', lava: 'Volcano', ice: 'Frozen', cyber: 'Cyber',
+  beach: 'Beach', forest: 'Forest', desert: 'Desert', sunset: 'Sunset',
+  night: 'Night', candy: 'Candy', ocean: 'Ocean', volcanic: 'Volcanic',
+  neon: 'Neon', snow: 'Snow',
 };
 
 export default function CustomTrackScreen() {

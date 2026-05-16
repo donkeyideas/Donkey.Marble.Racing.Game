@@ -16,6 +16,16 @@ const FILTER_TABS: { label: string; value: CourseTheme | 'all' | 'grand-prix' }[
   { label: 'VOLCANO', value: 'volcano' },
   { label: 'FROZEN', value: 'frozen' },
   { label: 'CYBER', value: 'cyber' },
+  { label: 'BEACH', value: 'beach' },
+  { label: 'FOREST', value: 'forest' },
+  { label: 'DESERT', value: 'desert' },
+  { label: 'SUNSET', value: 'sunset' },
+  { label: 'NIGHT', value: 'night' },
+  { label: 'CANDY', value: 'candy' },
+  { label: 'OCEAN', value: 'ocean' },
+  { label: 'VOLCANIC', value: 'volcanic' },
+  { label: 'NEON', value: 'neon' },
+  { label: 'SNOW', value: 'snow' },
 ];
 
 function getMarbleById(id: string): MarbleData {

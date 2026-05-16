@@ -5,6 +5,7 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,6 +14,7 @@ import { Colors, Fonts, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
+import { MP_TIERS } from '../lib/multiplayer';
 
 const TOURNAMENTS_LIST = [
   {
@@ -185,6 +187,123 @@ export default function TournamentsScreen() {
               </Pressable>
             );
           })}
+
+          {/* Multiplayer Section */}
+          <Text style={styles.sectionTitle}>MULTIPLAYER TOURNAMENTS</Text>
+
+          <Pressable
+            onPress={() => {
+              const uid = useGameStore.getState().firebaseUid;
+              if (!uid) {
+                Alert.alert(
+                  'Sign In Required',
+                  'You need to sign in to play multiplayer tournaments. Go to Settings to sign in with Google or Apple.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Settings', onPress: () => router.push('/settings') },
+                  ],
+                );
+                return;
+              }
+              router.push({ pathname: '/multiplayer-lobby', params: { tier: 'daily' } });
+            }}
+            style={({ pressed }) => [pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+          >
+            <LinearGradient
+              colors={['#8e44ad', '#6c3483']}
+              style={styles.tourneyCard}
+            >
+              <View style={styles.tourneyHeader}>
+                <Text style={styles.tourneyName}>MULTIPLAYER BLITZ</Text>
+                <View style={[styles.openBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                  <Text style={styles.openText}>LIVE</Text>
+                </View>
+              </View>
+              <Text style={styles.tourneySub}>
+                8 real players · Draft marbles · Last place eliminated
+              </Text>
+              <View style={styles.tourneyStats}>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
+                  <Text style={styles.tourneyStatValue}>5,000</Text>
+                </View>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>ENTRY</Text>
+                  <Text style={styles.tourneyStatValue}>100</Text>
+                </View>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
+                  <Text style={styles.tourneyStatValue}>8</Text>
+                </View>
+              </View>
+              <View style={styles.payoutPreviewRow}>
+                <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
+                <Text style={styles.payoutPreviewText}>1st: 3K · 2nd: 1K · 3rd: 500</Text>
+              </View>
+            </LinearGradient>
+          </Pressable>
+
+          <Pressable
+            onPress={() => {
+              const uid = useGameStore.getState().firebaseUid;
+              if (!uid) {
+                Alert.alert(
+                  'Sign In Required',
+                  'You need to sign in to play multiplayer tournaments. Go to Settings to sign in with Google or Apple.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Settings', onPress: () => router.push('/settings') },
+                  ],
+                );
+                return;
+              }
+              if (passLevel < 10) {
+                Alert.alert('Level Required', 'You need Level 10+ to enter the Champion Multiplayer.');
+                return;
+              }
+              router.push({ pathname: '/multiplayer-lobby', params: { tier: 'champion' } });
+            }}
+            style={({ pressed }) => [pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+          >
+            <LinearGradient
+              colors={passLevel >= 10 ? ['#c0392b', '#922b21'] : ['#444', '#333']}
+              style={[styles.tourneyCard, passLevel < 10 && { opacity: 0.6 }]}
+            >
+              <View style={styles.tourneyHeader}>
+                <Text style={styles.tourneyName}>CHAMPION MP</Text>
+                {passLevel < 10 ? (
+                  <View style={styles.lockedBadge}>
+                    <Text style={styles.lockedText}>LEVEL 10</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.openBadge, { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                    <Text style={styles.openText}>LIVE</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.tourneySub}>
+                Top stakes · 8 players · Winner takes all
+              </Text>
+              <View style={styles.tourneyStats}>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
+                  <Text style={styles.tourneyStatValue}>50,000</Text>
+                </View>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>ENTRY</Text>
+                  <Text style={styles.tourneyStatValue}>1,000</Text>
+                </View>
+                <View style={styles.tourneyStat}>
+                  <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
+                  <Text style={styles.tourneyStatValue}>8</Text>
+                </View>
+              </View>
+              <View style={styles.payoutPreviewRow}>
+                <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
+                <Text style={styles.payoutPreviewText}>1st: 30K · 2nd: 10K · 3rd: 5K</Text>
+              </View>
+            </LinearGradient>
+          </Pressable>
 
           {/* How it works */}
           <Text style={styles.sectionTitle}>HOW TOURNAMENTS WORK</Text>

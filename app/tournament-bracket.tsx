@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
@@ -18,6 +19,136 @@ import PrimaryButton from '../components/PrimaryButton';
 
 function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
+}
+
+// Summarize a stat value (1-5) as a descriptive word
+function statLabel(val: number): string {
+  if (val >= 5) return 'Elite';
+  if (val >= 4) return 'High';
+  if (val >= 3) return 'Avg';
+  if (val >= 2) return 'Low';
+  return 'Weak';
+}
+function statColor(val: number): string {
+  if (val >= 5) return Colors.yellow;
+  if (val >= 4) return Colors.green;
+  if (val >= 3) return Colors.white;
+  return Colors.whiteAlpha40;
+}
+
+// Picker card with flip-to-stats
+interface PickerFlipCardProps {
+  marble: MarbleData;
+  isSelected: boolean;
+  stats: { wins: number; losses: number; betCount: number } | null;
+  onSelect: () => void;
+}
+
+function PickerFlipCard({ marble, isSelected, stats, onSelect }: PickerFlipCardProps) {
+  const flip = useSharedValue(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+
+  const toggleFlip = useCallback(() => {
+    const next = !isFlipped;
+    setIsFlipped(next);
+    flip.value = withTiming(next ? 1 : 0, { duration: 350 });
+  }, [isFlipped, flip]);
+
+  const frontStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 600 }, { rotateY: `${interpolate(flip.value, [0, 1], [0, 90])}deg` }],
+    opacity: flip.value > 0.5 ? 0 : 1,
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    transform: [{ perspective: 600 }, { rotateY: `${interpolate(flip.value, [0, 1], [-90, 0])}deg` }],
+    opacity: flip.value > 0.5 ? 1 : 0,
+  }));
+
+  const totalRaces = stats ? stats.wins + stats.losses : 0;
+  const winPct = totalRaces > 0 ? Math.round((stats!.wins / totalRaces) * 100) : null;
+
+  // Summarize performance as a phrase
+  let performanceText = 'No race history';
+  if (totalRaces > 0 && winPct !== null) {
+    if (winPct >= 25) performanceText = 'Strong performer';
+    else if (winPct >= 15) performanceText = 'Solid runner';
+    else if (winPct >= 8) performanceText = 'Inconsistent';
+    else performanceText = 'Underdog';
+  }
+
+  // Best stat
+  const { speed, power, bounce, luck } = marble.stats;
+  const statEntries = [
+    { name: 'SPD', val: speed },
+    { name: 'PWR', val: power },
+    { name: 'BNC', val: bounce },
+    { name: 'LCK', val: luck },
+  ];
+
+  return (
+    <View style={[pkStyles.cardWrapper]}>
+      {/* Front */}
+      <Animated.View style={[pkStyles.card, isSelected && pkStyles.cardSelected, frontStyle]}>
+        <Pressable onPress={onSelect} style={({ pressed }) => [pkStyles.cardInner, pressed && { opacity: 0.85 }]}>
+          <MarbleDot marble={marble} size={44} />
+          <Text style={[pkStyles.cardName, isSelected && { color: Colors.yellow }]}>{marble.name}</Text>
+          <Text style={pkStyles.personality}>{marble.personality}</Text>
+
+          {/* Stat bars */}
+          <View style={pkStyles.statBars}>
+            {statEntries.map(s => (
+              <View key={s.name} style={pkStyles.statBarRow}>
+                <Text style={pkStyles.statBarLabel}>{s.name}</Text>
+                <View style={pkStyles.statBarTrack}>
+                  <View style={[pkStyles.statBarFill, { width: `${s.val * 20}%`, backgroundColor: statColor(s.val) }]} />
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <Pressable onPress={toggleFlip} hitSlop={8} style={pkStyles.flipBtn}>
+            <Text style={pkStyles.flipBtnText}>HISTORY</Text>
+          </Pressable>
+        </Pressable>
+      </Animated.View>
+
+      {/* Back — Race History */}
+      <Animated.View style={[pkStyles.card, pkStyles.cardBack, isSelected && pkStyles.cardSelected, backStyle]}>
+        <Pressable onPress={toggleFlip} style={({ pressed }) => [pkStyles.cardInner, pressed && { opacity: 0.85 }]}>
+          <View style={pkStyles.backHeader}>
+            <MarbleDot marble={marble} size={24} />
+            <Text style={pkStyles.backName}>{marble.name}</Text>
+          </View>
+
+          <Text style={pkStyles.perfText}>{performanceText}</Text>
+
+          {totalRaces > 0 && stats ? (
+            <View style={pkStyles.historyGrid}>
+              <View style={pkStyles.histCell}>
+                <Text style={pkStyles.histValue}>{stats.wins}</Text>
+                <Text style={pkStyles.histLabel}>WINS</Text>
+              </View>
+              <View style={pkStyles.histCell}>
+                <Text style={pkStyles.histValue}>{totalRaces}</Text>
+                <Text style={pkStyles.histLabel}>RACES</Text>
+              </View>
+              <View style={pkStyles.histCell}>
+                <Text style={[pkStyles.histValue, { color: winPct! >= 15 ? Colors.green : Colors.red }]}>
+                  {winPct}%
+                </Text>
+                <Text style={pkStyles.histLabel}>WIN%</Text>
+              </View>
+            </View>
+          ) : (
+            <Text style={pkStyles.noHistory}>First time racing — unknown potential</Text>
+          )}
+
+          <Pressable onPress={onSelect} style={pkStyles.selectBtn}>
+            <Text style={pkStyles.selectBtnText}>{isSelected ? 'SELECTED' : 'SELECT'}</Text>
+          </Pressable>
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
 }
 
 export default function TournamentBracketScreen() {
@@ -30,6 +161,7 @@ export default function TournamentBracketScreen() {
   const setBetAmount = useGameStore((s) => s.setBetAmount);
 
   const [selectedPick, setSelectedPick] = useState<string | null>(null);
+  const marbleStats = useGameStore(s => s.marbleStats);
 
   if (!tournaments) {
     return (
@@ -88,21 +220,18 @@ export default function TournamentBracketScreen() {
               This marble races for you the entire tournament.{'\n'}If it finishes last in any round, you're out.
             </Text>
 
-            <View style={styles.pickerGrid}>
+            <View style={pkStyles.grid}>
               {marbleIds.map(id => {
                 const marble = getMarble(id);
                 const isSelected = selectedPick === id;
                 return (
-                  <Pressable
+                  <PickerFlipCard
                     key={id}
-                    onPress={() => setSelectedPick(id)}
-                    style={[styles.pickerCard, isSelected && styles.pickerCardSelected]}
-                  >
-                    <MarbleDot marble={marble} size={36} />
-                    <Text style={[styles.pickerName, isSelected && styles.pickerNameSelected]}>
-                      {marble.name}
-                    </Text>
-                  </Pressable>
+                    marble={marble}
+                    isSelected={isSelected}
+                    stats={marbleStats[id] || null}
+                    onSelect={() => setSelectedPick(id)}
+                  />
                 );
               })}
             </View>
@@ -579,4 +708,154 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickPromptText: { fontFamily: Fonts.bodySemiBold, fontSize: 13, color: Colors.whiteAlpha40 },
+});
+
+// Picker FlipCard styles
+const pkStyles = StyleSheet.create({
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  cardWrapper: {
+    width: '47%',
+    height: 210,
+  },
+  card: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 2,
+    borderColor: Colors.whiteAlpha10,
+    borderRadius: BorderRadius.md,
+    backfaceVisibility: 'hidden',
+  },
+  cardBack: {
+    backgroundColor: 'rgba(10,20,50,0.95)',
+  },
+  cardSelected: {
+    borderColor: Colors.yellow,
+    backgroundColor: Colors.yellowAlpha08,
+  },
+  cardInner: {
+    flex: 1,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  cardName: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 14,
+    color: Colors.white,
+    marginTop: 2,
+  },
+  personality: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: Colors.whiteAlpha40,
+    textAlign: 'center',
+  },
+  statBars: {
+    width: '100%',
+    gap: 3,
+    marginTop: 4,
+  },
+  statBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statBarLabel: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 8,
+    color: Colors.whiteAlpha40,
+    width: 24,
+    letterSpacing: 0.5,
+  },
+  statBarTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  statBarFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  flipBtn: {
+    marginTop: 4,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: BorderRadius.pill,
+  },
+  flipBtnText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 9,
+    color: Colors.whiteAlpha50,
+    letterSpacing: 0.8,
+  },
+  // Back face
+  backHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  backName: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 14,
+    color: Colors.white,
+  },
+  perfText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 11,
+    color: Colors.yellow,
+    marginBottom: 8,
+  },
+  historyGrid: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  histCell: {
+    alignItems: 'center',
+  },
+  histValue: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.white,
+  },
+  histLabel: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 8,
+    color: Colors.whiteAlpha40,
+    letterSpacing: 0.8,
+  },
+  noHistory: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha40,
+    textAlign: 'center',
+    marginVertical: 10,
+  },
+  selectBtn: {
+    marginTop: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255,194,32,0.15)',
+    borderWidth: 1,
+    borderColor: Colors.yellowAlpha20,
+    borderRadius: BorderRadius.pill,
+  },
+  selectBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.yellow,
+    letterSpacing: 0.5,
+  },
 });

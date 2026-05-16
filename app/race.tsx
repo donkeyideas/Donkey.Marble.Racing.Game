@@ -11,6 +11,7 @@ import { ALL_COURSES as COURSES } from '../data/courses';
 import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../assets/kenney/spriteMap';
 import RaceCanvas from '../rendering/RaceCanvas';
 import { useRaceSharedState } from '../rendering/raceSharedState';
+import { preloadRaceSounds, unloadRaceSounds, playSound } from '../utils/audioManager';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
 const USE_SPRITE_RENDERING = true;
@@ -440,7 +441,7 @@ const StaticTrackElements = React.memo(function StaticTrackElements({
 });
 
 interface FrameState {
-  pos: { data: MarbleData; x: number; y: number; finished: boolean }[];
+  pos: { data: MarbleData; x: number; y: number; finished: boolean; finishTime: number }[];
   elapsed: number;
   camY: number;
   wm: { x: number; y: number; angle: number; width: number }[];
@@ -450,6 +451,17 @@ interface FrameState {
   trampolines: TrampolineState[];
   speedBursts: SpeedBurstState[];
   doomsdayBar: { y: number; active: boolean } | null;
+}
+
+/** Static (one-time) config for the Skia renderer — captured once per race so
+ *  the array references stay stable and React.memo can bail out. */
+export interface RaceStaticConfig {
+  windmills: { x: number; y: number; width: number }[];
+  pendulums: { anchorX: number; anchorY: number; bobRadius: number }[];
+  cradles: { anchorX: number; anchorY: number; bobRadius: number }[];
+  ballPitRadii: number[];
+  trampolines: { x: number; y: number; width: number }[];
+  speedBursts: { x: number; y: number; width: number; direction: 'left' | 'right' | 'down' }[];
 }
 
 export default function RaceScreen() {
@@ -474,9 +486,16 @@ export default function RaceScreen() {
   const doneRef = useRef(false);
   const camRef = useRef(0);
   const lastRenderRef = useRef(0);
-  const lastHudRenderRef = useRef(0);
   const camAnimY = useRef(new Animated.Value(0)).current;
   const raceShared = useRaceSharedState();
+  /** Marble metadata in engine order — set once at engine creation, never changes */
+  const marbleDataRef = useRef<MarbleData[]>([]);
+  /** Static (non-animated) config for every dynamic element — captured once on
+   *  engine creation. Stable refs let RaceCanvas avoid re-renders during the race. */
+  const staticConfigRef = useRef<RaceStaticConfig>({
+    windmills: [], pendulums: [], cradles: [], ballPitRadii: [],
+    trampolines: [], speedBursts: [],
+  });
 
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0, wm: [],
@@ -580,7 +599,11 @@ export default function RaceScreen() {
       }
     }
 
-    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement });
+    // Strict winner flag — true ONLY if player's pick actually finished 1st in the race.
+    // Unlike `won` (which means "successful round" — survived/podium/payout), this is the
+    // unambiguous "did your marble cross the finish line first" check.
+    const playerWonRace = playerPlacement === 1;
+    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
     if (selectedMarble) { won ? raceHaptics.playerWin() : raceHaptics.playerLose(); }
@@ -628,8 +651,17 @@ export default function RaceScreen() {
   useEffect(() => {
     if (countdown === 0 && engRef.current) {
       engRef.current.releaseGate();
+      playSound('go');
+    } else if (countdown > 0) {
+      playSound('countdown');
     }
   }, [countdown]);
+
+  // Audio SFX — preload on mount, unload on unmount
+  useEffect(() => {
+    preloadRaceSounds();
+    return () => { unloadRaceSounds(); };
+  }, []);
 
   // Physics loop
   useEffect(() => {
@@ -683,10 +715,25 @@ export default function RaceScreen() {
       config: trackConfig,
       raceMarbles: raceMarbles ? raceMarbles : MARBLES.map(m => getSkinnedMarble(m, equippedSkins)),
       onHaptic: (type: HapticType, marbleId: string) => {
-        if (!playerPickId || marbleId === playerPickId) triggerRaceHaptic(type);
+        if (!playerPickId || marbleId === playerPickId) {
+          triggerRaceHaptic(type);
+          playSound(type);
+        }
       },
     });
     engRef.current = eng;
+    // CRITICAL: must read marble order FROM the engine, not from the input.
+    // The engine shuffles marbles internally so each race has a different starting
+    // arrangement. If we use the input order here, SkiaMarbles draws the wrong
+    // marble at each physics index → red ball appears at the leader's position
+    // when actually a different marble is leading.
+    marbleDataRef.current = eng.marbles;
+
+    // Capture static element configs once. No physics side effects — the engine
+    // exposes this directly. Stored in refs so RaceCanvas's React.memo can bail
+    // out of re-renders for the duration of the race.
+    staticConfigRef.current = eng.getStaticConfig();
+
     let last = performance.now();
     const totalH = trackConfig.totalHeight;
     const loop = (t: number) => {
@@ -695,11 +742,16 @@ export default function RaceScreen() {
       const st: RaceState = eng.step(dt);
 
       // === Hybrid camera: follow player's marble, snap to leader after finish ===
+      // Single O(n) pass: track both the deepest Y (camera target) and the leader marble.
+      // We previously sorted all marbles every RAF (60 Hz × 8-element sort + array copy),
+      // but sortedByY is only consumed by commentary which throttles to once per 4s —
+      // so the eager sort is deferred to that block (see below).
       let followY = 0;
       let leaderY = 0;
-      const sortedByY = [...st.marbles].sort((a, b) => b.y - a.y);
+      let leaderMarble: typeof st.marbles[0] | null = null;
       for (let i = 0; i < st.marbles.length; i++) {
-        if (st.marbles[i].y > leaderY) leaderY = st.marbles[i].y;
+        const m = st.marbles[i];
+        if (m.y > leaderY) { leaderY = m.y; leaderMarble = m; }
       }
 
       if (playerPickId) {
@@ -734,6 +786,13 @@ export default function RaceScreen() {
       // === Race commentary ===
       const now = t;
       if (now - lastCommentaryTime.current > 4000 && st.elapsed > 1500) {
+        // Sort lazily — only when we're actually going to evaluate commentary (every 4s).
+        const sortedByY = [...st.marbles].sort((a, b) => {
+          if (a.finished && !b.finished) return -1;
+          if (!a.finished && b.finished) return 1;
+          if (a.finished && b.finished) return a.finishTime - b.finishTime;
+          return b.y - a.y;
+        });
         const leader = sortedByY[0];
         const second = sortedByY[1];
         if (leader && second) {
@@ -743,6 +802,7 @@ export default function RaceScreen() {
           // Lead change
           if (leader.data.id !== lastLeaderId.current && lastLeaderId.current !== null) {
             msg = `${leader.data.name} takes the lead!`;
+            playSound('leadChange');
           }
           // Big gap
           else if (gap > 120) {
@@ -774,15 +834,20 @@ export default function RaceScreen() {
         }
         lastLeaderId.current = leader?.data.id ?? null;
       }
-      if (lastLeaderId.current === null && sortedByY[0]) {
-        lastLeaderId.current = sortedByY[0].data.id;
+      if (lastLeaderId.current === null && leaderMarble) {
+        lastLeaderId.current = leaderMarble.data.id;
       }
 
       // Detect first marble to finish — trigger celebration (runs at full RAF rate)
       if (!firstFinishShown.current) {
-        const winner = st.marbles.find(m => m.finished);
-        if (winner) {
+        const finishedMarbles = st.marbles.filter(m => m.finished);
+        if (finishedMarbles.length > 0) {
+          // Pick the marble with the EARLIEST finishTime (not first by array index)
+          const winner = finishedMarbles.reduce((best, m) =>
+            m.finishTime < best.finishTime ? m : best
+          );
           firstFinishShown.current = true;
+          playSound('finish');
           setFirstFinisher({ name: winner.data.name, color: winner.data.colorLight });
           Animated.sequence([
             Animated.spring(firstAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 6 }),
@@ -792,12 +857,62 @@ export default function RaceScreen() {
         }
       }
 
-      // Throttle React state updates — camera is handled by SharedValue (60fps),
-      // element positions update at ~30fps, reducing React re-renders by half
-      const renderInterval = USE_SKIA_CANVAS ? 33 : 16;
-      if (st.isFinished || t - lastRenderRef.current >= renderInterval) {
+      // === PERFORMANCE: write every animated value to SharedValues every frame.
+      // Skia consumes these on the UI thread — no React re-render needed.
+      // The React state below only carries leaderboard + timer at ~5Hz.
+
+      // Marbles
+      const flatPos: number[] = [];
+      for (let i = 0; i < st.marbles.length; i++) {
+        flatPos.push(st.marbles[i].x, st.marbles[i].y);
+      }
+      raceShared.marblePositions.value = flatPos;
+
+      // Windmills — only the angle changes per frame
+      const wmAngles: number[] = [];
+      for (let i = 0; i < st.windmills.length; i++) wmAngles.push(st.windmills[i].angle);
+      raceShared.windmillAngles.value = wmAngles;
+
+      // Pendulums — only bob position changes
+      const penBobs: number[] = [];
+      for (let i = 0; i < st.pendulums.length; i++) {
+        penBobs.push(st.pendulums[i].bobX, st.pendulums[i].bobY);
+      }
+      raceShared.pendulumBobs.value = penBobs;
+
+      // Cradles
+      const crBobs: number[] = [];
+      for (let i = 0; i < st.cradles.length; i++) {
+        crBobs.push(st.cradles[i].bobX, st.cradles[i].bobY);
+      }
+      raceShared.cradleBobs.value = crBobs;
+
+      // Ball pit balls
+      const bpPos: number[] = [];
+      for (let i = 0; i < st.ballPitBalls.length; i++) {
+        bpPos.push(st.ballPitBalls[i].x, st.ballPitBalls[i].y);
+      }
+      raceShared.ballPitPositions.value = bpPos;
+
+      // Speed bursts (just per-pad active flag)
+      const sbActive: number[] = [];
+      for (let i = 0; i < st.speedBursts.length; i++) sbActive.push(st.speedBursts[i].active ? 1 : 0);
+      raceShared.speedBurstActive.value = sbActive;
+
+      // Doomsday bar
+      if (st.doomsdayBar) {
+        raceShared.doomsdayBarY.value = st.doomsdayBar.y;
+        raceShared.doomsdayBarActive.value = st.doomsdayBar.active ? 1 : 0;
+      } else {
+        raceShared.doomsdayBarActive.value = 0;
+      }
+
+      // HUD/canvas update rate. Marble positions still go through SharedValues
+      // for 60fps marble rendering; everything else uses React state at this rate.
+      const hudInterval = 100;
+      if (st.isFinished || t - lastRenderRef.current >= hudInterval) {
         lastRenderRef.current = t;
-        const marblePos = st.marbles.map(m => ({ data: m.data, x: m.x, y: m.y, finished: m.finished }));
+        const marblePos = st.marbles.map(m => ({ data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime }));
         setFrame({
           pos: marblePos,
           elapsed: st.elapsed,
@@ -822,7 +937,15 @@ export default function RaceScreen() {
   const vBuf = SH / SCALE * 0.7;
   const vMin = camY - vBuf, vMax = camY + SH / SCALE + vBuf;
   const vis = (y: number) => y > vMin && y < vMax;
-  const sorted = [...pos].sort((a, b) => b.y - a.y).slice(0, 5);
+  // Memoize the leaderboard top-5 by `pos` reference — HUD ticks at ~10Hz and the
+  // sort previously ran on every parent re-render (including renders triggered by
+  // unrelated state). New array reference only when frame.pos actually changes.
+  const sorted = useMemo(() => [...pos].sort((a, b) => {
+    if (a.finished && !b.finished) return -1;
+    if (!a.finished && b.finished) return 1;
+    if (a.finished && b.finished) return (a.finishTime || 0) - (b.finishTime || 0);
+    return b.y - a.y;
+  }).slice(0, 5), [pos]);
   const courseName = COURSES.find(c => c.id === selectedCourseId)?.name || 'RACE';
 
   const bgSprite = useMemo(() => getBgSprite(trackConfig.bgImage), [trackConfig]);
@@ -834,7 +957,13 @@ export default function RaceScreen() {
   const bgTileCount = Math.ceil(totalScreenH / SH) + 1;
 
   // Theme-aware container background (fallback behind tiles)
-  const containerBg = { grass: '#2a5a1a', lava: '#3a1008', ice: '#0a1a3a', cyber: '#1a0a2e' }[trackConfig.bgImage] || '#2a5a1a';
+  const containerBgMap: Record<string, string> = {
+    grass: '#2a5a1a', lava: '#3a1008', ice: '#0a1a3a', cyber: '#1a0a2e',
+    beach: '#6a9ab0', forest: '#0a2a0a', desert: '#8b6914', sunset: '#6a2040',
+    night: '#050510', candy: '#cc1080', ocean: '#001a4a', volcanic: '#1a0000',
+    neon: '#0a0a0a', snow: '#b0c8e0',
+  };
+  const containerBg = containerBgMap[trackConfig.bgImage] || '#2a5a1a';
 
   return (
     <View style={[st.container, { backgroundColor: containerBg }]}>
@@ -852,6 +981,8 @@ export default function RaceScreen() {
             shakeX={0}
             shakeY={0}
             marbles={pos}
+            marbleData={marbleDataRef.current}
+            marblePositions={raceShared.marblePositions}
             windmills={wm}
             pendulums={pendulums}
             ballPitBalls={ballPitBalls}
@@ -860,6 +991,59 @@ export default function RaceScreen() {
             doomsdayBar={frame.doomsdayBar}
             countdown={countdown}
           />
+          {/* Slot numbers — rendered as plain RN Text overlay so they're visible
+              regardless of Skia font loading. Scrolls with the camera. */}
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', left: 0, top: 0, width: SW,
+              transform: [{ translateY: camAnimY }],
+            }}
+          >
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((rank) => {
+              const slotCenterY = tv.finishSY + tv.chanDepth - (rank - 0.5) * tv.slotH;
+              const color = rank === 1 ? '#FFD700' : rank === 2 ? '#C0C0C0' : rank === 3 ? '#CD7F32' : '#FFFFFF';
+              return (
+                <Text
+                  key={`slotnum${rank}`}
+                  style={{
+                    position: 'absolute',
+                    left: tv.chanEX + ex(10),
+                    top: slotCenterY - ex(11),
+                    width: ex(24),
+                    fontFamily: Fonts.bodyBold,
+                    fontSize: 18,
+                    color,
+                    textAlign: 'center',
+                    textShadowColor: 'rgba(0,0,0,0.9)',
+                    textShadowOffset: { width: 1, height: 1 },
+                    textShadowRadius: 2,
+                  }}
+                >
+                  {rank}
+                </Text>
+              );
+            })}
+            {/* FINISH banner — rendered as RN text so it's never font-blocked */}
+            <Text
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                left: 0, right: 0,
+                top: tv.finishSY - ex(40),
+                fontFamily: Fonts.display,
+                fontSize: 22,
+                color: '#000',
+                textAlign: 'center',
+                letterSpacing: 2,
+                textShadowColor: 'rgba(255,255,255,0.6)',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 2,
+              }}
+            >
+              FINISH
+            </Text>
+          </Animated.View>
         </Animated.View>
       ) : (
       <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>

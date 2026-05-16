@@ -38,9 +38,13 @@ export interface RaceResult {
   positions: { marble: MarbleData; time: number }[];
   playerPick: MarbleData | null;
   betAmount: number;
-  won: boolean;
+  won: boolean; // mode-specific success (advanced/got payout) — drives Win/Loss screen choice
   payout: number;
   playerPlacement: number; // 1-indexed finish position, 0 if no pick
+  // Strict 1st-place flag — true ONLY when player's pick finished 1st in the race.
+  // Use this for: streak counting, server analytics, "YOU WON!" celebrations.
+  // Distinct from `won` because tournament/playoff use "survived = won" semantics.
+  playerWonRace: boolean;
 }
 
 export interface CoinTransaction {
@@ -480,8 +484,9 @@ export const useGameStore = create<GameState>()(
           : { wins: prev.wins, losses: prev.losses + 1 };
       });
 
-      // Player win/loss streak
-      if (result.won) {
+      // Player win/loss streak — strict: only count actual 1st-place finishes,
+      // not tournament survivals. Prevents inflated win counts in elimination modes.
+      if (result.playerWonRace) {
         newTotalWins++;
         newStreak++;
         newBest = Math.max(newBest, newStreak);
@@ -535,7 +540,9 @@ export const useGameStore = create<GameState>()(
       betAmount: result.betAmount,
       payout: result.payout,
       playerPlacement: result.playerPlacement,
-      won: result.won,
+      // Sync the strict 1st-place flag so server-side "wins" analytics aren't
+      // inflated by tournament-round survivals.
+      won: result.playerWonRace,
       currentCoins: newCoins,
       odds: result.playerPick ? currentOdds[result.playerPick.id] : undefined,
       winnerTime: result.positions[0]?.time,
@@ -631,6 +638,20 @@ export const useGameStore = create<GameState>()(
     if ((mode ?? 'bettor') === 'franchise' && marbleId) {
       const otherIds = MARBLES.filter(m => m.id !== marbleId).map(m => m.id);
       rivalMarbleId = otherIds[Math.floor(Math.random() * otherIds.length)];
+    }
+
+    // Season starter bonus — returning players get coins for starting a new season
+    // Season 1: no bonus (fresh start). Season 2+: 500 + 250 per season (caps at 2500)
+    if (num >= 2) {
+      const { coins, coinHistory } = get();
+      const bonus = Math.min(2500, 500 + (num - 2) * 250);
+      set({
+        coins: coins + bonus,
+        coinHistory: [
+          { type: 'payout' as const, amount: bonus, description: `Season ${num} Starter Bonus`, timestamp: Date.now() },
+          ...coinHistory,
+        ].slice(0, 200),
+      });
     }
 
     set({
@@ -896,7 +917,42 @@ export const useGameStore = create<GameState>()(
       playoffs.status = 'complete';
       playoffs.championId = stillAlive[0];
       const champion = MARBLES.find(m => m.id === stillAlive[0]);
+
+      // --- Playoff placement rewards ---
+      // Franchise: reward based on player marble's final placement
+      // Bettor: flat completion bonus for finishing the season
+      const playerMarbleId = season.seasonMarbleId;
+      const isFranchise = season.seasonMode === 'franchise';
+      let playoffPayout = 0;
+      let playoffDesc = '';
+
+      if (isFranchise && playerMarbleId) {
+        // Determine player's final placement (1st = champion, 2nd = last eliminated, etc.)
+        // allEliminated[0] is the first marble out (worst rank).
+        // allEliminated[N-1] is the last marble eliminated before the champion = runner-up (2nd).
+        // Placement formula: N - index + 1 → first_out maps to (N+1) (worst), last_out maps to 2 (runner-up).
+        const allEliminated = [...playoffs.eliminatedIds];
+        const placement = playerMarbleId === stillAlive[0]
+          ? 1
+          : allEliminated.length - allEliminated.indexOf(playerMarbleId) + 1;
+
+        // Reward tiers: 1st=5000, 2nd=2500, 3rd=1000
+        if (placement === 1) { playoffPayout = 5000; playoffDesc = 'Playoff Champion'; }
+        else if (placement === 2) { playoffPayout = 2500; playoffDesc = 'Playoff Runner-Up'; }
+        else if (placement === 3) { playoffPayout = 1000; playoffDesc = 'Playoff Top 3'; }
+      } else {
+        // Bettor mode: flat 500 coin bonus for completing the full season
+        playoffPayout = 500;
+        playoffDesc = 'Season Complete';
+      }
+
+      const { coins, coinHistory } = get();
       set({
+        coins: coins + playoffPayout,
+        coinHistory: playoffPayout > 0 ? [
+          { type: 'payout' as const, amount: playoffPayout, description: playoffDesc, timestamp: Date.now() },
+          ...coinHistory,
+        ].slice(0, 200) : coinHistory,
         season: {
           ...season,
           playoffs,

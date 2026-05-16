@@ -65,6 +65,14 @@ function drawRotatedImage(
   canvas.restore();
 }
 
+export interface ThemeElementColors {
+  ramp: string;
+  bumper: string;
+  peg: string;
+  spring: string;
+  funnel: string;
+}
+
 export function createStaticTrackPicture(
   tv: TrackVisuals,
   sprites: SkiaThemeSprites,
@@ -74,6 +82,7 @@ export function createStaticTrackPicture(
   totalScreenW: number,
   totalScreenH: number,
   ENGINE_W: number,
+  themeColors?: ThemeElementColors,
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(
@@ -81,8 +90,11 @@ export function createStaticTrackPicture(
   );
   const defaultPaint = Skia.Paint();
 
+  // Theme-aware element colors (fall back to defaults if not provided)
+  const tc = themeColors || { ramp: '#8B5E3C', bumper: '#e74c3c', peg: '#7f8c8d', spring: '#2ecc71', funnel: '#5a3a1a' };
+
   // === RAMP SEGMENTS ===
-  const rampPaint = makePaint('#8B5E3C');
+  const rampPaint = makePaint(tc.ramp);
   const wallColorPaint = tv.wallColor ? makePaint(tv.wallColor) : null;
 
   tv.segs.forEach(s => {
@@ -96,7 +108,7 @@ export function createStaticTrackPicture(
   });
 
   // === PEG ZONE FUNNELS ===
-  const funnelPaint = makePaint('#5a3a1a');
+  const funnelPaint = makePaint(tc.funnel);
   const funnelH = ex(12);
 
   tv.pegFunnels.forEach(pf => {
@@ -110,8 +122,8 @@ export function createStaticTrackPicture(
   });
 
   // === BUMPERS & PEGS ===
-  const bumperPaint = makePaint('#e74c3c');
-  const pegPaint = makePaint('#7f8c8d');
+  const bumperPaint = makePaint(tc.bumper);
+  const pegPaint = makePaint(tc.peg);
   const shadowPaint = makePaint('rgba(0,0,0,0.25)');
   const shinePaint = makePaint('rgba(255,255,255,0.3)');
 
@@ -134,7 +146,7 @@ export function createStaticTrackPicture(
   });
 
   // === SPRINGS ===
-  const springPaint = makePaint('#2ecc71');
+  const springPaint = makePaint(tc.spring);
 
   tv.springVis.forEach(sp => {
     if (useSprites && sprites.spring) {

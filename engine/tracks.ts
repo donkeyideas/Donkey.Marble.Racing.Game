@@ -74,7 +74,7 @@ export interface TrackConfig {
   finishFunnel: FunnelData;
   springs: SpringData[];
   gravity: { x: number; y: number; scale: number };
-  bgImage: 'grass' | 'lava' | 'ice' | 'cyber';
+  bgImage: string;
   pendulums?: PendulumConfig[];
   ballPits?: BallPitConfig[];
   cradles?: CradleConfig[];
@@ -848,11 +848,21 @@ export function buildGauntlet(): TrackConfig {
 // Two parallel sine-wave walls form a winding tube from top to bottom.
 // Funnel entry captures all marble spawn positions; no marble escapes the channel.
 
-const GP_THEMES: Record<string, { bg: 'grass' | 'lava' | 'ice' | 'cyber'; wall: string }> = {
-  meadow: { bg: 'grass', wall: '#2ecc71' },
-  volcano: { bg: 'lava', wall: '#e74c3c' },
-  frozen: { bg: 'ice', wall: '#00b4d8' },
-  cyber:  { bg: 'cyber', wall: '#9333ea' },
+const GP_THEMES: Record<string, { bg: string; wall: string }> = {
+  meadow:   { bg: 'grass',    wall: '#8B5E3C' },
+  volcano:  { bg: 'lava',     wall: '#c0c0c0' },
+  frozen:   { bg: 'ice',      wall: '#d0d0d0' },
+  cyber:    { bg: 'cyber',    wall: '#00d4ff' },
+  beach:    { bg: 'beach',    wall: '#5a3520' },
+  forest:   { bg: 'forest',   wall: '#8B5E3C' },
+  desert:   { bg: 'desert',   wall: '#3a2510' },
+  sunset:   { bg: 'sunset',   wall: '#e0e0e0' },
+  night:    { bg: 'night',    wall: '#c0c0c0' },
+  candy:    { bg: 'candy',    wall: '#ffffff' },
+  ocean:    { bg: 'ocean',    wall: '#e0c060' },
+  volcanic: { bg: 'volcanic', wall: '#c0c0c0' },
+  neon:     { bg: 'neon',     wall: '#00ff87' },
+  snow:     { bg: 'snow',     wall: '#5a3520' },
 };
 
 // Seeded PRNG for Grand Prix variation

@@ -54,6 +54,9 @@ export default function ProfileScreen() {
   const passLevel = useGameStore((s) => s.passLevel);
   const passXp = useGameStore((s) => s.passXp);
   const marbleStats = useGameStore((s) => s.marbleStats);
+  const firebaseDisplayName = useGameStore((s) => s.firebaseDisplayName);
+  const firebaseEmail = useGameStore((s) => s.firebaseEmail);
+  const firebaseUid = useGameStore((s) => s.firebaseUid);
 
   const winRate = totalRaces > 0 ? Math.round((totalWins / totalRaces) * 100) : 0;
 
@@ -95,6 +98,11 @@ export default function ProfileScreen() {
                 <Text style={[styles.leagueText, { color: league.color }]}>{league.name} LEAGUE</Text>
               </View>
               <Text style={styles.levelText}>Level {passLevel}</Text>
+              {firebaseUid && (
+                <Text style={styles.connectedText}>
+                  {'\u2713'} {firebaseEmail || firebaseDisplayName || 'Connected'}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -259,6 +267,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.whiteAlpha40,
     marginTop: 2,
+  },
+  connectedText: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: '#2ecc71',
+    marginTop: 3,
   },
 
   /* ===== LEAGUE PROGRESS ===== */

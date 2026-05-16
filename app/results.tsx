@@ -11,14 +11,18 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Colors, Fonts, MarbleData } from '../theme';
+import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
 import { useGameStore, GameMode, SeasonMarbleStats } from '../state/gameStore';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import { ALL_COURSES as COURSES } from '../data/courses';
+import { getNextAvailableRace } from '../data/seasonSchedule';
 
 const THEME_STAT_MAP: Record<string, keyof SeasonMarbleStats> = {
   meadow: 'speed', volcano: 'power', frozen: 'bounce', cyber: 'luck',
+  beach: 'speed', forest: 'speed', desert: 'power', sunset: 'power',
+  night: 'luck', candy: 'bounce', ocean: 'bounce', volcanic: 'power',
+  neon: 'luck', snow: 'bounce',
 };
 const STAT_LABELS: Record<keyof SeasonMarbleStats, string> = {
   speed: 'SPD', power: 'PWR', bounce: 'BNC', luck: 'LCK',
@@ -31,6 +35,19 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const CONFETTI_COLORS = ['#ff6b6b', '#4dabf7', '#69db7c', '#ffd43b', '#da77f2', '#ff922b', '#ffffff'];
 const CONFETTI_COUNT = 24;
+
+// Convert 1-indexed placement to ordinal string ("1st", "2nd", "21st", "23rd", etc.)
+function ordinal(n: number): string {
+  if (n <= 0) return '—';
+  const lastTwo = n % 100;
+  if (lastTwo >= 11 && lastTwo <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 // ── Confetti piece ──────────────────────────────────────────────────────────
 function ConfettiPiece({ index }: { index: number }) {
@@ -238,6 +255,8 @@ function getModeDest(mode: GameMode): { primary: string; primaryLabel: string; s
       return { primary: '/tournament-bracket', primaryLabel: 'VIEW BRACKET', secondary: '/lobby', secondaryLabel: 'BACK TO LOBBY' };
     case 'playoff':
       return { primary: '/playoffs', primaryLabel: 'BACK TO PLAYOFFS', secondary: '/lobby', secondaryLabel: 'BACK TO LOBBY' };
+    case 'multiplayer_tournament':
+      return { primary: '/multiplayer-lobby', primaryLabel: 'BACK TO LOBBY', secondary: '/lobby', secondaryLabel: 'MAIN MENU' };
     case 'bet':
     default:
       return { primary: '/lobby', primaryLabel: 'NEXT RACE' };
@@ -277,6 +296,46 @@ function WinScreen() {
     router.replace(dest.secondary as any || '/lobby');
   };
 
+  // Season "NEXT RACE" — skip season hub, go straight to betting
+  const isSeason = activeMode.type === 'season';
+  const nextSeasonRace = isSeason && season?.schedule ? getNextAvailableRace(season.schedule) : null;
+  const canNextSeasonRace = isSeason && !!nextSeasonRace;
+  const handleNextSeasonRace = () => {
+    if (!nextSeasonRace || !season) return;
+    resetBet();
+    useGameStore.getState().selectCourse(nextSeasonRace.courseId);
+    useGameStore.getState().setActiveMode({
+      type: 'season',
+      weekNumber: nextSeasonRace.weekNumber,
+      raceIndex: nextSeasonRace.raceIndex,
+    });
+    if (season.seasonMode === 'franchise' && season.seasonMarbleId) {
+      useGameStore.getState().selectMarble(MARBLES.find(m => m.id === season.seasonMarbleId)!);
+    } else {
+      useGameStore.getState().selectMarble(null as any);
+    }
+    useGameStore.getState().setBetAmount(100);
+    router.replace('/betting');
+  };
+
+  // Tournament "NEXT ROUND" — skip bracket, go straight to next race
+  const canNextRound = isTournament && !isTournamentChampion && tournaments && tournaments.currentRound < 7;
+  const handleNextRound = () => {
+    if (!tournaments || !tournaments.playerPickId) return;
+    const round = tournaments.rounds[tournaments.currentRound];
+    if (!round) return;
+    resetBet();
+    useGameStore.getState().selectCourse(round.courseId);
+    useGameStore.getState().setActiveMode({
+      type: 'tournament',
+      tournamentId: tournaments.tournamentId,
+      round: tournaments.currentRound,
+    });
+    useGameStore.getState().selectMarble(MARBLES.find(m => m.id === tournaments.playerPickId)!);
+    useGameStore.getState().setBetAmount(0);
+    router.replace('/race');
+  };
+
   const topFinishers = lastResult.positions.slice(0, 4);
 
   return (
@@ -293,22 +352,36 @@ function WinScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Title — placement-aware */}
+        {/* Title — placement-aware. Tournament shows ADVANCED unless the player's pick
+            actually won the race (CHAMPION for final round). Other modes use strict
+            placement-based wording so players never see "WON!" when they didn't come 1st. */}
         <Text style={styles.winTitle}>
           {isTournament
-            ? isTournamentChampion ? 'CHAMPION!' : 'SURVIVED!'
+            ? isTournamentChampion
+              ? 'CHAMPION!'
+              : lastResult.playerWonRace
+                ? 'WON ROUND!'
+                : 'ADVANCED!'
             : isQuickRace
-              ? 'RACE COMPLETE!'
+              ? lastResult.playerWonRace ? 'YOUR MARBLE WON!' : 'RACE COMPLETE!'
               : isFranchise
-                ? lastResult.playerPlacement === 1
+                ? lastResult.playerWonRace
                   ? 'YOUR MARBLE WON!'
                   : 'PODIUM FINISH!'
-                : lastResult.playerPlacement === 1
+                : lastResult.playerWonRace
                   ? 'YOU WON!'
                   : lastResult.playerPlacement === 2
                     ? 'SO CLOSE!'
                     : 'TOP 3!'}
         </Text>
+
+        {/* Always show the actual placement so the title can never be misread.
+            Example: "Your pick finished 2nd of 8". */}
+        {lastResult.playerPlacement > 0 && (
+          <Text style={styles.placementSubtitle}>
+            Your pick finished {ordinal(lastResult.playerPlacement)} of {lastResult.positions.length}
+          </Text>
+        )}
 
         {/* Payout — show net profit (payout minus original bet) */}
         {isTournament && (
@@ -338,7 +411,11 @@ function WinScreen() {
           </>
         )}
         {isQuickRace && (
-          <Text style={styles.winCoinsLabel}>Your marble finished 1st!</Text>
+          <Text style={styles.winCoinsLabel}>
+            {lastResult.playerWonRace
+              ? 'Your marble finished 1st!'
+              : `Your marble finished ${ordinal(lastResult.playerPlacement)}.`}
+          </Text>
         )}
 
         {/* Balance pill */}
@@ -374,22 +451,66 @@ function WinScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          {/* Primary action */}
+          {/* Tournament: NEXT ROUND as primary action */}
+          {canNextRound && (
+            <Pressable
+              onPress={handleNextRound}
+              style={({ pressed }) => [
+                styles.shareBtn,
+                pressed && styles.pressed,
+              ]}
+            >
+              <LinearGradient
+                colors={['#2ecc71', '#27ae60']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.shareBtnGradient}
+              >
+                <Text style={styles.shareBtnText}>NEXT ROUND</Text>
+              </LinearGradient>
+            </Pressable>
+          )}
+
+          {/* Season: NEXT RACE as primary action */}
+          {canNextSeasonRace && (
+            <Pressable
+              onPress={handleNextSeasonRace}
+              style={({ pressed }) => [
+                styles.shareBtn,
+                pressed && styles.pressed,
+              ]}
+            >
+              <LinearGradient
+                colors={['#2ecc71', '#27ae60']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.shareBtnGradient}
+              >
+                <Text style={styles.shareBtnText}>NEXT RACE</Text>
+              </LinearGradient>
+            </Pressable>
+          )}
+
+          {/* Primary action (VIEW BRACKET for tournaments, or mode-specific) */}
           <Pressable
             onPress={handlePrimary}
             style={({ pressed }) => [
-              styles.shareBtn,
+              (canNextRound || canNextSeasonRace) ? styles.ghostBtnWin : styles.shareBtn,
               pressed && styles.pressed,
             ]}
           >
-            <LinearGradient
-              colors={[Colors.blue, Colors.blueDark]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.shareBtnGradient}
-            >
-              <Text style={styles.shareBtnText}>{dest.primaryLabel}</Text>
-            </LinearGradient>
+            {(canNextRound || canNextSeasonRace) ? (
+              <Text style={styles.ghostBtnWinText}>{dest.primaryLabel}</Text>
+            ) : (
+              <LinearGradient
+                colors={[Colors.blue, Colors.blueDark]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.shareBtnGradient}
+              >
+                <Text style={styles.shareBtnText}>{dest.primaryLabel}</Text>
+              </LinearGradient>
+            )}
           </Pressable>
 
           {/* Secondary action */}
@@ -432,6 +553,28 @@ function LossScreen() {
   const tournamentTotalEarned = isTournament && tournaments ? (tournaments.totalEarned || 0) : 0;
   const tournamentEntryFee = isTournament && tournaments ? tournaments.entryFee : 0;
   const tournamentNet = tournamentTotalEarned - tournamentEntryFee;
+
+  // Season "NEXT RACE" — skip season hub, go straight to betting
+  const isSeason = activeMode.type === 'season';
+  const nextSeasonRace = isSeason && season?.schedule ? getNextAvailableRace(season.schedule) : null;
+  const canNextSeasonRace = isSeason && !!nextSeasonRace;
+  const handleNextSeasonRace = () => {
+    if (!nextSeasonRace || !season) return;
+    resetBet();
+    useGameStore.getState().selectCourse(nextSeasonRace.courseId);
+    useGameStore.getState().setActiveMode({
+      type: 'season',
+      weekNumber: nextSeasonRace.weekNumber,
+      raceIndex: nextSeasonRace.raceIndex,
+    });
+    if (season.seasonMode === 'franchise' && season.seasonMarbleId) {
+      useGameStore.getState().selectMarble(MARBLES.find(m => m.id === season.seasonMarbleId)!);
+    } else {
+      useGameStore.getState().selectMarble(null as any);
+    }
+    useGameStore.getState().setBetAmount(100);
+    router.replace('/betting');
+  };
 
   const handlePrimary = () => {
     resetBet();
@@ -512,22 +655,46 @@ function LossScreen() {
 
         {/* Actions */}
         <View style={styles.actions}>
-          {/* Primary action */}
+          {/* Season: NEXT RACE as primary action */}
+          {canNextSeasonRace && (
+            <Pressable
+              onPress={handleNextSeasonRace}
+              style={({ pressed }) => [
+                styles.tryAgainBtn,
+                pressed && styles.pressed,
+              ]}
+            >
+              <LinearGradient
+                colors={[Colors.yellowBright, Colors.yellow]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.tryAgainGradient}
+              >
+                <Text style={styles.tryAgainText}>NEXT RACE</Text>
+              </LinearGradient>
+            </Pressable>
+          )}
+
+          {/* Primary action (BACK TO SEASON, etc.) */}
           <Pressable
             onPress={handlePrimary}
             style={({ pressed }) => [
-              styles.tryAgainBtn,
+              canNextSeasonRace ? styles.ghostBtnLoss : styles.tryAgainBtn,
               pressed && styles.pressed,
             ]}
           >
-            <LinearGradient
-              colors={[Colors.yellowBright, Colors.yellow]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.tryAgainGradient}
-            >
-              <Text style={styles.tryAgainText}>{dest.primaryLabel}</Text>
-            </LinearGradient>
+            {canNextSeasonRace ? (
+              <Text style={styles.ghostBtnLossText}>{dest.primaryLabel}</Text>
+            ) : (
+              <LinearGradient
+                colors={[Colors.yellowBright, Colors.yellow]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.tryAgainGradient}
+              >
+                <Text style={styles.tryAgainText}>{dest.primaryLabel}</Text>
+              </LinearGradient>
+            )}
           </Pressable>
 
           {/* Secondary action */}
@@ -614,6 +781,14 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 0,
     marginBottom: 8,
+  },
+  placementSubtitle: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 17,
+    color: Colors.ink,
+    opacity: 0.75,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   winPayout: {
     fontFamily: Fonts.display,

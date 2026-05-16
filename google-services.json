@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "791385622060",
+    "firebase_url": "https://donkey-marble-racing-default-rtdb.firebaseio.com",
     "project_id": "donkey-marble-racing",
     "storage_bucket": "donkey-marble-racing.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.donkeymarble.racing"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "791385622060-tutdr5lldpl3rme6bo1cgqnn70ogdi4j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.donkeymarble.racing",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "791385622060-goted95ii4ea0emlb046qeni65icb8a1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA4k7sHWNUNZyjfGHyk9iIELGqXQzUb_bs"
@@ -20,7 +34,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "791385622060-goted95ii4ea0emlb046qeni65icb8a1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "791385622060-i2hc8dntmhvfm91gkr0g131ha0abk3j8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.donkeymarble.racing"
+              }
+            }
+          ]
         }
       }
     }
