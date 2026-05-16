@@ -71,16 +71,45 @@ export interface NationalEventState {
   } | null;
 }
 
-/** Get current time in Eastern timezone */
-function getEasternTime(): Date {
+/**
+ * Get Eastern Time offset in hours (-5 EST or -4 EDT).
+ * US DST: 2nd Sunday of March at 2am → 1st Sunday of November at 2am.
+ */
+function getETOffset(): number {
   const now = new Date();
-  const eastern = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  return eastern;
+  const month = now.getUTCMonth(); // 0-indexed
+  const day = now.getUTCDate();
+  const dow = now.getUTCDay(); // 0=Sun
+
+  // Apr–Oct: always EDT (-4)
+  if (month > 2 && month < 10) return -4;
+  // Dec–Feb: always EST (-5)
+  if (month < 2 || month === 11) return -5;
+  // March: EDT starts 2nd Sunday (day 8–14)
+  if (month === 2) {
+    // Find the 2nd Sunday: first Sunday (1-based) in March, add 7
+    const firstDayDow = new Date(Date.UTC(now.getUTCFullYear(), 2, 1)).getUTCDay();
+    const secondSunday = firstDayDow === 0 ? 8 : 8 + (7 - firstDayDow);
+    return day >= secondSunday ? -4 : -5;
+  }
+  // November: EST starts 1st Sunday (day 1–7)
+  const firstDayDow = new Date(Date.UTC(now.getUTCFullYear(), 10, 1)).getUTCDay();
+  const firstSunday = firstDayDow === 0 ? 1 : 8 - firstDayDow;
+  return day >= firstSunday ? -5 : -4;
+}
+
+/** Get the current hour in Eastern Time (0–23). Works on Hermes/RN. */
+function getEasternHour(): number {
+  const now = new Date();
+  const utcH = now.getUTCHours();
+  return ((utcH + getETOffset()) % 24 + 24) % 24;
 }
 
 /** Get today's date string in ET (YYYY-MM-DD) */
 export function getETDateString(): string {
-  const et = getEasternTime();
+  const now = new Date();
+  const offsetMs = getETOffset() * 3600000;
+  const et = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + offsetMs);
   const y = et.getFullYear();
   const m = String(et.getMonth() + 1).padStart(2, '0');
   const d = String(et.getDate()).padStart(2, '0');
@@ -89,8 +118,7 @@ export function getETDateString(): string {
 
 /** Check if a national event is currently live (past its start hour today) */
 export function isEventLive(event: NationalEvent): boolean {
-  const et = getEasternTime();
-  return et.getHours() >= event.startHourET;
+  return getEasternHour() >= event.startHourET;
 }
 
 /** Check if user already completed this event today */
@@ -108,8 +136,8 @@ export function getEventTimeText(event: NationalEvent, state: NationalEventState
   if (live) return `LIVE NOW · Started at ${formatHour(event.startHourET)} ET`;
 
   // Not yet live today — show countdown
-  const et = getEasternTime();
-  const hoursLeft = event.startHourET - et.getHours();
+  const currentHour = getEasternHour();
+  const hoursLeft = event.startHourET - currentHour;
   if (hoursLeft === 1) return `Starts in 1 hour · ${formatHour(event.startHourET)} ET`;
   return `Starts in ${hoursLeft}hrs · ${formatHour(event.startHourET)} ET`;
 }

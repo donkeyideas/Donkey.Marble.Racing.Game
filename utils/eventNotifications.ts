@@ -74,12 +74,15 @@ export async function scheduleEventNotifications(): Promise<boolean> {
   // Cancel all existing scheduled notifications to avoid duplicates
   await Notifications.cancelAllScheduledNotificationsAsync();
 
-  // Get the user's timezone offset relative to ET
+  // Get the user's timezone offset relative to ET (in minutes)
+  // etOffsetMinutes = local_time - ET_time (negative if local is behind ET)
   const now = new Date();
-  const etString = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
-  const etDate = new Date(etString);
-  const localDate = new Date(now.toLocaleString('en-US'));
-  const etOffsetMinutes = Math.round((localDate.getTime() - etDate.getTime()) / 60000);
+  const localOffsetMin = now.getTimezoneOffset(); // UTC - local, in minutes (e.g., 480 for PST)
+  const month = now.getUTCMonth();
+  const etOffsetHours = (month > 2 && month < 10) ? -4 : -5; // simplified DST
+  // local - ET = (-localOffsetMin) - (etOffsetHours * 60)
+  // e.g., PST vs EST: (-480) - (-300) = -180 (PST is 3h behind ET)
+  const etOffsetMinutes = -localOffsetMin - (etOffsetHours * 60);
 
   for (const event of NATIONAL_EVENTS) {
     // 5 min before the event hour → XX:55 of the previous hour
