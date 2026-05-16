@@ -9,9 +9,14 @@ import { triggerRaceHaptic, raceHaptics, HapticType } from '../utils/haptics';
 import { buildTrack, TrackConfig } from '../engine/tracks';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../assets/kenney/spriteMap';
+import RaceCanvas from '../rendering/RaceCanvas';
+import { useRaceSharedState } from '../rendering/raceSharedState';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
 const USE_SPRITE_RENDERING = true;
+
+/** Toggle Skia Canvas rendering (GPU-accelerated, single canvas) */
+const USE_SKIA_CANVAS = true;
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const ENGINE_W = 400;
@@ -469,7 +474,9 @@ export default function RaceScreen() {
   const doneRef = useRef(false);
   const camRef = useRef(0);
   const lastRenderRef = useRef(0);
+  const lastHudRenderRef = useRef(0);
   const camAnimY = useRef(new Animated.Value(0)).current;
+  const raceShared = useRaceSharedState();
 
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0, wm: [],
@@ -721,6 +728,8 @@ export default function RaceScreen() {
       camRef.current += (target - camRef.current) * smoothing;
       // Update camera via Animated — bypasses React reconciliation for silky scrolling
       camAnimY.setValue(-camRef.current * SCALE);
+      // Also update SharedValue for Skia Canvas camera (UI thread, no React re-render)
+      raceShared.cameraY.value = camRef.current;
 
       // === Race commentary ===
       const now = t;
@@ -783,8 +792,10 @@ export default function RaceScreen() {
         }
       }
 
-      // Throttle React state updates to ~60fps — physics runs independently
-      if (st.isFinished || t - lastRenderRef.current >= 16) {
+      // Throttle React state updates — camera is handled by SharedValue (60fps),
+      // element positions update at ~30fps, reducing React re-renders by half
+      const renderInterval = USE_SKIA_CANVAS ? 33 : 16;
+      if (st.isFinished || t - lastRenderRef.current >= renderInterval) {
         lastRenderRef.current = t;
         const marblePos = st.marbles.map(m => ({ data: m.data, x: m.x, y: m.y, finished: m.finished }));
         setFrame({
@@ -828,6 +839,29 @@ export default function RaceScreen() {
   return (
     <View style={[st.container, { backgroundColor: containerBg }]}>
 
+      {USE_SKIA_CANVAS ? (
+        <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>
+          <RaceCanvas
+            trackVisuals={tv}
+            bgImage={trackConfig.bgImage}
+            totalHeight={trackConfig.totalHeight}
+            engineW={ENGINE_W}
+            useSprites={USE_SPRITE_RENDERING}
+            cameraY={camY}
+            cameraShared={raceShared.cameraY}
+            shakeX={0}
+            shakeY={0}
+            marbles={pos}
+            windmills={wm}
+            pendulums={pendulums}
+            ballPitBalls={ballPitBalls}
+            cradles={cradles}
+            speedBursts={frame.speedBursts}
+            doomsdayBar={frame.doomsdayBar}
+            countdown={countdown}
+          />
+        </Animated.View>
+      ) : (
       <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>
         <Animated.View style={{ transform: [{ translateY: camAnimY }] }}>
           {/* Tiled background — scrolls with track content */}
@@ -1110,6 +1144,7 @@ export default function RaceScreen() {
           )}
         </Animated.View>
       </Animated.View>
+      )}
 
       {/* HUD */}
       <View style={st.hud}>
