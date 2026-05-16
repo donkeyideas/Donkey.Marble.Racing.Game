@@ -138,35 +138,48 @@ function computeTrackVisuals(track: TrackConfig) {
     slotH: ex(26),
     trampolineVis,
     speedBurstVis,
+    wallColor: track.wallColor,
   };
 }
 
 // Static track elements — rendered once, never re-rendered during race
 // React.memo prevents React from diffing 100+ unchanged elements every frame
 const StaticTrackElements = React.memo(function StaticTrackElements({
-  tv, themeSprites, trackConfig,
+  tv, themeSprites,
 }: {
   tv: ReturnType<typeof computeTrackVisuals>;
   themeSprites: ThemeSprites;
-  trackConfig: TrackConfig;
 }) {
   return (
     <>
       {/* Ramp segments */}
-      {tv.segs.map((s, i) => USE_SPRITE_RENDERING ? (
-        <Image key={`s${i}`} source={themeSprites.ramp} resizeMode="stretch" style={{
-          position: 'absolute', left: s.left - 6, top: s.top - 1,
-          width: s.width + 12, height: RAMP_H + 2, zIndex: 2,
-          transform: [{ rotate: `${s.deg}deg` }],
-        }} />
-      ) : (
-        <View key={`s${i}`} style={{
-          position: 'absolute', left: s.left - 6, top: s.top - 1,
-          width: s.width + 12, height: RAMP_H + 2,
-          backgroundColor: '#8B5E3C', borderWidth: 1.5, borderColor: '#6B4226',
-          borderRadius: 2, zIndex: 2, transform: [{ rotate: `${s.deg}deg` }],
-        }} />
-      ))}
+      {tv.segs.map((s, i) => {
+        if (tv.wallColor) {
+          // Solid color wall — no border, thicker for seamless overlap
+          return (
+            <View key={`s${i}`} style={{
+              position: 'absolute', left: s.left - 6, top: s.top - 2,
+              width: s.width + 12, height: RAMP_H + 6,
+              backgroundColor: tv.wallColor, borderRadius: 3, zIndex: 2,
+              transform: [{ rotate: `${s.deg}deg` }],
+            }} />
+          );
+        }
+        return USE_SPRITE_RENDERING ? (
+          <Image key={`s${i}`} source={themeSprites.ramp} resizeMode="stretch" style={{
+            position: 'absolute', left: s.left - 6, top: s.top - 1,
+            width: s.width + 12, height: RAMP_H + 2, zIndex: 2,
+            transform: [{ rotate: `${s.deg}deg` }],
+          }} />
+        ) : (
+          <View key={`s${i}`} style={{
+            position: 'absolute', left: s.left - 6, top: s.top - 1,
+            width: s.width + 12, height: RAMP_H + 2,
+            backgroundColor: '#8B5E3C', borderWidth: 1.5, borderColor: '#6B4226',
+            borderRadius: 2, zIndex: 2, transform: [{ rotate: `${s.deg}deg` }],
+          }} />
+        );
+      })}
 
       {/* Peg zone funnels */}
       {tv.pegFunnels.map((pf, i) => (
@@ -530,10 +543,34 @@ export default function RaceScreen() {
       }
     } else {
       // Standard payout logic (bet, season, national, quick_race)
-      if (playerPlacement === 1) payout = betAmount + Math.round(betAmount * playerOdds);
-      else if (playerPlacement === 2) payout = betAmount + Math.round(betAmount * 0.5);
-      else if (playerPlacement === 3) payout = betAmount + Math.round(betAmount * 0.25);
-      won = playerPlacement >= 1 && playerPlacement <= 3;
+      const betType = useGameStore.getState().betType;
+      const exactaPicks = useGameStore.getState().exactaPicks;
+
+      if (betType === 'exacta' && exactaPicks.length >= 2) {
+        // Exacta: pick 1st and 2nd in exact order
+        const match = p[0].marble.id === exactaPicks[0].id && p[1].marble.id === exactaPicks[1].id;
+        if (match) {
+          const mult = (odds[exactaPicks[0].id] || 2) * (odds[exactaPicks[1].id] || 2) * 0.5;
+          payout = betAmount + Math.round(betAmount * mult);
+          won = true;
+        }
+      } else if (betType === 'trifecta' && exactaPicks.length >= 3) {
+        // Trifecta: pick top 3 in exact order
+        const match = p[0].marble.id === exactaPicks[0].id
+                   && p[1].marble.id === exactaPicks[1].id
+                   && p[2].marble.id === exactaPicks[2].id;
+        if (match) {
+          const mult = (odds[exactaPicks[0].id] || 2) * (odds[exactaPicks[1].id] || 2) * (odds[exactaPicks[2].id] || 2) * 0.3;
+          payout = betAmount + Math.round(betAmount * mult);
+          won = true;
+        }
+      } else {
+        // Standard win bet
+        if (playerPlacement === 1) payout = betAmount + Math.round(betAmount * playerOdds);
+        else if (playerPlacement === 2) payout = betAmount + Math.round(betAmount * 0.5);
+        else if (playerPlacement === 3) payout = betAmount + Math.round(betAmount * 0.25);
+        won = playerPlacement >= 1 && playerPlacement <= 3;
+      }
     }
 
     setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement });
@@ -781,16 +818,28 @@ export default function RaceScreen() {
   const themeSprites = useMemo(() => getThemeSprites(trackConfig.bgImage), [trackConfig]);
   const themeOverlay = THEME_OVERLAYS[trackConfig.bgImage] || null;
 
+  // Tile background images to cover full track height
+  const totalScreenH = ex(trackConfig.totalHeight);
+  const bgTileCount = Math.ceil(totalScreenH / SH) + 1;
+
+  // Theme-aware container background (fallback behind tiles)
+  const containerBg = { grass: '#2a5a1a', lava: '#3a1008', ice: '#0a1a3a', cyber: '#1a0a2e' }[trackConfig.bgImage] || '#2a5a1a';
+
   return (
-    <View style={st.container}>
-      <Image source={bgSprite} style={StyleSheet.absoluteFill} resizeMode="cover" />
-      {themeOverlay && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: themeOverlay }]} />
-      )}
+    <View style={[st.container, { backgroundColor: containerBg }]}>
 
       <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>
         <Animated.View style={{ transform: [{ translateY: camAnimY }] }}>
-          <StaticTrackElements tv={tv} themeSprites={themeSprites} trackConfig={trackConfig} />
+          {/* Tiled background — scrolls with track content */}
+          {Array.from({ length: bgTileCount }).map((_, ti) => (
+            <Image key={`bg${ti}`} source={bgSprite} resizeMode="cover" style={{
+              position: 'absolute', left: 0, top: ti * SH, width: SW, height: SH + 1, zIndex: 0,
+            }} />
+          ))}
+          {themeOverlay && (
+            <View style={{ position: 'absolute', left: 0, top: 0, width: SW, height: totalScreenH, backgroundColor: themeOverlay, zIndex: 0 }} />
+          )}
+          <StaticTrackElements tv={tv} themeSprites={themeSprites} />
 
           {/* Windmills */}
           {wm.map((w, i) => {
@@ -1221,7 +1270,7 @@ const st = StyleSheet.create({
     letterSpacing: 3,
   },
   commentaryWrap: {
-    position: 'absolute', top: 135, left: 0, right: 0,
+    position: 'absolute', top: 230, left: 0, right: 0,
     alignItems: 'center', zIndex: 25,
   },
   commentaryText: {

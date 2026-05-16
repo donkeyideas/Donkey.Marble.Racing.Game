@@ -530,6 +530,10 @@ function placeSpeedBursts(
 }
 
 // ═══════════════════════════════════════════
+// New obstacle placement (portals, gravity zones, water zones, magnets)
+// ═══════════════════════════════════════════
+
+// ═══════════════════════════════════════════
 // Main generator
 // ═══════════════════════════════════════════
 

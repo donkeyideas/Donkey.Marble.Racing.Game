@@ -172,19 +172,6 @@ export default function LobbyScreen() {
           />
 
           <ModeCard
-            title="GRAND PRIX"
-            subtitle="F1-style sweeping curves and racing lines"
-            colors={['#0a0a3a', '#e74c3c']}
-            badge="F1"
-            onPress={() => {
-              useGameStore.getState().selectCourse('grand-prix-1');
-              useGameStore.getState().setActiveMode({ type: 'quick_race' });
-              useGameStore.getState().resetBet();
-              router.push('/race');
-            }}
-          />
-
-          <ModeCard
             title="CUSTOM TRACK"
             subtitle="Generate tracks from any seed · Race your creations"
             colors={['#e67e22', '#d35400']}

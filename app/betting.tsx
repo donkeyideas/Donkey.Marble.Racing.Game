@@ -203,11 +203,22 @@ export default function BettingScreen() {
   const raceHistory = useGameStore((s) => s.raceHistory);
   const seasonWeek = useGameStore((s) => s.seasonWeek);
 
+  const betType = useGameStore((s) => s.betType);
+  const setBetType = useGameStore((s) => s.setBetType);
+  const exactaPicks = useGameStore((s) => s.exactaPicks);
+  const setExactaPicks = useGameStore((s) => s.setExactaPicks);
+
   const activeMode = useGameStore((s) => s.activeMode);
   const selectedCourseId = useGameStore((s) => s.selectedCourseId);
   const season = useGameStore((s) => s.season);
   const selectedOdds = selectedMarble ? odds[selectedMarble.id] : 0;
-  const potential = Math.round(betAmount * selectedOdds);
+
+  // Payout calculation based on bet type
+  const potential = betType === 'exacta' && exactaPicks.length >= 2
+    ? Math.round(betAmount * (odds[exactaPicks[0].id] || 2) * (odds[exactaPicks[1].id] || 2) * 0.5)
+    : betType === 'trifecta' && exactaPicks.length >= 3
+    ? Math.round(betAmount * (odds[exactaPicks[0].id] || 2) * (odds[exactaPicks[1].id] || 2) * (odds[exactaPicks[2].id] || 2) * 0.3)
+    : Math.round(betAmount * selectedOdds);
 
   // Franchise mode: auto-select the season marble and lock others
   const isFranchiseLocked = season?.seasonMode === 'franchise'
@@ -272,8 +283,32 @@ export default function BettingScreen() {
     return MARBLES.find(m => m.id === race.positions[0]);
   }).filter(Boolean) as MarbleData[];
 
+  // Handle marble selection for multi-pick modes
+  const handleMarbleSelect = useCallback((marble: MarbleData) => {
+    if (betType === 'win') {
+      selectMarble(marble);
+    } else {
+      // Exacta/Trifecta: build ordered picks
+      const maxPicks = betType === 'exacta' ? 2 : 3;
+      const existing = exactaPicks.findIndex(p => p.id === marble.id);
+      if (existing >= 0) {
+        // Deselect: remove and shift others down
+        const newPicks = exactaPicks.filter(p => p.id !== marble.id);
+        setExactaPicks(newPicks);
+        // Also set selectedMarble to first pick for display
+        selectMarble(newPicks[0] || (null as any));
+      } else if (exactaPicks.length < maxPicks) {
+        const newPicks = [...exactaPicks, marble];
+        setExactaPicks(newPicks);
+        selectMarble(newPicks[0]);
+      }
+    }
+  }, [betType, exactaPicks, selectMarble, setExactaPicks]);
+
   const handleLockIn = () => {
-    if (!selectedMarble) return;
+    if (betType === 'exacta' && exactaPicks.length < 2) return;
+    if (betType === 'trifecta' && exactaPicks.length < 3) return;
+    if (betType === 'win' && !selectedMarble) return;
     // Tag this as a standard bet mode (unless already set by season/national/tournament)
     const currentMode = useGameStore.getState().activeMode;
     if (currentMode.type !== 'season' && currentMode.type !== 'national_race' && currentMode.type !== 'tournament' && currentMode.type !== 'playoff') {
@@ -337,6 +372,46 @@ export default function BettingScreen() {
         </View>
       )}
 
+      {/* Bet type selector */}
+      {activeMode.type === 'bet' && (
+        <View style={styles.betTypeRow}>
+          {(['win', 'exacta', 'trifecta'] as const).map(type => (
+            <Pressable
+              key={type}
+              onPress={() => setBetType(type)}
+              style={[styles.betTypeBtn, betType === type && styles.betTypeBtnActive]}
+            >
+              <Text style={[styles.betTypeBtnText, betType === type && styles.betTypeBtnTextActive]}>
+                {type === 'win' ? 'WIN' : type === 'exacta' ? 'EXACTA' : 'TRIFECTA'}
+              </Text>
+              <Text style={styles.betTypeDesc}>
+                {type === 'win' ? '1st place' : type === 'exacta' ? '1st + 2nd' : 'Top 3 order'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* Exacta/Trifecta pick order display */}
+      {betType !== 'win' && exactaPicks.length > 0 && (
+        <View style={styles.pickOrderRow}>
+          {exactaPicks.map((pick, i) => (
+            <View key={pick.id} style={styles.pickOrderItem}>
+              <Text style={styles.pickOrderNum}>{i + 1}{i === 0 ? 'st' : i === 1 ? 'nd' : 'rd'}</Text>
+              <View style={[styles.pickOrderDot, { backgroundColor: pick.colorLight }]} />
+              <Text style={styles.pickOrderName}>{pick.name}</Text>
+            </View>
+          ))}
+          {Array.from({ length: (betType === 'exacta' ? 2 : 3) - exactaPicks.length }).map((_, i) => (
+            <View key={`empty-${i}`} style={styles.pickOrderItem}>
+              <Text style={styles.pickOrderNum}>{exactaPicks.length + i + 1}{exactaPicks.length + i === 0 ? 'st' : exactaPicks.length + i === 1 ? 'nd' : 'rd'}</Text>
+              <View style={[styles.pickOrderDot, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+              <Text style={styles.pickOrderName}>---</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Marble grid */}
       <ScrollView
         style={styles.gridScroll}
@@ -350,13 +425,13 @@ export default function BettingScreen() {
               <View key={marble.id} style={[isLocked && styles.lockedCard]}>
                 <FlipCard
                   marble={marble}
-                  isSelected={selectedMarble?.id === marble.id}
+                  isSelected={betType === 'win' ? selectedMarble?.id === marble.id : exactaPicks.some(p => p.id === marble.id)}
                   badge={isLocked ? undefined : getBadge(index, marble)}
                   odds={odds[marble.id]}
                   winRate={getWinRate(marble.id)}
                   form={getForm(marble.id)}
                   seasonStats={getSeasonStats(marble.id)}
-                  onSelect={() => { if (!isLocked) selectMarble(marble); }}
+                  onSelect={() => { if (!isLocked) handleMarbleSelect(marble); }}
                 />
               </View>
             );
@@ -383,17 +458,26 @@ export default function BettingScreen() {
       <View style={styles.bottomBar}>
         {/* Your pick line with payout tiers */}
         <Text style={styles.pickLine}>
-          YOUR PICK:{' '}
+          {betType === 'win' ? 'YOUR PICK: ' : betType === 'exacta' ? 'EXACTA: ' : 'TRIFECTA: '}
           <Text style={styles.pickName}>
-            {selectedMarble ? selectedMarble.name.toUpperCase() : '---'}
+            {betType === 'win'
+              ? (selectedMarble ? selectedMarble.name.toUpperCase() : '---')
+              : exactaPicks.length > 0
+                ? exactaPicks.map(p => p.name.toUpperCase()).join(' \u203A ')
+                : '---'}
           </Text>
-          {selectedMarble ? (
+          {betType === 'win' && selectedMarble ? (
             <Text style={styles.pickOdds}> — {selectedOdds.toFixed(1)}x</Text>
           ) : null}
         </Text>
-        {selectedMarble && (
+        {betType === 'win' && selectedMarble && (
           <Text style={styles.payoutTiers}>
             1st: +{potential} · 2nd: +{Math.round(betAmount * 0.5)} · 3rd: +{Math.round(betAmount * 0.25)}
+          </Text>
+        )}
+        {betType !== 'win' && exactaPicks.length >= (betType === 'exacta' ? 2 : 3) && (
+          <Text style={styles.payoutTiers}>
+            Exact order match: +{potential}
           </Text>
         )}
 
@@ -418,11 +502,11 @@ export default function BettingScreen() {
         {/* Lock in CTA */}
         <Pressable
           onPress={handleLockIn}
-          disabled={!selectedMarble}
+          disabled={betType === 'win' ? !selectedMarble : exactaPicks.length < (betType === 'exacta' ? 2 : 3)}
           style={({ pressed }) => [
             styles.lockInBtn,
-            !selectedMarble && styles.lockInBtnDisabled,
-            pressed && selectedMarble && styles.pressed,
+            (betType === 'win' ? !selectedMarble : exactaPicks.length < (betType === 'exacta' ? 2 : 3)) && styles.lockInBtnDisabled,
+            pressed && styles.pressed,
           ]}
         >
           <LinearGradient
@@ -432,7 +516,12 @@ export default function BettingScreen() {
             style={styles.lockInGradient}
           >
             <Text style={styles.lockInText}>
-              LOCK IN {betAmount} {'\u2192'} WIN UP TO {potential}
+              {betType === 'win'
+                ? `LOCK IN ${betAmount} \u2192 WIN UP TO ${potential}`
+                : betType === 'exacta'
+                  ? exactaPicks.length < 2 ? `PICK ${2 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
+                  : exactaPicks.length < 3 ? `PICK ${3 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
+              }
             </Text>
           </LinearGradient>
         </Pressable>
@@ -824,5 +913,75 @@ const styles = StyleSheet.create({
   },
   lockedCard: {
     opacity: 0.35,
+  },
+
+  // Bet type selector
+  betTypeRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  betTypeBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  betTypeBtnActive: {
+    backgroundColor: 'rgba(255,194,32,0.15)',
+    borderColor: Colors.yellow,
+  },
+  betTypeBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: 0.5,
+  },
+  betTypeBtnTextActive: {
+    color: Colors.yellow,
+  },
+  betTypeDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 1,
+  },
+
+  // Pick order display for exacta/trifecta
+  pickOrderRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  pickOrderItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pickOrderNum: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: Colors.yellow,
+  },
+  pickOrderDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+  },
+  pickOrderName: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 11,
+    color: Colors.white,
   },
 });

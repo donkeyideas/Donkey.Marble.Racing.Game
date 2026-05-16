@@ -36,6 +36,11 @@ export const COURSES: CourseData[] = [
   { id: 'ball-pit-run-2', name: 'Garden Ball Pit', theme: 'meadow', trackType: 'ball-pit-run', description: 'A softer ball pit among the meadows', favoredMarbleId: 'dash', favoredStat: 'Speed', gradientColors: ['#1a5a1a', '#3aaa3a'] },
   // 12. The Gauntlet (cyber variant)
   { id: 'gauntlet-2', name: 'Cyber Gauntlet', theme: 'cyber', trackType: 'gauntlet', description: 'Digital mayhem — every element at max intensity', favoredMarbleId: 'lucky', favoredStat: 'Luck', gradientColors: ['#0a0a2a', '#5a2a8a'] },
+  // 13–16. Grand Prix — F1-style sweeping curves (4 theme variants)
+  { id: 'grand-prix-cyber', name: 'Neon Grand Prix', theme: 'cyber', trackType: 'grand-prix-cyber', description: 'F1-style curves through neon circuits', favoredMarbleId: 'dash', favoredStat: 'Speed', gradientColors: ['#0a0a3a', '#9b59b6'] },
+  { id: 'grand-prix-meadow', name: 'Garden Grand Prix', theme: 'meadow', trackType: 'grand-prix-meadow', description: 'F1-style curves through rolling meadows', favoredMarbleId: 'aqua', favoredStat: 'Speed', gradientColors: ['#1a4a1a', '#3a8a3a'] },
+  { id: 'grand-prix-volcano', name: 'Inferno Grand Prix', theme: 'volcano', trackType: 'grand-prix-volcano', description: 'F1-style curves through molten lava', favoredMarbleId: 'spike', favoredStat: 'Power', gradientColors: ['#5a1a0a', '#e74c3c'] },
+  { id: 'grand-prix-frozen', name: 'Glacier Grand Prix', theme: 'frozen', trackType: 'grand-prix-frozen', description: 'F1-style curves across icy terrain', favoredMarbleId: 'frosty', favoredStat: 'Bounce', gradientColors: ['#0a2a4a', '#3498db'] },
   // ── Featured generated tracks (first 10 from validated set) ──
   { id: 'gen-1004', name: 'Thunder Canyon', theme: 'meadow', trackType: 'gen-1004', description: 'Clean medium-peg descent — pure speed', favoredMarbleId: 'dash', favoredStat: 'Speed', gradientColors: ['#1a4a1a', '#3a8a3a'] },
   { id: 'gen-1028', name: 'Crystal Falls', theme: 'volcano', trackType: 'gen-1028', description: 'Ball pits and cradles weave through ramps', favoredMarbleId: 'rocky', favoredStat: 'Power', gradientColors: ['#5a1a0a', '#c44000'] },
@@ -60,6 +65,7 @@ export const THEME_COLORS: Record<CourseTheme, string> = {
 
 // Validated: 3 runs per seed, avg <55s, 8/8 finish, <30 stuck events, no escapes
 const VALIDATED_SEEDS: number[] = [
+  // Original 81 seeds
   1004, 1006, 1013, 1028, 1043, 1068, 1081, 1094,
   1098, 1106, 1109, 1130, 1139, 1143, 1165,
   1172, 1175, 1177, 1178, 1187, 1192, 1203, 1204, 1214,
@@ -70,6 +76,21 @@ const VALIDATED_SEEDS: number[] = [
   1579, 1580, 1581, 1592, 1598, 1618, 1620, 1638,
   1646, 1657, 1667, 1670, 1691, 1693, 1694, 1725,
   1750, 1840, 1895, 1940, 1970, 2005, 2010,
+  // New 110 seeds (92.4% pass rate, 3 runs each, 8/8 finish, no doomsday)
+  2100, 2101, 2102, 2103, 2104, 2105, 2106, 2107,
+  2108, 2109, 2110, 2111, 2112, 2113, 2114, 2115,
+  2116, 2117, 2118, 2119, 2120, 2121, 2122, 2123,
+  2124, 2125, 2126, 2127, 2128, 2129, 2130, 2131,
+  2133, 2134, 2135, 2136, 2138, 2141, 2142, 2144,
+  2145, 2146, 2147, 2148, 2149, 2151, 2152, 2153,
+  2154, 2155, 2156, 2157, 2159, 2160, 2161, 2162,
+  2163, 2164, 2165, 2166, 2167, 2168, 2169, 2171,
+  2172, 2173, 2174, 2175, 2176, 2177, 2178, 2179,
+  2180, 2181, 2182, 2183, 2184, 2186, 2187, 2188,
+  2189, 2190, 2191, 2192, 2193, 2194, 2195, 2196,
+  2197, 2198, 2199, 2200, 2201, 2202, 2203, 2204,
+  2205, 2206, 2207, 2208, 2209, 2210, 2211, 2212,
+  2213, 2214, 2215, 2216, 2217, 2218,
 ];
 
 const PREFIXES = [
@@ -140,11 +161,61 @@ export function getGeneratedCourses(): CourseData[] {
   });
 }
 
-// All courses: 12 hand-crafted + 10 featured generated + remaining 90 generated
-// Deduplicates by id — featured gen-* already in COURSES won't be added twice
+// ── Generated Grand Prix tracks (seeded S-channel variants) ──
+
+const GP_SEEDS: number[] = [
+  101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
+  111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
+  121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+  131, 132, 133, 134, 135, 136,
+];
+
+const GP_PREFIXES = [
+  'Circuit', 'Rally', 'Sprint', 'Drift', 'Apex', 'Turbo', 'Nitro', 'Velocity',
+  'Blaze', 'Thunder', 'Storm', 'Phantom', 'Lightning', 'Viper', 'Cobra', 'Falcon',
+  'Eclipse', 'Zenith',
+];
+
+const GP_SUFFIXES = [
+  'Grand Prix', 'Circuit', 'Speedway', 'Rally', 'Prix', 'Cup', 'Classic',
+  'Championship', 'Challenge', 'Invitational',
+];
+
+const GP_DESCS = [
+  'Tight S-curves with windmill obstacles',
+  'Sweeping bends through obstacle chambers',
+  'High-speed channel descent with pendulums',
+  'Winding tube packed with trampolines',
+  'Speed bursts accelerate through tight curves',
+  'Challenging S-channel with mixed hazards',
+  'Bumper-lined curves test marble control',
+  'Long winding descent through peg fields',
+];
+
+function getGeneratedGPCourses(): CourseData[] {
+  return GP_SEEDS.map((seed, i) => {
+    const theme = THEMES[i % THEMES.length];
+    const prefix = GP_PREFIXES[i % GP_PREFIXES.length];
+    const suffix = GP_SUFFIXES[i % GP_SUFFIXES.length];
+    const gradients = THEME_GRADIENTS[theme];
+    return {
+      id: `gp-${seed}-${theme}`,
+      name: `${prefix} ${suffix}`,
+      theme,
+      trackType: `gp-${seed}-${theme}`,
+      description: GP_DESCS[i % GP_DESCS.length],
+      favoredMarbleId: MARBLE_IDS[i % MARBLE_IDS.length],
+      favoredStat: FAVORED_STATS[i % FAVORED_STATS.length],
+      gradientColors: gradients[i % gradients.length],
+    };
+  });
+}
+
+// All courses: 16 hand-crafted (incl 4 GP) + 10 featured gen + ~181 gen + 36 GP seeded = ~246 total
 const featuredIds = new Set(COURSES.filter(c => c.id.startsWith('gen-')).map(c => c.id));
 const extraGenerated = getGeneratedCourses().filter(c => !featuredIds.has(c.id));
-export const ALL_COURSES: CourseData[] = [...COURSES, ...extraGenerated];
+const gpGenerated = getGeneratedGPCourses();
+export const ALL_COURSES: CourseData[] = [...COURSES, ...extraGenerated, ...gpGenerated];
 
 /** Deterministic Track of the Day — picks one course per calendar date */
 export function getTrackOfTheDay(): CourseData {

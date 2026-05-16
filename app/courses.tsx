@@ -9,8 +9,9 @@ import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
 import { ALL_COURSES as COURSES, CourseTheme, THEME_COLORS } from '../data/courses';
 
-const FILTER_TABS: { label: string; value: CourseTheme | 'all' }[] = [
+const FILTER_TABS: { label: string; value: CourseTheme | 'all' | 'grand-prix' }[] = [
   { label: 'ALL', value: 'all' },
+  { label: 'GRAND PRIX', value: 'grand-prix' },
   { label: 'MEADOW', value: 'meadow' },
   { label: 'VOLCANO', value: 'volcano' },
   { label: 'FROZEN', value: 'frozen' },
@@ -24,12 +25,14 @@ function getMarbleById(id: string): MarbleData {
 export default function CoursesScreen() {
   const router = useRouter();
   const selectCourse = useGameStore(s => s.selectCourse);
-  const [activeFilter, setActiveFilter] = useState<CourseTheme | 'all'>('all');
+  const [activeFilter, setActiveFilter] = useState<CourseTheme | 'all' | 'grand-prix'>('all');
 
   const filteredCourses =
     activeFilter === 'all'
       ? COURSES
-      : COURSES.filter((c) => c.theme === activeFilter);
+      : activeFilter === 'grand-prix'
+        ? COURSES.filter((c) => c.id.startsWith('grand-prix') || c.id.startsWith('gp-'))
+        : COURSES.filter((c) => c.theme === activeFilter);
 
   const setActiveMode = useGameStore(s => s.setActiveMode);
 
@@ -73,7 +76,9 @@ export default function CoursesScreen() {
             {FILTER_TABS.map((tab) => {
               const isActive = activeFilter === tab.value;
               const themeColor =
-                tab.value === 'all' ? Colors.white : THEME_COLORS[tab.value];
+                tab.value === 'all' ? Colors.white
+                : tab.value === 'grand-prix' ? '#e74c3c'
+                : THEME_COLORS[tab.value];
 
               return (
                 <Pressable

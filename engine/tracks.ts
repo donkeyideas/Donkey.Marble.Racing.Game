@@ -55,6 +55,8 @@ export interface SpeedBurstConfig {
   activationChance: number; // 0-1, typically 0.6
 }
 
+
+
 export interface TrackConfig {
   id: string;
   engineWidth: number;
@@ -78,6 +80,7 @@ export interface TrackConfig {
   cradles?: CradleConfig[];
   trampolines?: TrampolineConfig[];
   speedBursts?: SpeedBurstConfig[];
+  wallColor?: string;  // Solid color for walls (no border/railway look)
 }
 
 // ── Helpers ──
@@ -841,6 +844,201 @@ export function buildGauntlet(): TrackConfig {
   };
 }
 
+// ── Course 10: Grand Prix — continuous S-channel ──
+// Two parallel sine-wave walls form a winding tube from top to bottom.
+// Funnel entry captures all marble spawn positions; no marble escapes the channel.
+
+const GP_THEMES: Record<string, { bg: 'grass' | 'lava' | 'ice' | 'cyber'; wall: string }> = {
+  meadow: { bg: 'grass', wall: '#2ecc71' },
+  volcano: { bg: 'lava', wall: '#e74c3c' },
+  frozen: { bg: 'ice', wall: '#00b4d8' },
+  cyber:  { bg: 'cyber', wall: '#9333ea' },
+};
+
+// Seeded PRNG for Grand Prix variation
+function gpRng(seed: number) {
+  let s = seed | 0;
+  return () => {
+    s = Math.imul(s ^ (s >>> 16), 0x45d9f3b);
+    s = Math.imul(s ^ (s >>> 13), 0x45d9f3b);
+    s = (s ^ (s >>> 16)) >>> 0;
+    return s / 0x100000000;
+  };
+}
+
+// Obstacle combo types for chambers — each combo has a primary moving obstacle + small statics
+type ChamberCombo = 'windmill_pegs' | 'pendulum_bumpers' | 'speedburst_tramp' | 'windmill_bumpers' | 'pendulum_pegs' | 'tramp_speedburst';
+const CHAMBER_COMBOS: ChamberCombo[] = ['windmill_pegs', 'pendulum_bumpers', 'speedburst_tramp', 'windmill_bumpers', 'pendulum_pegs', 'tramp_speedburst'];
+
+export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
+  const rng = gpRng(seed * 7919 + 42);
+
+  const FINISH_Y = 5400;
+  const CHANNEL_DEPTH = 220;
+  const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
+  const finish = generateFinishZone(FINISH_Y);
+
+  // Seed-varied parameters
+  const AMP = 55 + Math.floor(rng() * 20);            // 55-75
+  const HALF_WAVES = 42 + Math.floor(rng() * 10);     // 42-51
+  const CH_W = 170 + Math.floor(rng() * 20);          // 170-190
+  const HALF = CH_W / 2;
+  const CHAMBER_HALF = 160 + Math.floor(rng() * 15);  // 160-175
+  const WAVE_START = 250;
+  const WAVE_END = 5200;
+  const N = 120;
+
+  // 7 chamber Y positions — slightly jittered by seed
+  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
+  const chambers = baseYs.map(by => ({
+    y: by + Math.floor(rng() * 60 - 30),  // ±30 jitter
+    radius: 200,
+  }));
+
+  // Shuffle obstacle combos for this seed
+  const combos = [...CHAMBER_COMBOS];
+  for (let i = combos.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [combos[i], combos[j]] = [combos[j], combos[i]];
+  }
+  // 7 chambers, 6 combos — last chamber reuses a combo
+  const chamberCombos = [...combos, combos[Math.floor(rng() * combos.length)]];
+
+  const leftPts: { x: number; y: number }[] = [];
+  const rightPts: { x: number; y: number }[] = [];
+
+  // Entry funnel: y=20 → WAVE_START
+  const FUNNEL_N = 10;
+  const FUNNEL_TOP_HALF = 170;
+  for (let i = 0; i <= FUNNEL_N; i++) {
+    const t = i / FUNNEL_N;
+    const y = 20 + t * (WAVE_START - 20);
+    const halfW = FUNNEL_TOP_HALF * (1 - t) + HALF * t;
+    leftPts.push({ x: 200 - halfW, y });
+    rightPts.push({ x: 200 + halfW, y });
+  }
+
+  // S-channel with chamber widenings
+  for (let i = 1; i <= N; i++) {
+    const t = i / N;
+    const y = WAVE_START + t * (WAVE_END - WAVE_START);
+
+    let chamberBlend = 0;
+    for (const ch of chambers) {
+      const dist = Math.abs(y - ch.y);
+      if (dist < ch.radius) {
+        const b = 1 - dist / ch.radius;
+        chamberBlend = Math.max(chamberBlend, b * b * (3 - 2 * b));
+      }
+    }
+
+    const localHalf = HALF + chamberBlend * (CHAMBER_HALF - HALF);
+    const localAmp = AMP * (1 - chamberBlend * 0.85);
+    const cx = 200 + localAmp * Math.sin(HALF_WAVES * Math.PI * t);
+
+    leftPts.push({ x: cx - localHalf, y });
+    rightPts.push({ x: cx + localHalf, y });
+  }
+
+  // Build obstacles based on chamber combos
+  const obstacles: ObstacleInfo[] = [];
+  const windmillConfigs: WindmillConfig[] = [];
+  const pendulums: PendulumConfig[] = [];
+  const trampolines: TrampolineConfig[] = [];
+  const speedBursts: SpeedBurstConfig[] = [];
+
+  chambers.forEach((ch, ci) => {
+    const combo = chamberCombos[ci];
+    const y = ch.y;
+    const dir = ci % 2 === 0 ? 1 : -1; // alternate directions
+
+    switch (combo) {
+      case 'windmill_pegs':
+        windmillConfigs.push({ x: 200, y, width: 120, speed: 0.008 * dir });
+        obstacles.push(
+          { x: 140, y: y + 30, r: 5, type: 'peg' },
+          { x: 200, y: y + 10, r: 5, type: 'peg' },
+          { x: 260, y: y + 30, r: 5, type: 'peg' },
+          { x: 170, y: y + 60, r: 5, type: 'peg' },
+          { x: 230, y: y + 60, r: 5, type: 'peg' },
+        );
+        break;
+      case 'pendulum_bumpers':
+        pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: 6 * dir });
+        obstacles.push(
+          { x: 130, y: y - 30, r: 5, type: 'bumper' },
+          { x: 270, y: y - 30, r: 5, type: 'bumper' },
+          { x: 150, y: y + 40, r: 5, type: 'bumper' },
+          { x: 250, y: y + 40, r: 5, type: 'bumper' },
+        );
+        break;
+      case 'speedburst_tramp':
+        speedBursts.push(
+          { x: 200, y: y - 20, width: 60, direction: 'down' as const, activationChance: 0.7 },
+          { x: 140, y: y + 10, width: 50, direction: 'right' as const, activationChance: 0.6 },
+          { x: 260, y: y + 10, width: 50, direction: 'left' as const, activationChance: 0.6 },
+        );
+        trampolines.push(
+          { x: 140, y: y + 50, width: 40, strength: 5 },
+          { x: 260, y: y + 50, width: 40, strength: 5 },
+        );
+        break;
+      case 'windmill_bumpers':
+        windmillConfigs.push({ x: 200, y, width: 120, speed: -0.008 * dir });
+        obstacles.push(
+          { x: 140, y: y - 20, r: 5, type: 'bumper' },
+          { x: 260, y: y - 20, r: 5, type: 'bumper' },
+          { x: 200, y: y + 40, r: 5, type: 'bumper' },
+        );
+        break;
+      case 'pendulum_pegs':
+        pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: -6 * dir });
+        obstacles.push(
+          { x: 150, y: y + 20, r: 5, type: 'peg' },
+          { x: 200, y: y, r: 5, type: 'peg' },
+          { x: 250, y: y + 20, r: 5, type: 'peg' },
+          { x: 175, y: y + 50, r: 5, type: 'peg' },
+          { x: 225, y: y + 50, r: 5, type: 'peg' },
+        );
+        break;
+      case 'tramp_speedburst':
+        trampolines.push(
+          { x: 150, y: y + 40, width: 40, strength: 5 },
+          { x: 250, y: y + 40, width: 40, strength: 5 },
+        );
+        speedBursts.push(
+          { x: 200, y: y - 20, width: 60, direction: 'down' as const, activationChance: 0.7 },
+        );
+        break;
+    }
+  });
+
+  const gpTheme = GP_THEMES[theme] || GP_THEMES.cyber;
+
+  return {
+    id: `grand-prix-${seed || theme}`,
+    engineWidth: ENGINE_WIDTH,
+    totalHeight: TOTAL_HEIGHT,
+    finishY: FINISH_Y,
+    ...finish,
+    ramps: [
+      { points: leftPts, engineCY: (WAVE_START + WAVE_END) / 2 },
+      { points: rightPts, engineCY: (WAVE_START + WAVE_END) / 2 },
+    ],
+    obstacles,
+    windmillConfigs,
+    funnels: [],
+    finishFunnel: finish.finishFunnel,
+    springs: [],
+    gravity: { x: 0, y: 1.0, scale: 0.001 },
+    bgImage: gpTheme.bg,
+    pendulums,
+    trampolines,
+    speedBursts,
+    wallColor: gpTheme.wall,
+  };
+}
+
 // ── Track lookup ──
 
 export function buildTrack(courseId: string): TrackConfig {
@@ -849,6 +1047,18 @@ export function buildTrack(courseId: string): TrackConfig {
     // Lazy require to break circular dependency (trackGenerator imports from tracks)
     const { generateTrack } = require('./trackGenerator');
     return generateTrack(seed);
+  }
+  // Grand Prix: gp-{seed}-{theme} for seeded variants, or grand-prix-{theme} for originals
+  if (courseId.startsWith('gp-')) {
+    const parts = courseId.split('-');
+    const seed = parseInt(parts[1], 10);
+    const theme = parts[2] || 'cyber';
+    return buildGrandPrix(theme, seed);
+  }
+  if (courseId.startsWith('grand-prix')) {
+    const parts = courseId.split('-');
+    const theme = parts.length > 2 ? parts[2] : 'cyber';
+    return buildGrandPrix(theme);
   }
   switch (courseId) {
     case 'bumper-blitz': return buildBumperBlitz();

@@ -293,7 +293,8 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         if (count >= MAX_TRAMP_BOUNCES) return;
         trampBounceCount.set(trampBody, count + 1);
         if (count + 1 >= MAX_TRAMP_BOUNCES) {
-          (trampBody as any).restitution = 0.1;
+          // Become sensor so marbles pass through — prevents shelf trapping
+          trampBody.isSensor = true;
         }
         const tc = trampolineBodies.find(t => t.body === trampBody);
         const strength = tc ? tc.config.strength : 5;
@@ -584,6 +585,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       wmBodies.forEach(wm => {
         Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed);
       });
+
       // Substeps for precision
       for (let s = 0; s < SUBSTEPS; s++) {
         Matter.Engine.update(engine, FIXED_DT);

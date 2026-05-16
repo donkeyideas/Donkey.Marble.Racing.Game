@@ -266,7 +266,7 @@ function simulateRace(trackId: string): RaceResult {
         const cnt = trampBounceCount.get(trampBody) || 0;
         if (cnt >= MAX_TRAMP_BOUNCES) return;
         trampBounceCount.set(trampBody, cnt + 1);
-        if (cnt + 1 >= MAX_TRAMP_BOUNCES) (trampBody as any).restitution = 0.1;
+        if (cnt + 1 >= MAX_TRAMP_BOUNCES) trampBody.isSensor = true;
         const tc = trampBodies.find(t => t.body === trampBody);
         const str = tc ? tc.config.strength : 5;
         Body.applyForce(tMarble, tMarble.position, {

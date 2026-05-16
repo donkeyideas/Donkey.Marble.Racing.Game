@@ -183,8 +183,12 @@ interface GameState {
   betAmount: number;
   betsToday: number;
   lastBetDate: string;
+  betType: 'win' | 'exacta' | 'trifecta';
+  exactaPicks: MarbleData[]; // ordered picks for exacta (2) / trifecta (3)
   selectMarble: (marble: MarbleData) => void;
   setBetAmount: (amount: number) => void;
+  setBetType: (type: 'win' | 'exacta' | 'trifecta') => void;
+  setExactaPicks: (picks: MarbleData[]) => void;
 
   // Game Mode
   activeMode: GameMode;
@@ -341,8 +345,12 @@ export const useGameStore = create<GameState>()(
   betAmount: 100,
   betsToday: 0,
   lastBetDate: '',
+  betType: 'win',
+  exactaPicks: [],
   selectMarble: (marble) => set({ selectedMarble: marble }),
   setBetAmount: (amount) => set({ betAmount: amount }),
+  setBetType: (type) => set({ betType: type, exactaPicks: [], selectedMarble: null }),
+  setExactaPicks: (picks) => set({ exactaPicks: picks }),
 
   lastResult: null,
   setLastResult: (result) => {
@@ -1229,8 +1237,12 @@ export const useGameStore = create<GameState>()(
   getOdds: () => currentOdds,
 
   placeBet: () => {
-    const { coins, betAmount, selectedMarble, betsToday, lastBetDate, coinHistory, activeMode, selectedCourseId } = get();
-    if (!selectedMarble || betAmount > coins) return false;
+    const { coins, betAmount, selectedMarble, betsToday, lastBetDate, coinHistory, activeMode, selectedCourseId, betType, exactaPicks } = get();
+    // For exacta need 2 picks, trifecta need 3, win needs selectedMarble
+    if (betType === 'exacta' && exactaPicks.length < 2) return false;
+    if (betType === 'trifecta' && exactaPicks.length < 3) return false;
+    if (betType === 'win' && !selectedMarble) return false;
+    if (betAmount > coins) return false;
 
     // Reset daily bet counter if new day
     const today = new Date().toISOString().slice(0, 10);
@@ -1245,7 +1257,9 @@ export const useGameStore = create<GameState>()(
     const newCoinHistory = [...coinHistory, {
       type: 'bet' as const,
       amount: -betAmount,
-      description: `Bet on ${selectedMarble.name}`,
+      description: betType === 'exacta' ? `Exacta: ${exactaPicks.map(p => p.name).join(' > ')}`
+                 : betType === 'trifecta' ? `Trifecta: ${exactaPicks.map(p => p.name).join(' > ')}`
+                 : `Bet on ${selectedMarble?.name}`,
       timestamp: Date.now(),
     }];
     while (newCoinHistory.length > 50) newCoinHistory.shift();
@@ -1264,7 +1278,7 @@ export const useGameStore = create<GameState>()(
   resetBet: () => {
     const { seasonStandings } = get();
     currentOdds = calculateOdds(seasonStandings);
-    set({ selectedMarble: null, betAmount: 100 });
+    set({ selectedMarble: null, betAmount: 100, betType: 'win', exactaPicks: [] });
   },
 
   checkDailyStreak: () => {
