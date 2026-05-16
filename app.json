@@ -49,7 +49,8 @@
           "sounds": []
         }
       ],
-      "@react-native-firebase/app"
+      "@react-native-firebase/app",
+      "./plugins/withModularHeaders"
     ],
     "extra": {
       "router": {},
