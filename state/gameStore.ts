@@ -15,6 +15,8 @@ import {
   getETDateString,
 } from '../data/nationalRaces';
 import { syncRaceResult, syncPurchase } from '../lib/sync';
+import { getConfig, fetchRemoteConfig, loadCachedConfig } from '../lib/remoteConfig';
+import { getPromoMultiplier } from '../lib/liveOps';
 import { ACHIEVEMENTS, AchievementCheckState } from '../data/achievements';
 import {
   ChallengeProgress, ChallengeCheckState,
@@ -29,7 +31,8 @@ export type GameMode =
   | { type: 'season'; weekNumber: number; raceIndex: number }
   | { type: 'national_race'; eventId: string; multiplier: number; entryFee: number; seriesRaceIndex?: number }
   | { type: 'tournament'; tournamentId: string; round: number }
-  | { type: 'playoff'; round: number };
+  | { type: 'playoff'; round: number }
+  | { type: 'multiplayer_tournament'; lobbyId: string; round: number };
 
 export interface RaceResult {
   positions: { marble: MarbleData; time: number }[];
@@ -75,6 +78,9 @@ export interface SeasonMarbleStats {
 
 const THEME_STAT_MAP: Record<string, keyof SeasonMarbleStats> = {
   meadow: 'speed', volcano: 'power', frozen: 'bounce', cyber: 'luck',
+  beach: 'speed', forest: 'speed', desert: 'power', sunset: 'power',
+  night: 'luck', candy: 'bounce', ocean: 'bounce', volcanic: 'power',
+  neon: 'luck', snow: 'bounce',
 };
 const PLACEMENT_GROWTH = [0.30, 0.25, 0.22, 0.18, 0.15, 0.12, 0.08, 0.05];
 const AI_GROWTH_RATIO = 0.7;
@@ -102,6 +108,15 @@ export interface PlayoffState {
   championId: string | null;
 }
 
+// ── Marble Progression (franchise mode) ──
+
+export interface TrainingSession {
+  stat: keyof SeasonMarbleStats;
+  cost: number;
+  gain: number;
+  weekNumber: number;
+}
+
 export interface SeasonState {
   seasonNumber: number;
   seasonMode: 'franchise' | 'bettor';
@@ -113,6 +128,13 @@ export interface SeasonState {
   playoffs: PlayoffState | null;
   seasonHistory: { seasonNumber: number; championId: string; championName: string }[];
   seasonStats: Record<string, SeasonMarbleStats>;  // marble stat growth overlay
+  // Marble Progression fields
+  condition: Record<string, number>;       // marble ID → condition 0-100 (100=fresh)
+  trainingHistory: TrainingSession[];      // all training sessions this season
+  trainedThisWeek: boolean;               // can only train once between races
+  rivalMarbleId: string | null;           // rival marble for bonus points
+  rivalWins: number;                      // times player beat rival
+  rivalLosses: number;                    // times rival beat player
 }
 
 // ── Tournament types ──
@@ -138,13 +160,18 @@ export interface TournamentState {
 }
 
 // Per-round payout schedules: rounds 1-3 free, round 4 = break even, escalates to champion
-const TOURNAMENT_PAYOUTS: Record<string, number[]> = {
-  'daily-blitz':           [0, 0, 0, 50,  100,  250,  4600],
-  'weekly-cup':            [0, 0, 0, 250, 500,  1250, 23000],
-  'champion-invitational': [0, 0, 0, 500, 1000, 2500, 46000],
-};
+function getTournamentPayouts(): Record<string, number[]> {
+  const cfg = getConfig();
+  return {
+    'daily-blitz':           [0, 0, 0, 50,  100,  250,  cfg.tournamentPrizes.daily],
+    'weekly-cup':            [0, 0, 0, 250, 500,  1250, cfg.tournamentPrizes.weekly],
+    'champion-invitational': [0, 0, 0, 500, 1000, 2500, cfg.tournamentPrizes.champion],
+  };
+}
 
-const DAILY_REWARDS = [200, 250, 300, 350, 400, 500, 750];
+function getDailyRewards(): number[] {
+  return getConfig().dailyRewards;
+}
 
 // ── Coin Store ──
 
@@ -163,10 +190,17 @@ export const COIN_PACKS: CoinPack[] = [
   { id: 'whale',    coins: 40000, price: '$24.99', bonus: '+60%',  badge: 'BEST VALUE' },
 ];
 
-const MAX_DAILY_PURCHASES = 3;
-const MAX_DAILY_COINS = 25000;
+function getMaxDailyPurchases(): number { return getConfig().maxDailyPurchases; }
+function getMaxDailyCoins(): number { return getConfig().maxDailyCoins; }
 
 interface GameState {
+  // Auth
+  firebaseUid: string | null;
+  firebaseDisplayName: string | null;
+  firebasePhotoURL: string | null;
+  firebaseEmail: string | null;
+  setFirebaseUser: (user: { uid: string; displayName: string | null; photoURL: string | null; email: string | null } | null) => void;
+
   // Navigation
   screen: GameScreen;
   setScreen: (screen: GameScreen) => void;
@@ -234,6 +268,9 @@ interface GameState {
   handleSeasonResult: (raceId: string, positions: string[]) => void;
   seedPlayoffs: () => void;
   handlePlayoffResult: (positions: string[]) => void;
+  // Marble Progression
+  trainMarble: (stat: keyof SeasonMarbleStats) => { success: boolean; gain: number; cost: number };
+  restMarble: (marbleId: string) => void;
 
   // National Races
   nationalRaces: Record<string, NationalEventState>;
@@ -245,6 +282,13 @@ interface GameState {
   tournaments: TournamentState | null;
   enterTournament: (tournamentId: string) => boolean;
   handleTournamentResult: (positions: string[]) => void;
+
+  // Multiplayer Tournaments
+  mpLobbyId: string | null;
+  mpPlacement: number | null;   // Final placement (1-8)
+  mpPayout: number;
+  setMpLobbyId: (lobbyId: string | null) => void;
+  setMpResult: (placement: number, payout: number) => void;
 
   // Store
   storePurchasesToday: number;
@@ -326,6 +370,29 @@ MARBLES.forEach((m) => {
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
+  // Auth
+  firebaseUid: null,
+  firebaseDisplayName: null,
+  firebasePhotoURL: null,
+  firebaseEmail: null,
+  setFirebaseUser: (user) => {
+    if (user) {
+      set({
+        firebaseUid: user.uid,
+        firebaseDisplayName: user.displayName,
+        firebasePhotoURL: user.photoURL,
+        firebaseEmail: user.email,
+      });
+    } else {
+      set({
+        firebaseUid: null,
+        firebaseDisplayName: null,
+        firebasePhotoURL: null,
+        firebaseEmail: null,
+      });
+    }
+  },
+
   screen: 'splash',
   setScreen: (screen) => set({ screen }),
 
@@ -555,6 +622,17 @@ export const useGameStore = create<GameState>()(
       standings[m.id] = { wins: 0, losses: 0, podiums: 0, points: 0 };
       seasonStats[m.id] = { speed: 0, power: 0, bounce: 0, luck: 0 };
     });
+    // Initialize condition at 100% for all marbles
+    const condition: Record<string, number> = {};
+    MARBLES.forEach((m) => { condition[m.id] = 100; });
+
+    // Pick a rival (franchise only) — pick a random marble that isn't the player's
+    let rivalMarbleId: string | null = null;
+    if ((mode ?? 'bettor') === 'franchise' && marbleId) {
+      const otherIds = MARBLES.filter(m => m.id !== marbleId).map(m => m.id);
+      rivalMarbleId = otherIds[Math.floor(Math.random() * otherIds.length)];
+    }
+
     set({
       season: {
         seasonNumber: num,
@@ -567,6 +645,12 @@ export const useGameStore = create<GameState>()(
         playoffs: null,
         seasonHistory: get().season?.seasonHistory ?? [],
         seasonStats,
+        condition,
+        trainingHistory: [],
+        trainedThisWeek: false,
+        rivalMarbleId,
+        rivalWins: 0,
+        rivalLosses: 0,
       },
     });
   },
@@ -650,7 +734,27 @@ export const useGameStore = create<GameState>()(
       };
     });
 
-    // 5. Advance schedule (unlock next race / next week)
+    // 5. Update condition (fatigue) — each race costs 10-20% based on placement
+    const newCondition = { ...(season.condition ?? {}) };
+    positions.forEach((marbleId, idx) => {
+      const fatigueCost = 10 + Math.floor((idx / 7) * 10); // 10% for 1st, ~20% for 8th
+      const prev = newCondition[marbleId] ?? 100;
+      newCondition[marbleId] = Math.max(0, prev - fatigueCost);
+    });
+
+    // 6. Track rival results
+    let rivalWins = season.rivalWins ?? 0;
+    let rivalLosses = season.rivalLosses ?? 0;
+    if (season.seasonMode === 'franchise' && season.rivalMarbleId && season.seasonMarbleId) {
+      const playerPos = positions.indexOf(season.seasonMarbleId);
+      const rivalPos = positions.indexOf(season.rivalMarbleId);
+      if (playerPos >= 0 && rivalPos >= 0) {
+        if (playerPos < rivalPos) rivalWins++;
+        else rivalLosses++;
+      }
+    }
+
+    // 7. Advance schedule (unlock next race / next week)
     const advanced = advanceSchedule(updatedWeeks);
 
     set({
@@ -661,8 +765,59 @@ export const useGameStore = create<GameState>()(
         completedRaceIds: [...season.completedRaceIds, raceId],
         playerBets: newPlayerBets,
         seasonStats: newSeasonStats,
+        condition: newCondition,
+        trainedThisWeek: false, // Reset training flag for new week
+        rivalWins,
+        rivalLosses,
       },
     });
+  },
+
+  trainMarble: (stat) => {
+    const { season, coins } = get();
+    if (!season || season.seasonMode !== 'franchise' || !season.seasonMarbleId) {
+      return { success: false, gain: 0, cost: 0 };
+    }
+    if (season.trainedThisWeek) {
+      return { success: false, gain: 0, cost: 0 };
+    }
+    // Cost escalates: 200 for first, +100 each
+    const sessionCount = season.trainingHistory.length;
+    const cost = 200 + sessionCount * 100;
+    if (coins < cost) {
+      return { success: false, gain: 0, cost };
+    }
+    // Gain is randomized: 0.10 to 0.30
+    const gain = +(0.10 + Math.random() * 0.20).toFixed(2);
+    const marbleId = season.seasonMarbleId;
+    const prev = season.seasonStats[marbleId] ?? { speed: 0, power: 0, bounce: 0, luck: 0 };
+    const newVal = Math.min(MAX_STAT_GROWTH, prev[stat] + gain);
+
+    const currentWeek = season.schedule.findIndex(w => w.status === 'current') + 1;
+    const session: TrainingSession = { stat, cost, gain, weekNumber: currentWeek };
+
+    set({
+      coins: coins - cost,
+      season: {
+        ...season,
+        seasonStats: {
+          ...season.seasonStats,
+          [marbleId]: { ...prev, [stat]: newVal },
+        },
+        trainingHistory: [...season.trainingHistory, session],
+        trainedThisWeek: true,
+      },
+    });
+    return { success: true, gain, cost };
+  },
+
+  restMarble: (marbleId) => {
+    const { season } = get();
+    if (!season) return;
+    const newCondition = { ...(season.condition ?? {}) };
+    const prev = newCondition[marbleId] ?? 50;
+    newCondition[marbleId] = Math.min(100, prev + 30); // Rest recovers 30%
+    set({ season: { ...season, condition: newCondition } });
   },
 
   seedPlayoffs: () => {
@@ -907,6 +1062,28 @@ export const useGameStore = create<GameState>()(
   // ── Tournaments ──
   tournaments: null,
 
+  // Multiplayer Tournaments
+  mpLobbyId: null,
+  mpPlacement: null,
+  mpPayout: 0,
+  setMpLobbyId: (lobbyId) => set({ mpLobbyId: lobbyId }),
+  setMpResult: (placement, payout) => {
+    const { coins, coinHistory } = get();
+    if (payout > 0) {
+      set({
+        mpPlacement: placement,
+        mpPayout: payout,
+        coins: coins + payout,
+        coinHistory: [
+          { type: 'payout' as const, amount: payout, description: `MP Tournament ${placement === 1 ? 'Champion' : `#${placement}`}`, timestamp: Date.now() },
+          ...coinHistory,
+        ].slice(0, 200),
+      });
+    } else {
+      set({ mpPlacement: placement, mpPayout: payout });
+    }
+  },
+
   enterTournament: (tournamentId) => {
     const { coins, coinHistory } = get();
     const configs: Record<string, { entryFee: number; prizePool: number }> = {
@@ -957,7 +1134,7 @@ export const useGameStore = create<GameState>()(
         status: 'active',
         entryFee: config.entryFee,
         prizePool: config.prizePool,
-        roundPayouts: TOURNAMENT_PAYOUTS[tournamentId] || [0, 0, 0, 0, 0, 0, 0],
+        roundPayouts: getTournamentPayouts()[tournamentId] || [0, 0, 0, 0, 0, 0, 0],
         totalEarned: 0,
       },
     });
@@ -1045,26 +1222,31 @@ export const useGameStore = create<GameState>()(
     if (!pack) return { success: false, error: 'Invalid pack' };
 
     // Check daily transaction limit
-    if (purchasesToday >= MAX_DAILY_PURCHASES) {
-      return { success: false, error: `Daily limit reached (${MAX_DAILY_PURCHASES} purchases per day)` };
+    if (purchasesToday >= getMaxDailyPurchases()) {
+      return { success: false, error: `Daily limit reached (${getMaxDailyPurchases()} purchases per day)` };
     }
 
     // Check daily coin limit
-    if (coinsPurchasedToday + pack.coins > MAX_DAILY_COINS) {
-      return { success: false, error: `Would exceed daily coin limit (${MAX_DAILY_COINS.toLocaleString()} coins/day)` };
+    if (coinsPurchasedToday + pack.coins > getMaxDailyCoins()) {
+      return { success: false, error: `Would exceed daily coin limit (${getMaxDailyCoins().toLocaleString()} coins/day)` };
     }
 
-    // Process purchase
+    // Process purchase — apply double_coins promo if active
+    const coinMultiplier = getPromoMultiplier('double_coins');
+    const grantedCoins = Math.round(pack.coins * coinMultiplier);
+
     const newCoinHistory = [...coinHistory, {
       type: 'purchase' as const,
-      amount: pack.coins,
-      description: `Purchased ${pack.coins.toLocaleString()} coins (${pack.price})`,
+      amount: grantedCoins,
+      description: coinMultiplier > 1
+        ? `Purchased ${grantedCoins.toLocaleString()} coins (${pack.price}) — ${coinMultiplier}x promo!`
+        : `Purchased ${pack.coins.toLocaleString()} coins (${pack.price})`,
       timestamp: Date.now(),
     }];
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: coins + pack.coins,
+      coins: coins + grantedCoins,
       coinHistory: newCoinHistory,
       storePurchasesToday: purchasesToday + 1,
       storeCoinsPurchasedToday: coinsPurchasedToday + pack.coins,
@@ -1289,12 +1471,15 @@ export const useGameStore = create<GameState>()(
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const isConsecutive = lastPlayedDate === yesterday;
     const newStreak = isConsecutive ? dailyStreak + 1 : 1;
-    const reward = DAILY_REWARDS[(newStreak - 1) % DAILY_REWARDS.length];
+    const dailyRewards = getDailyRewards();
+    const baseReward = dailyRewards[(newStreak - 1) % dailyRewards.length];
+    const multiplier = getPromoMultiplier('bonus_reward');
+    const reward = Math.round(baseReward * multiplier);
 
     const newCoinHistory = [...coinHistory, {
       type: 'daily_bonus' as const,
       amount: reward,
-      description: `Day ${newStreak} streak bonus`,
+      description: multiplier > 1 ? `Day ${newStreak} streak bonus (${multiplier}x promo!)` : `Day ${newStreak} streak bonus`,
       timestamp: Date.now(),
     }];
     while (newCoinHistory.length > 50) newCoinHistory.shift();

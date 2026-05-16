@@ -19,8 +19,9 @@ import { SEASON_POINTS } from '../data/seasonSchedule';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 
+import { getConfig } from '../lib/remoteConfig';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BET_AMOUNTS = [25, 100, 250, 500];
 const DISPLAY_MARBLES = MARBLES;
 
 // ── Flip Card Component ──
@@ -483,7 +484,7 @@ export default function BettingScreen() {
 
         {/* Bet amount buttons */}
         <View style={styles.betRow}>
-          {BET_AMOUNTS.map((amount) => {
+          {getConfig().betAmounts.map((amount) => {
             const active = betAmount === amount;
             return (
               <Pressable

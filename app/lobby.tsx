@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import { syncPlayerState } from '../lib/sync';
+import { getAnnouncements, getActivePromos } from '../lib/liveOps';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
@@ -116,6 +117,26 @@ export default function LobbyScreen() {
             </View>
             <CoinPill amount={coins} onPress={() => router.push('/store')} />
           </View>
+
+          {/* ===== ANNOUNCEMENT BANNER ===== */}
+          {getAnnouncements().length > 0 && (
+            <View style={styles.announcementBanner}>
+              <Text style={styles.announcementIcon}>
+                {getAnnouncements()[0].type === 'warning' ? '⚠️' : getAnnouncements()[0].type === 'maintenance' ? '🔧' : getAnnouncements()[0].type === 'promo' ? '🎉' : 'ℹ️'}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.announcementTitle}>{getAnnouncements()[0].title}</Text>
+                <Text style={styles.announcementBody}>{getAnnouncements()[0].body}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* ===== ACTIVE PROMO BANNER ===== */}
+          {getActivePromos().length > 0 && (
+            <View style={styles.promoBanner}>
+              <Text style={styles.promoText}>🔥 {getActivePromos()[0].name} — {Number(getActivePromos()[0].multiplier)}x rewards active!</Text>
+            </View>
+          )}
 
           {/* ===== MARBLES ROW ===== */}
           <View style={styles.marblesRow}>
@@ -339,6 +360,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     marginBottom: 20,
+  },
+
+  /* ===== ANNOUNCEMENTS & PROMOS ===== */
+  announcementBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: BorderRadius.md,
+    padding: 12,
+    marginBottom: 10,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,194,32,0.3)',
+  },
+  announcementIcon: {
+    fontSize: 18,
+  },
+  announcementTitle: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 13,
+    color: Colors.yellow,
+    marginBottom: 2,
+  },
+  announcementBody: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  promoBanner: {
+    backgroundColor: 'rgba(46,204,113,0.15)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.4)',
+  },
+  promoText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: '#2ecc71',
+    textAlign: 'center',
   },
 
   /* ===== SECTION TITLE ===== */

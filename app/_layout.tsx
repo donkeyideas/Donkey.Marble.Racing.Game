@@ -12,6 +12,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native';
 import { scheduleIfAlreadyPermitted } from '../utils/eventNotifications';
+import { loadCachedConfig, fetchRemoteConfig } from '../lib/remoteConfig';
+import { fetchAllLiveOps } from '../lib/liveOps';
+import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth';
+import { useGameStore } from '../state/gameStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -23,6 +27,34 @@ export default function RootLayout() {
     Fredoka_600SemiBold,
     Fredoka_700Bold,
   });
+
+  useEffect(() => {
+    // Load cached remote config immediately, then fetch fresh in background
+    loadCachedConfig().then(() => fetchRemoteConfig()).catch(() => {});
+    // Fetch live ops data (announcements, promos, messages, A/B tests)
+    fetchAllLiveOps().catch(() => {});
+
+    // Configure Google Sign-In (webClientId from Firebase Console)
+    // TODO: Replace with your actual webClientId from Firebase Console → Authentication → Sign-in method → Google
+    configureGoogleSignIn('YOUR_WEB_CLIENT_ID.apps.googleusercontent.com');
+
+    // Sync Firebase auth state → Zustand store
+    const unsubAuth = onAuthStateChanged((user) => {
+      const { setFirebaseUser } = useGameStore.getState();
+      if (user) {
+        setFirebaseUser({
+          uid: user.uid,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          email: user.email,
+        });
+      } else {
+        setFirebaseUser(null);
+      }
+    });
+
+    return () => unsubAuth();
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded) {
