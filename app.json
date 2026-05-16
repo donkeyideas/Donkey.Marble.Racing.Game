@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "scheme": "donkeymarble",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -18,6 +17,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
       "buildNumber": "9",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a3a96"
       },
-      "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
       "package": "com.donkeymarble.racing",
       "versionCode": 9,
       "permissions": [
