@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,6 +54,22 @@ export default function LobbyScreen() {
   const passLevel = useGameStore((s) => s.passLevel);
   const achievements = useGameStore((s) => s.achievements);
   const achievementCount = Object.keys(achievements).length;
+
+  // Daily streak reward
+  const [dailyReward, setDailyReward] = useState<{ reward: number; streak: number } | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const result = useGameStore.getState().checkDailyStreak();
+    if (result) {
+      setDailyReward(result);
+      Animated.sequence([
+        Animated.timing(toastOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.delay(3000),
+        Animated.timing(toastOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start(() => setDailyReward(null));
+    }
+  }, []);
 
   // Periodic state sync — fire-and-forget every 5 minutes
   useEffect(() => {
@@ -240,6 +257,15 @@ export default function LobbyScreen() {
           </Text>
         </ScrollView>
       </SafeAreaView>
+      {dailyReward && (
+        <Animated.View style={[styles.dailyToast, { opacity: toastOpacity }]} pointerEvents="none">
+          <Text style={styles.dailyToastIcon}>🔥</Text>
+          <View>
+            <Text style={styles.dailyToastTitle}>Day {dailyReward.streak} Streak!</Text>
+            <Text style={styles.dailyToastSub}>+{dailyReward.reward} coins</Text>
+          </View>
+        </Animated.View>
+      )}
     </LinearGradient>
   );
 }
@@ -382,5 +408,32 @@ const styles = StyleSheet.create({
     color: Colors.whiteAlpha25,
     textAlign: 'center',
     marginTop: 16,
+  },
+  dailyToast: {
+    position: 'absolute',
+    bottom: 100,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.yellow,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  dailyToastIcon: {
+    fontSize: 28,
+  },
+  dailyToastTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 16,
+    color: Colors.yellow,
+  },
+  dailyToastSub: {
+    fontFamily: Fonts.body,
+    fontSize: 14,
+    color: '#fff',
   },
 });

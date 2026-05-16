@@ -3,7 +3,7 @@
     "name": "Donkey Marble Racing",
     "slug": "DonkeyMarbleRacing",
     "owner": "donkeyideas",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -29,7 +29,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.donkeymarble.racing",
-      "versionCode": 7,
+      "versionCode": 8,
       "permissions": [
         "android.permission.VIBRATE",
         "com.android.vending.BILLING"
