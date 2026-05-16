@@ -1,5 +1,12 @@
 /**
- * Multiplayer Tournament System — Firebase Realtime Database.
+ * Multiplayer Tournament System — Firebase Realtime Database (Web SDK).
+ *
+ * Uses the modular `firebase/database` Web SDK rather than
+ * @react-native-firebase/database, because the latter has hostile iOS Pod
+ * dependencies (Firebase.h imports FirebaseAuth-Swift.h which only resolves
+ * under specific use_frameworks!/use_modular_headers! combinations that
+ * cascade-fail every other Pod). The Web SDK uses a WebSocket from JS — no
+ * native pod, no Xcode archive issues, same Realtime Database API.
  *
  * ARCHITECTURE:
  * 1. Player creates or joins a lobby (max 8 players)
@@ -12,24 +19,24 @@
  * DATABASE PATH: /lobbies/{lobbyId}
  */
 
-import { MARBLES, MarbleData } from '../theme';
+import {
+  ref as dbRef,
+  child,
+  push,
+  set,
+  get,
+  update,
+  remove,
+  onValue,
+  query,
+  orderByChild,
+  equalTo,
+  limitToFirst,
+  DataSnapshot,
+} from 'firebase/database';
+import { getDb } from './firebase';
+import { MARBLES } from '../theme';
 import { ALL_COURSES } from '../data/courses';
-import Constants from 'expo-constants';
-
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// Lazy import — avoids crash in Expo Go where native modules aren't available
-let _database: any = null;
-function getDatabase() {
-  if (isExpoGo) return null;
-  if (_database) return _database;
-  try {
-    _database = require('@react-native-firebase/database').default;
-    return _database;
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,15 +107,15 @@ const BOT_NAMES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Lobby Reference
+// Lobby Reference helpers
 // ---------------------------------------------------------------------------
 
 function lobbyRef(lobbyId: string) {
-  return getDatabase().ref(`/lobbies/${lobbyId}`);
+  return dbRef(getDb(), `/lobbies/${lobbyId}`);
 }
 
 function activeLobbiesRef() {
-  return getDatabase().ref('/lobbies');
+  return dbRef(getDb(), '/lobbies');
 }
 
 // ---------------------------------------------------------------------------
@@ -120,8 +127,8 @@ export async function createLobby(
   displayName: string,
   tier: 'daily' | 'weekly' | 'champion',
 ): Promise<string> {
-  const ref = activeLobbiesRef().push();
-  const lobbyId = ref.key!;
+  const newRef = push(activeLobbiesRef());
+  const lobbyId = newRef.key!;
   const tierConfig = MP_TIERS[tier];
 
   // Pick 7 random courses for elimination rounds
@@ -159,7 +166,7 @@ export async function createLobby(
     maxPlayers: MAX_PLAYERS,
   };
 
-  await ref.set(lobby);
+  await set(newRef, lobby);
   return lobbyId;
 }
 
@@ -173,7 +180,7 @@ export async function joinLobby(
   displayName: string,
 ): Promise<boolean> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
 
   if (!lobby || lobby.status !== 'waiting') return false;
@@ -184,7 +191,7 @@ export async function joinLobby(
   // Already in lobby
   if (lobby.players?.[uid]) return true;
 
-  await ref.child(`players/${uid}`).set({
+  const player: LobbyPlayer = {
     uid,
     displayName,
     isHost: false,
@@ -193,7 +200,8 @@ export async function joinLobby(
     eliminated: false,
     eliminatedRound: null,
     joinedAt: Date.now(),
-  } as LobbyPlayer);
+  };
+  await set(child(ref, `players/${uid}`), player);
 
   return true;
 }
@@ -205,24 +213,26 @@ export async function joinLobby(
 export async function findOpenLobbies(
   tier: 'daily' | 'weekly' | 'champion',
 ): Promise<{ lobbyId: string; lobby: LobbyData }[]> {
-  const snap = await activeLobbiesRef()
-    .orderByChild('status')
-    .equalTo('waiting')
-    .limitToFirst(10)
-    .once('value');
+  const q = query(
+    activeLobbiesRef(),
+    orderByChild('status'),
+    equalTo('waiting'),
+    limitToFirst(10),
+  );
+  const snap = await get(q);
 
   const results: { lobbyId: string; lobby: LobbyData }[] = [];
-  snap.forEach((child) => {
-    const lobby = child.val() as LobbyData;
+  snap.forEach((childSnap: DataSnapshot) => {
+    const lobby = childSnap.val() as LobbyData;
     if (
       lobby.tier === tier &&
       lobby.status === 'waiting' &&
       Object.keys(lobby.players || {}).length < MAX_PLAYERS &&
       Date.now() - lobby.createdAt < LOBBY_EXPIRY_MS
     ) {
-      results.push({ lobbyId: child.key!, lobby });
+      results.push({ lobbyId: childSnap.key!, lobby });
     }
-    return undefined; // continue
+    return undefined; // forEach: false continues, undefined treated as continue
   });
 
   return results;
@@ -254,7 +264,7 @@ export async function quickMatch(
 
 export async function backfillWithBots(lobbyId: string): Promise<void> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
   if (!lobby || lobby.status !== 'waiting') return;
 
@@ -263,11 +273,11 @@ export async function backfillWithBots(lobbyId: string): Promise<void> {
   if (slotsToFill <= 0) return;
 
   const shuffledNames = [...BOT_NAMES].sort(() => Math.random() - 0.5);
-  const updates: Record<string, LobbyPlayer> = {};
+  const playerUpdates: Record<string, LobbyPlayer> = {};
 
   for (let i = 0; i < slotsToFill; i++) {
     const botUid = `bot-${lobbyId.slice(-4)}-${i}`;
-    updates[botUid] = {
+    playerUpdates[`players/${botUid}`] = {
       uid: botUid,
       displayName: shuffledNames[i % shuffledNames.length],
       isHost: false,
@@ -279,12 +289,7 @@ export async function backfillWithBots(lobbyId: string): Promise<void> {
     };
   }
 
-  const playerUpdates: Record<string, LobbyPlayer> = {};
-  for (const [uid, player] of Object.entries(updates)) {
-    playerUpdates[`players/${uid}`] = player;
-  }
-
-  await ref.update(playerUpdates);
+  await update(ref, playerUpdates);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,7 +298,7 @@ export async function backfillWithBots(lobbyId: string): Promise<void> {
 
 export async function startDraft(lobbyId: string): Promise<void> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
   if (!lobby) return;
 
@@ -301,9 +306,7 @@ export async function startDraft(lobbyId: string): Promise<void> {
   const playerUids = Object.keys(lobby.players || {});
   const shuffled = playerUids.sort(() => Math.random() - 0.5);
 
-  // Snake draft: 1-2-3-4-5-6-7-8 then 8-7-6-5-4-3-2-1 (but we only need 8 picks for 8 marbles)
-  // Each player picks exactly 1 marble, so just use the shuffled order
-  await ref.update({
+  await update(ref, {
     status: 'drafting',
     draftOrder: shuffled,
     draftTurn: 0,
@@ -321,7 +324,7 @@ export async function draftPick(
   marbleId: string,
 ): Promise<boolean> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
   if (!lobby || lobby.status !== 'drafting') return false;
 
@@ -333,12 +336,11 @@ export async function draftPick(
   const available = lobby.availableMarbles || [];
   if (!available.includes(marbleId)) return false;
 
-  // Update
   const newAvailable = available.filter((id) => id !== marbleId);
   const nextTurn = lobby.draftTurn + 1;
   const draftComplete = nextTurn >= draftOrder.length;
 
-  await ref.update({
+  await update(ref, {
     [`players/${uid}/marbleId`]: marbleId,
     availableMarbles: newAvailable,
     draftTurn: nextTurn,
@@ -355,10 +357,9 @@ export async function draftPick(
 export async function autoDraftBots(lobbyId: string): Promise<void> {
   const ref = lobbyRef(lobbyId);
 
-  // Keep picking for bots until a human's turn or draft is complete
   let keepGoing = true;
   while (keepGoing) {
-    const snap = await ref.once('value');
+    const snap = await get(ref);
     const lobby = snap.val() as LobbyData | null;
     if (!lobby || lobby.status !== 'drafting') return;
 
@@ -372,15 +373,13 @@ export async function autoDraftBots(lobbyId: string): Promise<void> {
       continue;
     }
 
-    // Bot picks a random available marble
     const available = lobby.availableMarbles || [];
     if (available.length === 0) return;
 
     const pick = available[Math.floor(Math.random() * available.length)];
     await draftPick(lobbyId, currentUid, pick);
 
-    // Check if draft completed after this pick
-    const nextSnap = await ref.once('value');
+    const nextSnap = await get(ref);
     const nextLobby = nextSnap.val() as LobbyData | null;
     if (!nextLobby || nextLobby.status !== 'drafting') return;
   }
@@ -396,20 +395,16 @@ export async function submitRoundResult(
   finishOrder: string[],  // marbleIds in finish order
 ): Promise<void> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
   if (!lobby || lobby.hostUid !== hostUid) return;
 
-  // Find non-eliminated marbles that raced
   const activePlayers = Object.values(lobby.players || {}).filter(
     (p) => !p.eliminated && p.marbleId,
   );
   const activeMarbleIds = activePlayers.map((p) => p.marbleId!);
-
-  // Filter finishOrder to only active marbles
   const raceFinish = finishOrder.filter((id) => activeMarbleIds.includes(id));
 
-  // Last place marble → eliminated
   const eliminatedMarbleId = raceFinish[raceFinish.length - 1];
   const eliminatedPlayer = activePlayers.find((p) => p.marbleId === eliminatedMarbleId);
 
@@ -423,7 +418,6 @@ export async function submitRoundResult(
   const rounds = [...(lobby.rounds || []), round];
   const nextRound = lobby.currentRound + 1;
 
-  // Check if tournament is finished (only 1 player left)
   const remainingAfter = activePlayers.filter(
     (p) => p.uid !== eliminatedPlayer?.uid,
   );
@@ -435,13 +429,12 @@ export async function submitRoundResult(
     status: isFinished ? 'finished' : 'round_result',
   };
 
-  // Mark eliminated player
   if (eliminatedPlayer) {
     updates[`players/${eliminatedPlayer.uid}/eliminated`] = true;
     updates[`players/${eliminatedPlayer.uid}/eliminatedRound`] = lobby.currentRound;
   }
 
-  await ref.update(updates);
+  await update(ref, updates);
 }
 
 // ---------------------------------------------------------------------------
@@ -449,7 +442,7 @@ export async function submitRoundResult(
 // ---------------------------------------------------------------------------
 
 export async function advanceToNextRace(lobbyId: string): Promise<void> {
-  await lobbyRef(lobbyId).update({ status: 'racing' });
+  await update(lobbyRef(lobbyId), { status: 'racing' });
 }
 
 // ---------------------------------------------------------------------------
@@ -461,11 +454,10 @@ export function subscribeLobby(
   callback: (lobby: LobbyData | null) => void,
 ): () => void {
   const ref = lobbyRef(lobbyId);
-  const handler = (snap: any) => {
+  // onValue() returns its own unsubscribe function — perfect for our cleanup contract.
+  return onValue(ref, (snap) => {
     callback(snap.val() as LobbyData | null);
-  };
-  ref.on('value', handler);
-  return () => ref.off('value', handler);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -474,18 +466,17 @@ export function subscribeLobby(
 
 export async function leaveLobby(lobbyId: string, uid: string): Promise<void> {
   const ref = lobbyRef(lobbyId);
-  const snap = await ref.once('value');
+  const snap = await get(ref);
   const lobby = snap.val() as LobbyData | null;
   if (!lobby) return;
 
   // If host leaves during waiting, delete lobby
   if (lobby.hostUid === uid && lobby.status === 'waiting') {
-    await ref.remove();
+    await remove(ref);
     return;
   }
 
-  // Remove player
-  await ref.child(`players/${uid}`).remove();
+  await remove(child(ref, `players/${uid}`));
 }
 
 // ---------------------------------------------------------------------------

@@ -43,14 +43,6 @@
       "bundler": "metro"
     },
     "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            "useFrameworks": "static"
-          }
-        }
-      ],
       "expo-router",
       "expo-font",
       "react-native-iap",
