@@ -43,6 +43,14 @@
       "bundler": "metro"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ],
       "expo-router",
       "expo-font",
       "react-native-iap",
@@ -53,7 +61,6 @@
         }
       ],
       "@react-native-firebase/app",
-      "./plugins/withModularHeaders",
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
       "expo-apple-authentication"
