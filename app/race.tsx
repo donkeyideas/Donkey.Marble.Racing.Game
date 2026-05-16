@@ -597,9 +597,9 @@ export default function RaceScreen() {
     const eng = createRaceEngine({
       config: trackConfig,
       raceMarbles: raceMarbles ? raceMarbles : MARBLES.map(m => getSkinnedMarble(m, equippedSkins)),
-      onHaptic: playerPickId
-        ? (type: HapticType, marbleId: string) => { if (marbleId === playerPickId) triggerRaceHaptic(type); }
-        : undefined,
+      onHaptic: (type: HapticType, marbleId: string) => {
+        if (!playerPickId || marbleId === playerPickId) triggerRaceHaptic(type);
+      },
     });
     engRef.current = eng;
     let last = performance.now();

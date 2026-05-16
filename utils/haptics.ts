@@ -1,6 +1,11 @@
-import * as Haptics from 'expo-haptics';
+let Haptics: typeof import('expo-haptics') | null = null;
+try {
+  Haptics = require('expo-haptics');
+} catch {
+  console.warn('[Haptics] expo-haptics not available');
+}
 
-const COOLDOWN_MS = 100;
+const COOLDOWN_MS = 50;
 let lastTime = 0;
 
 function throttled(fn: () => Promise<void>) {
@@ -11,15 +16,15 @@ function throttled(fn: () => Promise<void>) {
 }
 
 export const raceHaptics = {
-  bumperHit:        () => throttled(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
-  trampolineBounce: () => throttled(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)),
-  speedBurst:       () => throttled(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)),
-  pendulumHit:      () => throttled(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)),
-  cradleHit:        () => throttled(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)),
-  finish:           () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
-  playerWin:        () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
-  playerLose:       () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
-  betPlaced:        () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}),
+  bumperHit:        () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
+  trampolineBounce: () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
+  speedBurst:       () => Haptics && throttled(() => Haptics!.notificationAsync(Haptics!.NotificationFeedbackType.Warning)),
+  pendulumHit:      () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
+  cradleHit:        () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
+  finish:           () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  playerWin:        () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  playerLose:       () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
+  betPlaced:        () => Haptics?.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
 };
 
 export type HapticType = 'bumper' | 'trampoline' | 'speedBurst' | 'pendulum' | 'cradle';

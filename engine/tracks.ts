@@ -1,5 +1,3 @@
-import { generateTrack } from './trackGenerator';
-
 // Track configuration system — rebuilt with proper Matter.js demo physics
 // All physics values reference: brm.io/matter-js demos (wreckingBall, avalanche, newtonsCradle, terrain)
 //
@@ -848,6 +846,8 @@ export function buildGauntlet(): TrackConfig {
 export function buildTrack(courseId: string): TrackConfig {
   if (courseId.startsWith('gen-')) {
     const seed = parseInt(courseId.slice(4), 10);
+    // Lazy require to break circular dependency (trackGenerator imports from tracks)
+    const { generateTrack } = require('./trackGenerator');
     return generateTrack(seed);
   }
   switch (courseId) {

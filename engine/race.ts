@@ -336,16 +336,17 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         }
       }
 
-      // Haptic feedback for bumpers, pendulums, cradles
+      // Haptic feedback for any marble collision (walls, ramps, bumpers, pegs, other marbles, etc.)
       if (onHaptic) {
         const mA = marbleBodies.find(m => m.body === bodyA);
         const mB = marbleBodies.find(m => m.body === bodyB);
         const mEntry = mA || mB;
-        const otherBody = mA ? bodyB : mB ? bodyA : null;
-        if (mEntry && otherBody) {
-          if (otherBody.label === 'bumper') onHaptic('bumper', mEntry.data.id);
-          else if (otherBody.label === 'pendulum-bob') onHaptic('pendulum', mEntry.data.id);
-          else if (otherBody.label === 'cradle-bob') onHaptic('cradle', mEntry.data.id);
+        if (mEntry) {
+          const otherBody = mA ? bodyB : mB ? bodyA : null;
+          if (otherBody?.label === 'bumper') onHaptic('bumper', mEntry.data.id);
+          else if (otherBody?.label === 'pendulum-bob') onHaptic('pendulum', mEntry.data.id);
+          else if (otherBody?.label === 'cradle-bob') onHaptic('cradle', mEntry.data.id);
+          else onHaptic('bumper', mEntry.data.id); // any collision = haptic
         }
       }
     });

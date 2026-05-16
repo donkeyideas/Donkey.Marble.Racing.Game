@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,15 +8,14 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
 import { COIN_PACKS, CoinPack } from '../state/gameStore';
-import {
-  initConnection,
-  fetchProducts,
-  requestPurchase,
-  purchaseUpdatedListener,
-  purchaseErrorListener,
-  finishTransaction,
-} from 'react-native-iap';
-import type { Purchase, PurchaseError } from 'react-native-iap';
+let IAP: typeof import('react-native-iap') | null = null;
+try {
+  IAP = require('react-native-iap');
+} catch {
+  console.warn('react-native-iap not available (Expo Go)');
+}
+type Purchase = any;
+type PurchaseError = any;
 
 const PACK_STYLES: Record<string, { iconBg: string; iconColor: string; iconText: string; borderColor?: string }> = {
   starter:  { iconBg: 'rgba(255,194,32,0.1)',  iconColor: Colors.yellow, iconText: '$' },
@@ -84,25 +83,25 @@ export default function StoreScreen() {
 
   // Initialize IAP connection
   useEffect(() => {
-    let purchaseUpdateSub: ReturnType<typeof purchaseUpdatedListener> | null = null;
-    let purchaseErrorSub: ReturnType<typeof purchaseErrorListener> | null = null;
+    if (!IAP) return;
+    let purchaseUpdateSub: any = null;
+    let purchaseErrorSub: any = null;
 
     const init = async () => {
       try {
-        await initConnection();
-        await fetchProducts({ skus: STORE_PRODUCT_IDS });
+        await IAP!.initConnection();
+        await IAP!.fetchProducts({ skus: STORE_PRODUCT_IDS });
         setIapReady(true);
       } catch (err) {
         console.warn('IAP init failed:', err);
       }
     };
 
-    // Listen for successful purchases — granted ONLY after payment confirmed
-    purchaseUpdateSub = purchaseUpdatedListener(async (purchase: Purchase) => {
+    purchaseUpdateSub = IAP.purchaseUpdatedListener(async (purchase: Purchase) => {
       const packId = STORE_ID_TO_PACK[purchase.productId] || purchase.productId;
       const isPass = packId === 'season_pass' || packId === 'season_pass_premium';
       try {
-        await finishTransaction({ purchase, isConsumable: !isPass });
+        await IAP!.finishTransaction({ purchase, isConsumable: !isPass });
         if (isPass) {
           const track = packId === 'season_pass' ? 'premium' : 'plus';
           purchaseSeasonPass(track);
@@ -121,7 +120,7 @@ export default function StoreScreen() {
       setPurchasing(null);
     });
 
-    purchaseErrorSub = purchaseErrorListener((error: PurchaseError) => {
+    purchaseErrorSub = IAP.purchaseErrorListener((error: PurchaseError) => {
       if (error.code !== 'user-cancelled') {
         setErrorMsg('Purchase failed. Please try again.');
         setTimeout(() => setErrorMsg(null), 3000);
@@ -138,11 +137,9 @@ export default function StoreScreen() {
   }, []);
 
   const handlePurchase = async (packId: string) => {
-    if (!iapReady) {
-      Alert.alert(
-        'Store Not Available',
-        'In-app purchases are not available right now. Please make sure you are signed into your app store account and try again.'
-      );
+    if (!IAP || !iapReady) {
+      setErrorMsg('Store not available in this build. Use a dev build for purchases.');
+      setTimeout(() => setErrorMsg(null), 3000);
       return;
     }
 
@@ -153,7 +150,7 @@ export default function StoreScreen() {
     const googleId = GOOGLE_IDS[packId] || packId;
 
     try {
-      await requestPurchase({
+      await IAP.requestPurchase({
         request: {
           apple: { sku: appleId },
           google: { skus: [googleId] },
