@@ -1,14 +1,20 @@
 /**
- * Plugin: adds `use_modular_headers!` to the iOS Podfile.
+ * Plugin: configure the iOS Podfile for @react-native-firebase/auth (Swift).
  *
- * Required by @react-native-firebase/auth (and other Firebase Swift pods) so
- * Objective-C consumers can `#import <FirebaseAuth/FirebaseAuth-Swift.h>`. The
- * directive is inserted before `platform :ios` so it applies globally.
+ * Two minimal directives, both before `platform :ios`:
  *
- * This is the minimal, proven config we had before the static-frameworks
- * experiment. Keep it small — no post_install merging, no use_frameworks!
- * dance, no Swift-bridging workarounds. The Firebase pods we still depend on
- * (app, auth, analytics) compile cleanly with just this.
+ *   $RNFirebaseAsStaticFramework = true   →  makes react-native-firebase Pods
+ *     install as static_framework. Generates the FirebaseAuth-Swift.h bridge
+ *     header where Firebase.h's umbrella import expects it, fixing:
+ *       'FirebaseAuth/FirebaseAuth-Swift.h' file not found
+ *     (RN-Firebase v22+ on Xcode 16+ runs into this because FirebaseAuth was
+ *     rewritten in Swift but the Pods/Headers layout is C-style by default.)
+ *     This is the react-native-firebase–specific scope — does NOT switch
+ *     every Pod to static frameworks the way useFrameworks: 'static' did.
+ *
+ *   use_modular_headers!                  →  allows Objective-C Firebase glue
+ *     to import each Swift Pod's module headers without case-by-case Podfile
+ *     directives. Required by FirebaseAuth's downstream consumers.
  */
 const { withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
@@ -21,8 +27,7 @@ module.exports = function withModularHeaders(config) {
       const podfilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
       let podfile = fs.readFileSync(podfilePath, 'utf8');
 
-      // Clean up any leftover post_install or standalone blocks from prior
-      // experiments. Idempotent: safe to run on a Podfile that's already clean.
+      // Idempotency: clean up artifacts from any prior version of this plugin.
       podfile = podfile.replace(
         /# --- begin withModularHeaders post_install \(Firebase compat\) ---[\s\S]*?# --- end withModularHeaders post_install ---\s*/g,
         '',
@@ -32,8 +37,15 @@ module.exports = function withModularHeaders(config) {
         '\n',
       );
 
-      // Inject use_modular_headers! once, before platform :ios.
-      if (!podfile.includes('use_modular_headers!')) {
+      // Insert directives before the first `platform :ios` line. Both flags
+      // must appear ABOVE use_react_native! / target blocks so the RN-Firebase
+      // podspec sees the global before defining its pod entries.
+      if (!podfile.includes('$RNFirebaseAsStaticFramework')) {
+        podfile = podfile.replace(
+          /platform :ios/,
+          '$RNFirebaseAsStaticFramework = true\nuse_modular_headers!\nplatform :ios',
+        );
+      } else if (!podfile.includes('use_modular_headers!')) {
         podfile = podfile.replace(
           /platform :ios/,
           'use_modular_headers!\nplatform :ios',
