@@ -14,6 +14,7 @@ import { Colors, Fonts, MARBLES, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import { syncPlayerState } from '../lib/sync';
 import { ACHIEVEMENTS } from '../data/achievements';
+import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 
@@ -153,6 +154,20 @@ export default function LobbyScreen() {
             subtitle="Pick any course · Race for fun, no stakes"
             colors={['#2ecc71', '#1a9c58']}
             onPress={() => router.push('/courses')}
+          />
+
+          <ModeCard
+            title="TRACK OF THE DAY"
+            subtitle={`Today: ${getTrackOfTheDay().name} · Bonus coins!`}
+            colors={['#f39c12', '#e67e22']}
+            badge="DAILY"
+            onPress={() => {
+              const totd = getTrackOfTheDay();
+              useGameStore.getState().selectCourse(totd.id);
+              useGameStore.getState().setActiveMode({ type: 'quick_race' });
+              useGameStore.getState().resetBet();
+              router.push('/race');
+            }}
           />
 
           <ModeCard
@@ -321,8 +336,7 @@ const styles = StyleSheet.create({
   /* ===== MARBLES ROW ===== */
   marblesRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
+    justifyContent: 'space-evenly',
     marginBottom: 20,
   },
 

@@ -469,6 +469,17 @@ export default function RaceScreen() {
   const firstAnim = useRef(new Animated.Value(0)).current;
   const firstFinishShown = useRef(false);
 
+  // Camera shake (start of race only)
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const shakeY = useRef(new Animated.Value(0)).current;
+
+  // Commentary
+  const [commentary, setCommentary] = useState<string | null>(null);
+  const commentaryAnim = useRef(new Animated.Value(0)).current;
+  const lastCommentaryTime = useRef(0);
+  const lastLeaderId = useRef<string | null>(null);
+  const playerPickFinished = useRef(false);
+
   const activeMode = useGameStore(s => s.activeMode);
 
   const handleEnd = useCallback(() => {
@@ -537,6 +548,36 @@ export default function RaceScreen() {
     if (countdown <= 0) return;
     const t = setTimeout(() => setCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
+  }, [countdown]);
+
+  // Camera shake during scrambler (countdown > 0), stop at GO
+  useEffect(() => {
+    if (countdown > 0) {
+      // Continuous rumble loop during scrambler
+      const rumble = () => {
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(shakeX, { toValue: 2.5, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: -2, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: 1.5, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeX, { toValue: -1, duration: 50, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.timing(shakeY, { toValue: 1.5, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeY, { toValue: -1.5, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeY, { toValue: 1, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeY, { toValue: -0.5, duration: 50, useNativeDriver: true }),
+          ]),
+        ]).start();
+      };
+      rumble();
+      const interval = setInterval(rumble, 200);
+      return () => clearInterval(interval);
+    } else {
+      // Stop shake at GO
+      shakeX.setValue(0);
+      shakeY.setValue(0);
+    }
   }, [countdown]);
 
   // Release gate when countdown hits 0
@@ -609,21 +650,87 @@ export default function RaceScreen() {
       last = t;
       const st: RaceState = eng.step(dt);
 
+      // === Hybrid camera: follow player's marble, snap to leader after finish ===
+      let followY = 0;
       let leaderY = 0;
+      const sortedByY = [...st.marbles].sort((a, b) => b.y - a.y);
       for (let i = 0; i < st.marbles.length; i++) {
         if (st.marbles[i].y > leaderY) leaderY = st.marbles[i].y;
       }
+
+      if (playerPickId) {
+        const playerMarble = st.marbles.find(m => m.data.id === playerPickId);
+        if (playerMarble && !playerMarble.finished) {
+          followY = playerMarble.y; // Follow player's marble
+        } else {
+          // Player finished or not found — follow leader
+          if (playerMarble?.finished && !playerPickFinished.current) {
+            playerPickFinished.current = true;
+          }
+          followY = leaderY;
+        }
+      } else {
+        followY = leaderY; // Quick race: follow leader
+      }
+
       // When doomsday bar is active, camera follows the bar so the user can see it sweeping
       if (st.doomsdayBar && st.doomsdayBar.active) {
-        leaderY = st.doomsdayBar.y;
+        followY = st.doomsdayBar.y;
       }
       const maxCam = totalH - SH / SCALE;
-      const target = Math.min(maxCam, Math.max(0, leaderY - SH * 0.35 / SCALE));
+      const target = Math.min(maxCam, Math.max(0, followY - SH * 0.35 / SCALE));
       // Frame-rate independent smoothing — gentle follow for natural feel
       const smoothing = 1 - Math.pow(0.001, dt / 1000);
       camRef.current += (target - camRef.current) * smoothing;
       // Update camera via Animated — bypasses React reconciliation for silky scrolling
       camAnimY.setValue(-camRef.current * SCALE);
+
+      // === Race commentary ===
+      const now = t;
+      if (now - lastCommentaryTime.current > 4000 && st.elapsed > 1500) {
+        const leader = sortedByY[0];
+        const second = sortedByY[1];
+        if (leader && second) {
+          const gap = leader.y - second.y;
+          let msg: string | null = null;
+
+          // Lead change
+          if (leader.data.id !== lastLeaderId.current && lastLeaderId.current !== null) {
+            msg = `${leader.data.name} takes the lead!`;
+          }
+          // Big gap
+          else if (gap > 120) {
+            msg = `${leader.data.name} is pulling away!`;
+          }
+          // Close race
+          else if (gap < 25 && st.elapsed > 5000) {
+            msg = `${leader.data.name} and ${second.data.name} neck and neck!`;
+          }
+          // Player marble doing well
+          else if (playerPickId) {
+            const playerIdx = sortedByY.findIndex(m => m.data.id === playerPickId);
+            if (playerIdx === 0 && st.elapsed > 3000) {
+              msg = `Your pick is leading!`;
+            } else if (playerIdx >= sortedByY.length - 2 && st.elapsed > 5000) {
+              msg = `Your pick is falling behind...`;
+            }
+          }
+
+          if (msg) {
+            lastCommentaryTime.current = now;
+            setCommentary(msg);
+            Animated.sequence([
+              Animated.timing(commentaryAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+              Animated.delay(2500),
+              Animated.timing(commentaryAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+            ]).start(() => setCommentary(null));
+          }
+        }
+        lastLeaderId.current = leader?.data.id ?? null;
+      }
+      if (lastLeaderId.current === null && sortedByY[0]) {
+        lastLeaderId.current = sortedByY[0].data.id;
+      }
 
       // Detect first marble to finish — trigger celebration (runs at full RAF rate)
       if (!firstFinishShown.current) {
@@ -681,7 +788,7 @@ export default function RaceScreen() {
         <View style={[StyleSheet.absoluteFill, { backgroundColor: themeOverlay }]} />
       )}
 
-      <View style={st.clip}>
+      <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>
         <Animated.View style={{ transform: [{ translateY: camAnimY }] }}>
           <StaticTrackElements tv={tv} themeSprites={themeSprites} trackConfig={trackConfig} />
 
@@ -953,7 +1060,7 @@ export default function RaceScreen() {
             </View>
           )}
         </Animated.View>
-      </View>
+      </Animated.View>
 
       {/* HUD */}
       <View style={st.hud}>
@@ -1005,6 +1112,13 @@ export default function RaceScreen() {
             <Text style={st.celebName}>{firstFinisher.name.toUpperCase()}</Text>
             <Text style={st.celebLabel}>1ST PLACE!</Text>
           </View>
+        </Animated.View>
+      )}
+
+      {/* Commentary overlay */}
+      {commentary && (
+        <Animated.View style={[st.commentaryWrap, { opacity: commentaryAnim }]} pointerEvents="none">
+          <Text style={st.commentaryText}>{commentary}</Text>
         </Animated.View>
       )}
 
@@ -1105,5 +1219,17 @@ const st = StyleSheet.create({
   celebLabel: {
     fontFamily: Fonts.bodyBold, fontSize: 16, color: '#fff',
     letterSpacing: 3,
+  },
+  commentaryWrap: {
+    position: 'absolute', top: 135, left: 0, right: 0,
+    alignItems: 'center', zIndex: 25,
+  },
+  commentaryText: {
+    fontFamily: Fonts.display, fontSize: 16, color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10,
+    paddingVertical: 6, paddingHorizontal: 16,
+    overflow: 'hidden',
+    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
 });

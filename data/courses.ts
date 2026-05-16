@@ -145,3 +145,16 @@ export function getGeneratedCourses(): CourseData[] {
 const featuredIds = new Set(COURSES.filter(c => c.id.startsWith('gen-')).map(c => c.id));
 const extraGenerated = getGeneratedCourses().filter(c => !featuredIds.has(c.id));
 export const ALL_COURSES: CourseData[] = [...COURSES, ...extraGenerated];
+
+/** Deterministic Track of the Day — picks one course per calendar date */
+export function getTrackOfTheDay(): CourseData {
+  const today = new Date();
+  // Simple date seed: YYYYMMDD as number
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  // mulberry32-style hash for good distribution
+  let h = seed | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 13), 0x45d9f3b);
+  h = (h ^ (h >>> 16)) >>> 0;
+  return ALL_COURSES[h % ALL_COURSES.length];
+}
