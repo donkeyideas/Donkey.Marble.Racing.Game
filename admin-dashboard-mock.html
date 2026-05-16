@@ -406,6 +406,79 @@ body {
   vertical-align: middle;
 }
 
+/* Forecast screen */
+.fc-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 12px;
+}
+@media (max-width: 1280px) { .fc-summary-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 720px)  { .fc-summary-grid { grid-template-columns: repeat(2, 1fr); } }
+.fc-tile {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.fc-tile-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.fc-tile-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 6px;
+  font-family: 'Lilita One', sans-serif;
+  letter-spacing: 0.3px;
+}
+.fc-tile-val.pos { color: #2ecc71; }
+.fc-tile-val.neg { color: #e74c3c; }
+.fc-tile-val.gold { color: #ffc220; }
+.fc-table thead th {
+  cursor: pointer;
+  user-select: none;
+}
+.fc-table thead th .fc-sort-ind {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.35;
+}
+.fc-table thead th.sort-active .fc-sort-ind {
+  color: #ffc220;
+  opacity: 1;
+}
+.fc-table tbody td { font-size: 13px; padding: 12px 16px; }
+.fc-table tbody tr.future td { opacity: 0.6; }
+.fc-table tbody tr.current td { background: rgba(255,194,32,0.04); }
+.fc-input {
+  width: 78px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: right;
+}
+.fc-input:focus {
+  outline: none;
+  border-color: #ffc220;
+  background: rgba(255,194,32,0.08);
+}
+.fc-input::placeholder { color: rgba(255,255,255,0.25); font-style: italic; font-weight: 400; }
+.fc-pos { color: #2ecc71; font-weight: 600; }
+.fc-neg { color: #e74c3c; font-weight: 600; }
+.fc-muted { color: rgba(255,255,255,0.3); }
+.fc-cum-delta { color: rgba(255,255,255,0.35); font-size: 11px; margin-left: 4px; }
+.fc-cum-delta.pos { color: #2ecc71; }
+.fc-cum-delta.neg { color: #e74c3c; }
+
 /* Status badges */
 .status {
   font-size: 10px; font-weight: 700; padding: 3px 10px;
@@ -1234,6 +1307,9 @@ body {
       <span class="nav-icon">&#9632;</span> Users
       <span class="nav-badge">3</span>
     </div>
+    <div class="nav-item" onclick="showScreen('forecast')">
+      <span class="nav-icon">&#9650;</span> Forecast
+    </div>
     <div class="nav-item" onclick="showScreen('financials')">
       <span class="nav-icon">&#9650;</span> Financials
     </div>
@@ -1480,63 +1556,11 @@ body {
               <th>Total Spent</th>
               <th>Season Pass</th>
               <th>Last Active</th>
+              <th style="color:#ffc220;">Joined &#9660;</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>
-                <div class="user-inline">
-                  <div class="user-avatar-sm">M</div>
-                  <div><div class="user-name">MarbleKing99</div><div class="user-id">#USR-00142</div></div>
-                </div>
-              </td>
-              <td><span class="status active">ACTIVE</span></td>
-              <td><span class="platform-badge ios">iOS</span></td>
-              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 8,420</div></td>
-              <td>347</td>
-              <td style="color:#2ecc71; font-weight:600;">$124.93</td>
-              <td><span class="status premium">PLUS</span></td>
-              <td style="color:rgba(255,255,255,0.5); font-size:12px;">2 min ago</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="user-inline">
-                  <div class="user-avatar-sm">S</div>
-                  <div><div class="user-name">SpeedDemon</div><div class="user-id">#USR-00287</div></div>
-                </div>
-              </td>
-              <td><span class="status active">ACTIVE</span></td>
-              <td><span class="platform-badge android">Android</span></td>
-              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 3,150</div></td>
-              <td>189</td>
-              <td style="color:#2ecc71; font-weight:600;">$49.97</td>
-              <td><span class="status" style="background:rgba(110,193,255,0.15);color:#6ec1ff;">PREMIUM</span></td>
-              <td style="color:rgba(255,255,255,0.5); font-size:12px;">15 min ago</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="user-inline">
-                  <div class="user-avatar-sm">L</div>
-                  <div><div class="user-name">LuckyRoller</div><div class="user-id">#USR-00391</div></div>
-                </div>
-              </td>
-              <td><span class="status suspended">FLAGGED</span></td>
-              <td><span class="platform-badge ios">iOS</span></td>
-              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 45,200</div></td>
-              <td>412</td>
-              <td style="color:#2ecc71; font-weight:600;">$199.96</td>
-              <td><span class="status premium">PLUS</span></td>
-              <td style="color:rgba(255,255,255,0.5); font-size:12px;">1 hr ago</td>
-              <td>
-                <div style="display:flex;gap:4px;">
-                  <button class="btn btn-ghost btn-sm" onclick="openModal()">View</button>
-                  <button class="btn btn-red btn-sm">Ban</button>
-                </div>
-              </td>
-            </tr>
             <tr>
               <td>
                 <div class="user-inline">
@@ -1551,38 +1575,7 @@ body {
               <td style="color:rgba(255,255,255,0.4);">$0.00</td>
               <td><span class="status churned">FREE</span></td>
               <td style="color:rgba(255,255,255,0.5); font-size:12px;">3 hrs ago</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="user-inline">
-                  <div class="user-avatar-sm">D</div>
-                  <div><div class="user-name">DashMaster</div><div class="user-id">#USR-00512</div></div>
-                </div>
-              </td>
-              <td><span class="status banned">BANNED</span></td>
-              <td><span class="platform-badge ios">iOS</span></td>
-              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 0</div></td>
-              <td>892</td>
-              <td style="color:#2ecc71; font-weight:600;">$74.95</td>
-              <td><span class="status churned">REVOKED</span></td>
-              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Banned 3d ago</td>
-              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
-            </tr>
-            <tr>
-              <td>
-                <div class="user-inline">
-                  <div class="user-avatar-sm">N</div>
-                  <div><div class="user-name">NovaChaser</div><div class="user-id">#USR-00623</div></div>
-                </div>
-              </td>
-              <td><span class="status active">ACTIVE</span></td>
-              <td><span class="platform-badge android">Android</span></td>
-              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 1,890</div></td>
-              <td>134</td>
-              <td style="color:#2ecc71; font-weight:600;">$14.98</td>
-              <td><span class="status" style="background:rgba(110,193,255,0.15);color:#6ec1ff;">PREMIUM</span></td>
-              <td style="color:rgba(255,255,255,0.5); font-size:12px;">28 min ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">5 days ago</td>
               <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
             </tr>
             <tr>
@@ -1599,7 +1592,98 @@ body {
               <td style="color:rgba(255,255,255,0.4);">$0.99</td>
               <td><span class="status churned">FREE</span></td>
               <td style="color:rgba(255,255,255,0.5); font-size:12px;">14 days ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">3 weeks ago</td>
               <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="user-inline">
+                  <div class="user-avatar-sm">N</div>
+                  <div><div class="user-name">NovaChaser</div><div class="user-id">#USR-00623</div></div>
+                </div>
+              </td>
+              <td><span class="status active">ACTIVE</span></td>
+              <td><span class="platform-badge android">Android</span></td>
+              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 1,890</div></td>
+              <td>134</td>
+              <td style="color:#2ecc71; font-weight:600;">$14.98</td>
+              <td><span class="status" style="background:rgba(110,193,255,0.15);color:#6ec1ff;">PREMIUM</span></td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">28 min ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Apr 12, 2026</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="user-inline">
+                  <div class="user-avatar-sm">S</div>
+                  <div><div class="user-name">SpeedDemon</div><div class="user-id">#USR-00287</div></div>
+                </div>
+              </td>
+              <td><span class="status active">ACTIVE</span></td>
+              <td><span class="platform-badge android">Android</span></td>
+              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 3,150</div></td>
+              <td>189</td>
+              <td style="color:#2ecc71; font-weight:600;">$49.97</td>
+              <td><span class="status" style="background:rgba(110,193,255,0.15);color:#6ec1ff;">PREMIUM</span></td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">15 min ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Feb 18, 2026</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="user-inline">
+                  <div class="user-avatar-sm">M</div>
+                  <div><div class="user-name">MarbleKing99</div><div class="user-id">#USR-00142</div></div>
+                </div>
+              </td>
+              <td><span class="status active">ACTIVE</span></td>
+              <td><span class="platform-badge ios">iOS</span></td>
+              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 8,420</div></td>
+              <td>347</td>
+              <td style="color:#2ecc71; font-weight:600;">$124.93</td>
+              <td><span class="status premium">PLUS</span></td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">2 min ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Nov 4, 2025</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="user-inline">
+                  <div class="user-avatar-sm">D</div>
+                  <div><div class="user-name">DashMaster</div><div class="user-id">#USR-00512</div></div>
+                </div>
+              </td>
+              <td><span class="status banned">BANNED</span></td>
+              <td><span class="platform-badge ios">iOS</span></td>
+              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 0</div></td>
+              <td>892</td>
+              <td style="color:#2ecc71; font-weight:600;">$74.95</td>
+              <td><span class="status churned">REVOKED</span></td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Banned 3d ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">Sep 9, 2025</td>
+              <td><button class="btn btn-ghost btn-sm" onclick="openModal()">View</button></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="user-inline">
+                  <div class="user-avatar-sm">L</div>
+                  <div><div class="user-name">LuckyRoller</div><div class="user-id">#USR-00391</div></div>
+                </div>
+              </td>
+              <td><span class="status suspended">FLAGGED</span></td>
+              <td><span class="platform-badge ios">iOS</span></td>
+              <td><div style="display:flex;align-items:center;gap:4px;"><span class="coin-icon-sm">$</span> 45,200</div></td>
+              <td>412</td>
+              <td style="color:#2ecc71; font-weight:600;">$199.96</td>
+              <td><span class="status premium">PLUS</span></td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">1 hr ago</td>
+              <td style="color:rgba(255,255,255,0.5); font-size:12px;">May 22, 2025</td>
+              <td>
+                <div style="display:flex;gap:4px;">
+                  <button class="btn btn-ghost btn-sm" onclick="openModal()">View</button>
+                  <button class="btn btn-red btn-sm">Ban</button>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1616,6 +1700,58 @@ body {
           <div class="page-btn">688</div>
           <div class="page-btn">&#8250;</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ========== SCREEN 2B: USER FORECAST ========== -->
+    <div class="screen" id="screen-forecast">
+      <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:18px; gap:16px; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:22px;font-weight:700;color:#fff;">User Forecast</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px;">Enter monthly forecast numbers &mdash; variance, growth, and cumulative totals auto-calculate</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost btn-sm" id="fc-add-month-btn" onclick="Forecast.openAddMonth()">+ Add Month</button>
+          <button class="btn btn-gold btn-sm" id="fc-save-btn" onclick="Forecast.save()">Save Forecasts</button>
+        </div>
+      </div>
+
+      <!-- Inline add-month bar -->
+      <div id="fc-add-bar" style="display:none; gap:8px; align-items:center; margin-bottom:16px;">
+        <input id="fc-add-month-input" type="month" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); color:#fff; padding:6px 10px; border-radius:8px; font-family:inherit; font-size:13px;">
+        <button class="btn btn-gold btn-sm" onclick="Forecast.addMonth()">Add</button>
+        <button class="btn btn-ghost btn-sm" onclick="Forecast.closeAddMonth()">Cancel</button>
+      </div>
+
+      <!-- Summary tiles -->
+      <div class="fc-summary-grid">
+        <div class="fc-tile"><div class="fc-tile-label">Users YTD</div><div class="fc-tile-val" id="fc-sum-actual">0</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Forecast YTD</div><div class="fc-tile-val" id="fc-sum-fcst">0</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Total Forecast</div><div class="fc-tile-val" id="fc-sum-fcst-all">0</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Variance YTD</div><div class="fc-tile-val" id="fc-sum-var">&mdash;</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Avg Users / Mo</div><div class="fc-tile-val" id="fc-sum-avg">0</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Actual vs Forecast</div><div class="fc-tile-val" id="fc-sum-avf">&mdash;</div></div>
+        <div class="fc-tile"><div class="fc-tile-label">Avg Growth</div><div class="fc-tile-val" id="fc-sum-growth">&mdash;</div></div>
+      </div>
+
+      <!-- Forecast table -->
+      <div class="card" style="padding:0; overflow:hidden; margin-top:18px;">
+        <table class="data-table fc-table">
+          <thead>
+            <tr>
+              <th data-sort="month">Month <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="users">Users <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="avgUsers">Avg/Day <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="forecast">Forecast <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="fcstAvg">F Avg/Day <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="avf">Actual vs F <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="variance">Variance <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="cumulative">Cumulative <span class="fc-sort-ind">&#8645;</span></th>
+              <th data-sort="growth">Growth <span class="fc-sort-ind">&#8645;</span></th>
+            </tr>
+          </thead>
+          <tbody id="fc-tbody"></tbody>
+        </table>
       </div>
     </div>
 
@@ -3702,7 +3838,7 @@ function showScreen(screen) {
 
   // Activate nav item
   const navItems = document.querySelectorAll('.nav-item');
-  const screenMap = { overview: 0, users: 1, financials: 2, economy: 3, seasons: 4, analytics: 5, support: 6, userdetail: 1 };
+  const screenMap = { overview: 0, users: 1, forecast: 2, financials: 3, economy: 4, seasons: 5, analytics: 6, support: 7, userdetail: 1 };
   if (screenMap[screen] !== undefined) {
     navItems[screenMap[screen]].classList.add('active');
   }
@@ -3711,6 +3847,7 @@ function showScreen(screen) {
   const titles = {
     overview: 'OVERVIEW',
     users: 'USER MANAGEMENT',
+    forecast: 'USER FORECAST',
     financials: 'FINANCIALS',
     economy: 'ECONOMY CONTROLS',
     seasons: 'SEASON MANAGEMENT',
@@ -3719,6 +3856,8 @@ function showScreen(screen) {
     userdetail: 'USER DETAIL'
   };
   document.getElementById('topbar-title').textContent = titles[screen] || 'OVERVIEW';
+
+  if (screen === 'forecast' && window.Forecast) window.Forecast.render();
 }
 
 // Modal
@@ -3733,6 +3872,321 @@ function closeModal() {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeModal();
 });
+
+// ============================================================
+// FORECAST MODULE
+// Mirrors argufight: actuals come from user data; user enters
+// monthly forecast numbers; variance, growth, cumulative, and
+// Avg/Day are auto-calculated. Forecasts persist to localStorage.
+// ============================================================
+window.Forecast = (function () {
+  const STORAGE_KEY = 'dmr_admin_forecasts_v1';
+  const ADDED_KEY = 'dmr_admin_forecast_added_months_v1';
+
+  // Seeded actuals: real Donkey Marble user counts per month.
+  // Total = 83 (matches the "TOTAL USERS" KPI on the Users screen).
+  const actuals = {
+    '2025-12': 5,
+    '2026-01': 8,
+    '2026-02': 11,
+    '2026-03': 14,
+    '2026-04': 23,
+    '2026-05': 22, // current month, partial
+  };
+
+  // Mock current date — kept in sync with the project memory date.
+  const NOW = new Date(2026, 4, 16); // 2026-05-16
+  const CURRENT_KEY = monthKey(NOW);
+
+  let forecasts = loadJSON(STORAGE_KEY, {});
+  let addedMonths = loadJSON(ADDED_KEY, []);
+  let sort = { col: 'month', dir: 'asc' };
+  let dirty = false;
+
+  function monthKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+  function loadJSON(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
+    catch (_) { return fallback; }
+  }
+  function saveJSON(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (_) {}
+  }
+  function formatMonthLabel(key) {
+    const [y, m] = key.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  }
+  function fmt(n) { return n == null ? '&mdash;' : n.toLocaleString(); }
+
+  function buildRows() {
+    // All months: actuals ∪ forecast keys ∪ added months
+    const allKeys = new Set([
+      ...Object.keys(actuals),
+      ...Object.keys(forecasts),
+      ...addedMonths,
+    ]);
+    const sortedKeys = [...allKeys].sort();
+
+    let cumA = 0, cumF = 0;
+    let prevActual = null;
+    return sortedKeys.map(key => {
+      const isFuture = key > CURRENT_KEY;
+      const isCurrent = key === CURRENT_KEY;
+      const actual = isFuture ? null : (actuals[key] ?? 0);
+      const forecast = forecasts[key] != null ? Number(forecasts[key]) : null;
+
+      const [y, m] = key.split('-').map(Number);
+      const daysInMonth = new Date(y, m, 0).getDate();
+      const daysElapsed = isCurrent ? NOW.getDate() : daysInMonth;
+
+      const avgPerDay = actual != null && daysElapsed > 0 ? Math.round((actual / daysElapsed) * 10) / 10 : null;
+      const fcstAvg = forecast != null && daysInMonth > 0 ? Math.round((forecast / daysInMonth) * 10) / 10 : null;
+      const variance = actual != null && forecast != null ? actual - forecast : null;
+      const avf = actual != null && forecast != null && forecast > 0 ? Math.round((actual / forecast) * 100) : null;
+      const growth = actual != null && prevActual != null && prevActual > 0
+        ? ((actual - prevActual) / prevActual) * 100
+        : null;
+
+      if (actual != null) cumA += actual;
+      if (forecast != null) cumF += forecast;
+
+      const row = {
+        key, isFuture, isCurrent,
+        actual, forecast,
+        avgPerDay, fcstAvg,
+        variance, avf, growth,
+        cumActual: actual != null ? cumA : null,
+        cumForecast: forecast != null ? cumF : null,
+      };
+      if (actual != null) prevActual = actual;
+      return row;
+    });
+  }
+
+  function applySort(rows) {
+    const { col, dir } = sort;
+    const sign = dir === 'asc' ? 1 : -1;
+    return rows.slice().sort((a, b) => {
+      if (col === 'month') return sign * a.key.localeCompare(b.key);
+      const map = {
+        users: 'actual', avgUsers: 'avgPerDay',
+        forecast: 'forecast', fcstAvg: 'fcstAvg',
+        avf: 'avf', variance: 'variance',
+        cumulative: 'cumActual', growth: 'growth',
+      };
+      const f = map[col];
+      const av = a[f] == null ? -Infinity : a[f];
+      const bv = b[f] == null ? -Infinity : b[f];
+      return sign * (av - bv);
+    });
+  }
+
+  function computeSummary(rows) {
+    const past = rows.filter(r => !r.isFuture);
+    const totalActual = past.reduce((s, r) => s + (r.actual ?? 0), 0);
+    const totalFcstYTD = past.reduce((s, r) => s + (r.forecast ?? 0), 0);
+    const totalFcstAll = rows.reduce((s, r) => s + (r.forecast ?? 0), 0);
+    const varianceYTD = totalFcstYTD > 0 ? totalActual - totalFcstYTD : null;
+    const avgUsersMo = past.length > 0 ? Math.round(totalActual / past.length) : 0;
+    const avf = totalFcstYTD > 0 ? Math.round((totalActual / totalFcstYTD) * 100) : null;
+    const growths = past.map(r => r.growth).filter(g => g != null);
+    const avgGrowth = growths.length > 0 ? growths.reduce((a, b) => a + b, 0) / growths.length : null;
+    return { totalActual, totalFcstYTD, totalFcstAll, varianceYTD, avgUsersMo, avf, avgGrowth };
+  }
+
+  function render() {
+    const rows = applySort(buildRows());
+
+    // Update sort indicator on headers
+    document.querySelectorAll('#screen-forecast .fc-table thead th').forEach(th => {
+      const c = th.getAttribute('data-sort');
+      th.classList.toggle('sort-active', c === sort.col);
+      const ind = th.querySelector('.fc-sort-ind');
+      if (ind) {
+        if (c === sort.col) ind.innerHTML = sort.dir === 'asc' ? '&#9650;' : '&#9660;';
+        else ind.innerHTML = '&#8645;';
+      }
+    });
+
+    // Render summary
+    const s = computeSummary(rows);
+    const $ = id => document.getElementById(id);
+    $('fc-sum-actual').textContent = s.totalActual.toLocaleString();
+    $('fc-sum-fcst').textContent = s.totalFcstYTD.toLocaleString();
+    $('fc-sum-fcst-all').textContent = s.totalFcstAll.toLocaleString();
+    if (s.varianceYTD == null) { $('fc-sum-var').innerHTML = '&mdash;'; $('fc-sum-var').className = 'fc-tile-val'; }
+    else {
+      $('fc-sum-var').textContent = (s.varianceYTD >= 0 ? '+' : '') + s.varianceYTD.toLocaleString();
+      $('fc-sum-var').className = 'fc-tile-val ' + (s.varianceYTD >= 0 ? 'pos' : 'neg');
+    }
+    $('fc-sum-avg').textContent = s.avgUsersMo.toLocaleString();
+    if (s.avf == null) { $('fc-sum-avf').innerHTML = '&mdash;'; $('fc-sum-avf').className = 'fc-tile-val'; }
+    else {
+      $('fc-sum-avf').textContent = s.avf + '%';
+      $('fc-sum-avf').className = 'fc-tile-val ' + (s.avf >= 100 ? 'pos' : 'neg');
+    }
+    if (s.avgGrowth == null) { $('fc-sum-growth').innerHTML = '&mdash;'; $('fc-sum-growth').className = 'fc-tile-val'; }
+    else {
+      $('fc-sum-growth').textContent = (s.avgGrowth >= 0 ? '+' : '') + s.avgGrowth.toFixed(1) + '%';
+      $('fc-sum-growth').className = 'fc-tile-val ' + (s.avgGrowth >= 0 ? 'pos' : 'neg');
+    }
+
+    // Render rows
+    const tbody = $('fc-tbody');
+    tbody.innerHTML = rows.map(r => {
+      const cls = (r.isFuture ? 'future' : '') + (r.isCurrent ? ' current' : '');
+      const usersCell = r.isFuture ? '<span class="fc-muted">&mdash;</span>' : fmt(r.actual);
+      const avgCell = r.avgPerDay != null ? r.avgPerDay : '<span class="fc-muted">&mdash;</span>';
+      const fcstVal = r.forecast != null ? r.forecast : '';
+      const fcstAvgCell = r.fcstAvg != null ? r.fcstAvg : '<span class="fc-muted">&mdash;</span>';
+      const avfCell = r.isFuture ? '<span class="fc-muted">&mdash;</span>'
+        : (r.avf != null
+            ? '<span class="' + (r.avf >= 100 ? 'fc-pos' : 'fc-neg') + '">' + r.avf + '%</span>'
+            : '<span class="fc-muted">&mdash;</span>');
+      const varCell = r.variance == null
+        ? (r.isFuture ? '<span class="fc-muted">Pending</span>' : '<span class="fc-muted">&mdash;</span>')
+        : '<span class="' + (r.variance >= 0 ? 'fc-pos' : 'fc-neg') + '">' + (r.variance >= 0 ? '+' : '') + r.variance + '</span>';
+      const cumCell = r.cumActual != null
+        ? r.cumActual + (r.cumForecast != null
+            ? ' <span class="fc-muted">/ ' + r.cumForecast + '</span>'
+              + ' <span class="fc-cum-delta ' + (r.cumActual - r.cumForecast >= 0 ? 'pos' : 'neg') + '">(' + (r.cumActual - r.cumForecast >= 0 ? '+' : '') + (r.cumActual - r.cumForecast) + ')</span>'
+            : '')
+        : '<span class="fc-muted">&mdash;</span>';
+      const growthCell = r.growth == null ? '<span class="fc-muted">&mdash;</span>'
+        : '<span class="' + (r.growth >= 0 ? 'fc-pos' : 'fc-neg') + '">' + (r.growth >= 0 ? '+' : '') + r.growth.toFixed(1) + '%</span>';
+
+      return '<tr class="' + cls.trim() + '">'
+        + '<td style="font-weight:600;color:#fff;">' + formatMonthLabel(r.key) + '</td>'
+        + '<td>' + usersCell + '</td>'
+        + '<td>' + avgCell + '</td>'
+        + '<td><input class="fc-input" type="number" min="0" data-month="' + r.key + '" value="' + fcstVal + '" placeholder="Set"></td>'
+        + '<td>' + fcstAvgCell + '</td>'
+        + '<td>' + avfCell + '</td>'
+        + '<td>' + varCell + '</td>'
+        + '<td>' + cumCell + '</td>'
+        + '<td>' + growthCell + '</td>'
+        + '</tr>';
+    }).join('');
+
+    // Wire inputs
+    tbody.querySelectorAll('.fc-input').forEach(input => {
+      input.addEventListener('input', e => {
+        const m = e.target.getAttribute('data-month');
+        const v = e.target.value.trim();
+        if (v === '') delete forecasts[m];
+        else forecasts[m] = Number(v);
+        dirty = true;
+        updateSaveBtn();
+        // Recompute summary + dependent cells without full re-render (preserves focus)
+        partialRecalc();
+      });
+    });
+    updateSaveBtn();
+  }
+
+  // Recompute summary tiles + dependent cells without re-rendering inputs
+  function partialRecalc() {
+    const rows = applySort(buildRows());
+    const s = computeSummary(rows);
+    const $ = id => document.getElementById(id);
+    $('fc-sum-actual').textContent = s.totalActual.toLocaleString();
+    $('fc-sum-fcst').textContent = s.totalFcstYTD.toLocaleString();
+    $('fc-sum-fcst-all').textContent = s.totalFcstAll.toLocaleString();
+    if (s.varianceYTD == null) { $('fc-sum-var').innerHTML = '&mdash;'; $('fc-sum-var').className = 'fc-tile-val'; }
+    else {
+      $('fc-sum-var').textContent = (s.varianceYTD >= 0 ? '+' : '') + s.varianceYTD.toLocaleString();
+      $('fc-sum-var').className = 'fc-tile-val ' + (s.varianceYTD >= 0 ? 'pos' : 'neg');
+    }
+    if (s.avf == null) { $('fc-sum-avf').innerHTML = '&mdash;'; $('fc-sum-avf').className = 'fc-tile-val'; }
+    else {
+      $('fc-sum-avf').textContent = s.avf + '%';
+      $('fc-sum-avf').className = 'fc-tile-val ' + (s.avf >= 100 ? 'pos' : 'neg');
+    }
+    // Update F Avg/Day, Variance, Actual vs F, Cumulative for each row (keep input untouched)
+    const rowsByKey = Object.fromEntries(rows.map(r => [r.key, r]));
+    document.querySelectorAll('#fc-tbody tr').forEach(tr => {
+      const input = tr.querySelector('.fc-input');
+      if (!input) return;
+      const r = rowsByKey[input.getAttribute('data-month')];
+      if (!r) return;
+      const cells = tr.children;
+      cells[4].innerHTML = r.fcstAvg != null ? r.fcstAvg : '<span class="fc-muted">&mdash;</span>';
+      cells[5].innerHTML = r.isFuture ? '<span class="fc-muted">&mdash;</span>'
+        : (r.avf != null
+            ? '<span class="' + (r.avf >= 100 ? 'fc-pos' : 'fc-neg') + '">' + r.avf + '%</span>'
+            : '<span class="fc-muted">&mdash;</span>');
+      cells[6].innerHTML = r.variance == null
+        ? (r.isFuture ? '<span class="fc-muted">Pending</span>' : '<span class="fc-muted">&mdash;</span>')
+        : '<span class="' + (r.variance >= 0 ? 'fc-pos' : 'fc-neg') + '">' + (r.variance >= 0 ? '+' : '') + r.variance + '</span>';
+      cells[7].innerHTML = r.cumActual != null
+        ? r.cumActual + (r.cumForecast != null
+            ? ' <span class="fc-muted">/ ' + r.cumForecast + '</span>'
+              + ' <span class="fc-cum-delta ' + (r.cumActual - r.cumForecast >= 0 ? 'pos' : 'neg') + '">(' + (r.cumActual - r.cumForecast >= 0 ? '+' : '') + (r.cumActual - r.cumForecast) + ')</span>'
+            : '')
+        : '<span class="fc-muted">&mdash;</span>';
+    });
+  }
+
+  function updateSaveBtn() {
+    const btn = document.getElementById('fc-save-btn');
+    if (!btn) return;
+    btn.style.opacity = dirty ? '1' : '0.5';
+    btn.style.pointerEvents = dirty ? 'auto' : 'none';
+  }
+
+  function save() {
+    saveJSON(STORAGE_KEY, forecasts);
+    saveJSON(ADDED_KEY, addedMonths);
+    dirty = false;
+    updateSaveBtn();
+  }
+
+  function openAddMonth() {
+    document.getElementById('fc-add-bar').style.display = 'flex';
+    const input = document.getElementById('fc-add-month-input');
+    input.value = '';
+    input.focus();
+  }
+  function closeAddMonth() {
+    document.getElementById('fc-add-bar').style.display = 'none';
+  }
+  function addMonth() {
+    const v = document.getElementById('fc-add-month-input').value;
+    if (!v) return;
+    if (!addedMonths.includes(v)) addedMonths.push(v);
+    dirty = true;
+    closeAddMonth();
+    render();
+  }
+
+  function bindSort() {
+    document.querySelectorAll('#screen-forecast .fc-table thead th').forEach(th => {
+      th.addEventListener('click', () => {
+        const c = th.getAttribute('data-sort');
+        if (sort.col === c) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+        else { sort.col = c; sort.dir = c === 'month' ? 'asc' : 'desc'; }
+        render();
+      });
+    });
+  }
+
+  // Seed default future months so the table shows a 12-month horizon by default
+  function seedDefaults() {
+    const start = new Date(NOW.getFullYear(), NOW.getMonth() + 1, 1);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      const k = monthKey(d);
+      if (!addedMonths.includes(k)) addedMonths.push(k);
+    }
+  }
+  seedDefaults();
+
+  document.addEventListener('DOMContentLoaded', bindSort);
+  if (document.readyState !== 'loading') bindSort();
+
+  return { render, save, openAddMonth, closeAddMonth, addMonth };
+})();
 
 // Toggle switches
 document.querySelectorAll('.toggle-switch').forEach(toggle => {
