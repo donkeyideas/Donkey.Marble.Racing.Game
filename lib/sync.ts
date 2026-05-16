@@ -49,6 +49,7 @@ export function syncPurchase(data: {
 }
 
 export function syncPlayerState(data: {
+  playerName: string;
   coins: number;
   totalRaces: number;
   totalWins: number;

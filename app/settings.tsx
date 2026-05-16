@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Linking,
   Alert,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,8 +45,21 @@ const LEGAL_PAGES = [
 export default function SettingsScreen() {
   const router = useRouter();
   const playerName = useGameStore((s) => s.playerName);
+  const setPlayerName = useGameStore((s) => s.setPlayerName);
   const resetCoins = useGameStore((s) => s.resetCoins);
   const [deleting, setDeleting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(playerName || '');
+
+  const handleNameSave = () => {
+    const trimmed = nameInput.trim();
+    if (trimmed.length >= 2 && trimmed.length <= 16) {
+      setPlayerName(trimmed);
+      setEditingName(false);
+    } else {
+      Alert.alert('Invalid Name', 'Name must be 2-16 characters.');
+    }
+  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -102,17 +118,51 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
 
           <View style={styles.card}>
-            <View style={styles.accountRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarLetter}>
-                  {playerName ? playerName[0].toUpperCase() : 'P'}
-                </Text>
+            {editingName ? (
+              <View style={styles.accountRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarLetter}>
+                    {nameInput ? nameInput[0].toUpperCase() : 'P'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    maxLength={16}
+                    autoFocus
+                    style={styles.nameInput}
+                    placeholderTextColor="rgba(255,255,255,0.25)"
+                    placeholder="Enter name..."
+                    onSubmitEditing={handleNameSave}
+                    returnKeyType="done"
+                  />
+                  <View style={styles.nameActions}>
+                    <Pressable onPress={handleNameSave} style={styles.nameSaveBtn}>
+                      <Text style={styles.nameSaveBtnText}>SAVE</Text>
+                    </Pressable>
+                    <Pressable onPress={() => { setEditingName(false); setNameInput(playerName || ''); }} style={styles.nameCancelBtn}>
+                      <Text style={styles.nameCancelBtnText}>CANCEL</Text>
+                    </Pressable>
+                  </View>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.accountName}>{playerName || 'Player'}</Text>
-                <Text style={styles.accountSub}>v1.0.1</Text>
-              </View>
-            </View>
+            ) : (
+              <Pressable onPress={() => { setNameInput(playerName || ''); setEditingName(true); }}>
+                <View style={styles.accountRow}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarLetter}>
+                      {playerName ? playerName[0].toUpperCase() : 'P'}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.accountName}>{playerName || 'Player'}</Text>
+                    <Text style={styles.accountSub}>Tap to change name</Text>
+                  </View>
+                  <Text style={styles.linkArrow}>{'\u203A'}</Text>
+                </View>
+              </Pressable>
+            )}
           </View>
 
           {/* Legal & Compliance — in-app pages */}
@@ -252,6 +302,44 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 11,
     color: Colors.whiteAlpha35,
+  },
+  nameInput: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 16,
+    color: Colors.white,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.yellow,
+    paddingBottom: 4,
+    marginBottom: 8,
+  },
+  nameActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  nameSaveBtn: {
+    backgroundColor: Colors.yellow,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  nameSaveBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.ink,
+    letterSpacing: 0.5,
+  },
+  nameCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  nameCancelBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    letterSpacing: 0.5,
   },
 
   /* Link cards */

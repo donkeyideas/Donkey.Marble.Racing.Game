@@ -77,6 +77,7 @@ export default function LobbyScreen() {
     const doSync = () => {
       const s = useGameStore.getState();
       syncPlayerState({
+        playerName: s.playerName,
         coins: s.coins,
         totalRaces: s.totalRaces,
         totalWins: s.totalWins,
@@ -164,6 +165,19 @@ export default function LobbyScreen() {
             onPress={() => {
               const totd = getTrackOfTheDay();
               useGameStore.getState().selectCourse(totd.id);
+              useGameStore.getState().setActiveMode({ type: 'quick_race' });
+              useGameStore.getState().resetBet();
+              router.push('/race');
+            }}
+          />
+
+          <ModeCard
+            title="GRAND PRIX"
+            subtitle="F1-style sweeping curves and racing lines"
+            colors={['#0a0a3a', '#e74c3c']}
+            badge="F1"
+            onPress={() => {
+              useGameStore.getState().selectCourse('grand-prix-1');
               useGameStore.getState().setActiveMode({ type: 'quick_race' });
               useGameStore.getState().resetBet();
               router.push('/race');
