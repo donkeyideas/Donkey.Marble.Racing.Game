@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "791385622060",
+    "project_id": "donkey-marble-racing",
+    "storage_bucket": "donkey-marble-racing.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:791385622060:android:0efc1d60aa75d0c4377389",
+        "android_client_info": {
+          "package_name": "com.donkeymarble.racing"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4k7sHWNUNZyjfGHyk9iIELGqXQzUb_bs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

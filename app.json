@@ -48,7 +48,9 @@
         {
           "sounds": []
         }
-      ]
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/analytics"
     ],
     "extra": {
       "router": {},
