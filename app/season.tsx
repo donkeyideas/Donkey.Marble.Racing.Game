@@ -36,7 +36,10 @@ export default function SeasonScreen() {
   const dailyStreak = useGameStore((s) => s.dailyStreak);
 
   const [dailyBonus, setDailyBonus] = useState<{ reward: number; streak: number } | null>(null);
-  const [selectedMode, setSelectedMode] = useState<'franchise' | 'bettor' | null>(null);
+  // Bettor mode is hidden for now — the bet-per-race flow needs more work,
+  // so new seasons go straight to franchise mode. Re-enable by flipping
+  // this default back to null and unhiding the bettor card below.
+  const [selectedMode, setSelectedMode] = useState<'franchise' | 'bettor' | null>('franchise');
   const [selectedSeasonMarble, setSelectedSeasonMarble] = useState<MarbleData | null>(null);
 
   useEffect(() => {
@@ -98,33 +101,9 @@ export default function SeasonScreen() {
               Race through a {WEEKS_PER_SEASON}-week season. Top 6 marbles advance to the playoffs. No entry fee — you only spend coins on individual bets each race.
             </Text>
 
-            {/* Mode picker cards */}
-            <View style={styles.modeRow}>
-              <Pressable
-                style={[styles.modeCard, selectedMode === 'franchise' && styles.modeCardSelected]}
-                onPress={() => { setSelectedMode('franchise'); setSelectedSeasonMarble(null); }}
-              >
-                <View style={styles.modeIconWrap}>
-                  <MarbleDot marble={MARBLES[0]} size={32} />
-                </View>
-                <Text style={[styles.modeCardTitle, selectedMode === 'franchise' && styles.modeCardTitleSelected]}>FRANCHISE</Text>
-                <Text style={styles.modeCardDesc}>Pick one marble for the whole season. Ride or die.</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modeCard, selectedMode === 'bettor' && styles.modeCardSelected]}
-                onPress={() => { setSelectedMode('bettor'); setSelectedSeasonMarble(null); }}
-              >
-                <View style={styles.modeIconWrap}>
-                  <View style={styles.modeMultiDots}>
-                    {MARBLES.slice(0, 4).map((m) => (
-                      <MarbleDot key={m.id} marble={m} size={14} />
-                    ))}
-                  </View>
-                </View>
-                <Text style={[styles.modeCardTitle, selectedMode === 'bettor' && styles.modeCardTitleSelected]}>BETTOR</Text>
-                <Text style={styles.modeCardDesc}>Bet on any marble each race. Pure strategy.</Text>
-              </Pressable>
-            </View>
+            {/* Mode picker — Bettor mode hidden for now (bet-per-race flow
+                needs more work). New seasons go straight to franchise; just
+                pick a marble below. */}
 
             {/* Marble picker — franchise only */}
             {selectedMode === 'franchise' && (
@@ -146,7 +125,7 @@ export default function SeasonScreen() {
             {/* Start button */}
             <View style={{ marginTop: 16, width: '100%' }}>
               <PrimaryButton
-                label={canStart ? `START SEASON ${nextSeasonNum}` : selectedMode ? 'SELECT A MARBLE' : 'CHOOSE A MODE'}
+                label={canStart ? `START SEASON ${nextSeasonNum}` : 'SELECT A MARBLE'}
                 onPress={handleStartSeason}
                 disabled={!canStart}
               />
