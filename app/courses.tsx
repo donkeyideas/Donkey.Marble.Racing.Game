@@ -280,8 +280,11 @@ const styles = StyleSheet.create({
   cardThumbnailText: {
     fontFamily: Fonts.display,
     fontSize: 18,
-    color: Colors.whiteAlpha25,
+    color: Colors.white,
     letterSpacing: 2,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   cardBody: {
     padding: 12,

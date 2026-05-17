@@ -20,6 +20,7 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
+import FloatingMarblesBackground from '../components/FloatingMarblesBackground';
 
 function ModeCard({
   title,
@@ -115,6 +116,7 @@ export default function LobbyScreen() {
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96']} style={styles.fill}>
+      <FloatingMarblesBackground opacity={0.18} />
       <SafeAreaView style={styles.fill}>
         <ScrollView
           style={styles.fill}
@@ -204,7 +206,7 @@ export default function LobbyScreen() {
           <ModeCard
             title="MULTIPLAYER"
             subtitle="Live 8-player tournaments · Real opponents · Real prizes"
-            colors={['#8e44ad', '#6c3483']}
+            colors={['#e91e63', '#ad1457']}
             badge="LIVE"
             onPress={() => {
               const uid = useGameStore.getState().firebaseUid;
@@ -233,7 +235,7 @@ export default function LobbyScreen() {
           <ModeCard
             title="TRACK OF THE DAY"
             subtitle={`Today: ${getTrackOfTheDay().name} · Bonus coins!`}
-            colors={['#f39c12', '#e67e22']}
+            colors={['#e74c3c', '#c0392b']}
             badge="DAILY"
             onPress={() => {
               const totd = getTrackOfTheDay();
@@ -247,7 +249,7 @@ export default function LobbyScreen() {
           <ModeCard
             title="CUSTOM TRACK"
             subtitle="Generate tracks from any seed · Race your creations"
-            colors={['#e67e22', '#d35400']}
+            colors={['#1abc9c', '#16a085']}
             onPress={() => router.push('/custom-track')}
           />
 
