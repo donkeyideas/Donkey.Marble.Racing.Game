@@ -541,25 +541,30 @@ export const useGameStore = create<GameState>()(
       coinHistory: newCoinHistory,
     });
 
-    // --- Sync race to server (fire-and-forget) ---
+    // --- Sync race to server (fire-and-forget); reconcile coins from server ---
     const course = COURSES.find(c => c.id === get().selectedCourseId);
-    syncRaceResult({
-      courseId: get().selectedCourseId,
-      courseTheme: course?.theme ?? 'unknown',
-      gameMode: activeMode.type,
-      finishOrder: positionIds,
-      playerPickId: result.playerPick?.id ?? null,
-      betAmount: result.betAmount,
-      payout: result.payout,
-      playerPlacement: result.playerPlacement,
-      // Sync the strict 1st-place flag so server-side "wins" analytics aren't
-      // inflated by tournament-round survivals.
-      won: result.playerWonRace,
-      currentCoins: newCoins,
-      odds: result.playerPick ? currentOdds[result.playerPick.id] : undefined,
-      winnerTime: result.positions[0]?.time,
-      modeContext: activeMode.type !== 'bet' && activeMode.type !== 'quick_race' ? activeMode : undefined,
-    });
+    syncRaceResult(
+      {
+        courseId: get().selectedCourseId,
+        courseTheme: course?.theme ?? 'unknown',
+        gameMode: activeMode.type,
+        finishOrder: positionIds,
+        playerPickId: result.playerPick?.id ?? null,
+        betAmount: result.betAmount,
+        payout: result.payout,
+        playerPlacement: result.playerPlacement,
+        // Sync the strict 1st-place flag so server-side "wins" analytics aren't
+        // inflated by tournament-round survivals.
+        won: result.playerWonRace,
+        odds: result.playerPick ? currentOdds[result.playerPick.id] : undefined,
+        winnerTime: result.positions[0]?.time,
+        modeContext: activeMode.type !== 'bet' && activeMode.type !== 'quick_race' ? activeMode : undefined,
+      },
+      (serverBalance) => {
+        // Server is authoritative for the post-race coin balance.
+        useGameStore.setState({ coins: serverBalance });
+      },
+    );
 
     // --- Mode-specific post-processing ---
     if (activeMode.type === 'season') {

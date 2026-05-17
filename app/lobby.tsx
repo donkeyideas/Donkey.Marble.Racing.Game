@@ -80,24 +80,36 @@ export default function LobbyScreen() {
     });
   }, []);
 
-  // Periodic state sync — fire-and-forget every 5 minutes
+  // Periodic state sync — pushes non-economy hints (streaks, pass XP) and
+  // pulls server-authoritative coins / totalRaces / totalWins / dailyStreak.
+  // Reconciles any drift on every lobby entry + every 60s while in lobby.
   useEffect(() => {
     const doSync = () => {
       const s = useGameStore.getState();
-      syncPlayerState({
-        playerName: s.playerName,
-        coins: s.coins,
-        totalRaces: s.totalRaces,
-        totalWins: s.totalWins,
-        currentStreak: s.currentStreak,
-        bestStreak: s.bestStreak,
-        dailyStreak: s.dailyStreak,
-        passLevel: s.passLevel,
-        passXp: s.passXp,
-      });
+      if (!s.playerName) return;
+      syncPlayerState(
+        {
+          playerName: s.playerName,
+          currentStreak: s.currentStreak,
+          bestStreak: s.bestStreak,
+          passLevel: s.passLevel,
+          passXp: s.passXp,
+        },
+        (serverState) => {
+          // Server is authoritative for these. Pass tier mapping
+          // (server `passTier` <-> client `passTrack`) is deferred until the
+          // IAP path is server-authoritative too.
+          useGameStore.setState({
+            coins: serverState.coins,
+            totalRaces: serverState.totalRaces,
+            totalWins: serverState.totalWins,
+            dailyStreak: serverState.dailyStreak,
+          });
+        },
+      );
     };
     doSync();
-    const interval = setInterval(doSync, 5 * 60 * 1000);
+    const interval = setInterval(doSync, 60_000);
     return () => clearInterval(interval);
   }, []);
 
