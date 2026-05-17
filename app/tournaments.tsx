@@ -83,8 +83,8 @@ export default function TournamentsScreen() {
         {
           label: `Enter for ${cfg.entryFee}`,
           variant: 'yellow',
-          onPress: () => {
-            const success = enterTournament(tourneyId);
+          onPress: async () => {
+            const success = await enterTournament(tourneyId);
             if (success) router.push('/tournament-bracket');
           },
         },

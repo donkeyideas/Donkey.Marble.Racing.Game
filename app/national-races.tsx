@@ -90,12 +90,12 @@ export default function NationalRacesScreen() {
     }
   }, [nationalRaces, coins]);
 
-  const proceedToRace = useCallback((event: NationalEvent) => {
+  const proceedToRace = useCallback(async (event: NationalEvent) => {
     const state = nationalRaces?.[event.id];
     if (!state) return;
 
     if (!state.entered) {
-      const success = enterNationalRace(event.id);
+      const success = await enterNationalRace(event.id);
       if (!success) return;
     }
 

@@ -279,13 +279,13 @@ interface GameState {
 
   // National Races
   nationalRaces: Record<string, NationalEventState>;
-  enterNationalRace: (eventId: string) => boolean;
+  enterNationalRace: (eventId: string) => Promise<boolean>;
   refreshNationalEvents: () => void;
   handleNationalRaceResult: (positions: string[]) => void;
 
   // Tournaments
   tournaments: TournamentState | null;
-  enterTournament: (tournamentId: string) => boolean;
+  enterTournament: (tournamentId: string) => Promise<boolean>;
   handleTournamentResult: (positions: string[]) => void;
 
   // Multiplayer Tournaments
@@ -960,6 +960,19 @@ export const useGameStore = create<GameState>()(
       }
 
       const { coins, coinHistory } = get();
+      if (playoffPayout > 0) {
+        // Fire server-authoritative payout; reconcile balance on response.
+        applyEconomyAction({
+          action: 'playoff_payout',
+          payload: { amount: playoffPayout, description: playoffDesc },
+        }).then((res) => {
+          if (res.ok) {
+            useGameStore.setState({ coins: res.balance });
+          } else if (__DEV__) {
+            console.warn('[playoff_payout]', res.message);
+          }
+        });
+      }
       set({
         coins: coins + playoffPayout,
         coinHistory: playoffPayout > 0 ? [
@@ -1009,7 +1022,7 @@ export const useGameStore = create<GameState>()(
     set({ nationalRaces: updated });
   },
 
-  enterNationalRace: (eventId) => {
+  enterNationalRace: async (eventId) => {
     const event = NATIONAL_EVENTS.find((e) => e.id === eventId);
     if (!event) return false;
     const { coins, nationalRaces: nr, coinHistory } = get();
@@ -1018,6 +1031,17 @@ export const useGameStore = create<GameState>()(
 
     const state = nationalRaces[eventId];
     if (!state || state.entered) return false;
+
+    // Server-authoritative entry fee debit. Server rejects with 402 if the
+    // balance is insufficient (race condition between devices, etc.).
+    const res = await applyEconomyAction({
+      action: 'national_entry',
+      payload: { eventId },
+    });
+    if (!res.ok) {
+      if (__DEV__) console.warn('[enterNationalRace]', res.message);
+      return false;
+    }
 
     const newCoinHistory = [...coinHistory, {
       type: 'bet' as const,
@@ -1028,7 +1052,7 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: coins - event.entryFee,
+      coins: res.balance,
       nationalRaces: {
         ...nationalRaces,
         [eventId]: {
@@ -1073,6 +1097,19 @@ export const useGameStore = create<GameState>()(
           }];
           while (newCoinHistory.length > 50) newCoinHistory.shift();
           set({ coins: coins + payout, coinHistory: newCoinHistory });
+
+          // Fire server-authoritative payout; reconcile balance on response.
+          // `placement` is 0-indexed locally but the server expects 1-indexed.
+          applyEconomyAction({
+            action: 'national_payout',
+            payload: { eventId: event.id, placement: placement + 1 },
+          }).then((res) => {
+            if (res.ok) {
+              useGameStore.setState({ coins: res.balance });
+            } else if (__DEV__) {
+              console.warn('[national_payout single]', res.message);
+            }
+          });
         }
       }
 
@@ -1107,6 +1144,18 @@ export const useGameStore = create<GameState>()(
           }];
           while (newCoinHistory.length > 50) newCoinHistory.shift();
           set({ coins: coins + payout, coinHistory: newCoinHistory });
+
+          // Server-authoritative series-winner payout: placement 1 (1st).
+          applyEconomyAction({
+            action: 'national_payout',
+            payload: { eventId: event.id, placement: 1 },
+          }).then((res) => {
+            if (res.ok) {
+              useGameStore.setState({ coins: res.balance });
+            } else if (__DEV__) {
+              console.warn('[national_payout series]', res.message);
+            }
+          });
         }
 
         // Mark completed for today, reset
@@ -1153,7 +1202,7 @@ export const useGameStore = create<GameState>()(
     }
   },
 
-  enterTournament: (tournamentId) => {
+  enterTournament: async (tournamentId) => {
     const { coins, coinHistory } = get();
     const configs: Record<string, { entryFee: number; prizePool: number }> = {
       'daily-blitz': { entryFee: 100, prizePool: 5000 },
@@ -1162,6 +1211,16 @@ export const useGameStore = create<GameState>()(
     };
     const config = configs[tournamentId];
     if (!config || coins < config.entryFee) return false;
+
+    // Server-authoritative entry fee debit before any local commit.
+    const res = await applyEconomyAction({
+      action: 'tournament_entry',
+      payload: { tournamentId },
+    });
+    if (!res.ok) {
+      if (__DEV__) console.warn('[enterTournament]', res.message);
+      return false;
+    }
 
     // Shuffle marbles (Fisher-Yates)
     const marbleIds = MARBLES.map(m => m.id);
@@ -1191,7 +1250,7 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: coins - config.entryFee,
+      coins: res.balance,
       coinHistory: newCoinHistory,
       tournaments: {
         tournamentId,
@@ -1260,6 +1319,19 @@ export const useGameStore = create<GameState>()(
         timestamp: Date.now(),
       });
       while (newCoinHistory.length > 50) newCoinHistory.shift();
+
+      // Fire server-authoritative payout in background; reconcile balance
+      // from server response when it returns.
+      applyEconomyAction({
+        action: 'tournament_payout',
+        payload: { tournamentId: tourney.tournamentId, amount: roundPayout },
+      }).then((res) => {
+        if (res.ok) {
+          useGameStore.setState({ coins: res.balance });
+        } else if (__DEV__) {
+          console.warn('[tournament_payout]', res.message);
+        }
+      });
     }
 
     // Final round complete (round 6 done → currentRound becomes 7)
