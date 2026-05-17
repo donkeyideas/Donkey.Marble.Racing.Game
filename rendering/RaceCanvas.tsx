@@ -9,7 +9,7 @@ import {
   Picture, vec, Oval,
 } from '@shopify/react-native-skia';
 import { SharedValue, useDerivedValue } from 'react-native-reanimated';
-import { useSkiaThemeSprites, useSkiaBgImage, areSpritesReady } from './skiaSprites';
+import { useSkiaThemeSprites, useSkiaBgImage, useHillsParallax, areSpritesReady } from './skiaSprites';
 import { createStaticTrackPicture, TrackVisuals, ThemeElementColors } from './staticTrackPicture';
 import { getBgTheme, hasLegacyBg } from '../data/bgThemes';
 import { THEME_OVERLAYS } from '../assets/kenney/spriteMap';
@@ -98,9 +98,11 @@ function RaceCanvasInner(props: RaceCanvasProps) {
 
   const sprites = useSkiaThemeSprites(bgImage);
   const bgImg = useSkiaBgImage(bgImage);
+  const hills = useHillsParallax();  // only consumed when bgImage === 'grass_hills'
   const themeOverlay = THEME_OVERLAYS[bgImage] || null;
   const totalScreenH = ex(totalHeight);
   const bgTileCount = Math.ceil(totalScreenH / SH) + 1;
+  const isHillsTest = bgImage === 'grass_hills';
 
   // Theme-aware element colors for track contrast
   const themeElementColors = useMemo(() => getBgTheme(bgImage).elements, [bgImage]);
@@ -132,7 +134,45 @@ function RaceCanvasInner(props: RaceCanvasProps) {
         <Group transform={camTransform}>
 
           {/* ===== BACKGROUND ===== */}
-          {hasLegacyBg(bgImage) && bgImg ? (
+          {isHillsTest ? (
+            // Hills parallax test for Classic Zigzag. 4 PNG layers from the
+            // Background_Hills_v1.0 pack, drawn stacked: sky tile fills the
+            // viewport vertically, near-foreground hill layers repeat at
+            // intervals down the track so there's scenery throughout the run.
+            <>
+              {/* Sky/atmosphere — tiled vertically across the whole track */}
+              {hills.layer1 && Array.from({ length: bgTileCount }).map((_, i) => (
+                <SkiaImage
+                  key={`hbg1-${i}`}
+                  image={hills.layer1}
+                  x={0} y={i * SH}
+                  width={SW} height={SH + 1}
+                  fit="cover"
+                />
+              ))}
+              {/* Distant + mid + foreground hills — repeated every viewport so
+                  the painted scenery is always visible as the camera scrolls. */}
+              {Array.from({ length: bgTileCount }).map((_, i) => (
+                <React.Fragment key={`hlayers-${i}`}>
+                  {hills.layer2 && (
+                    <SkiaImage image={hills.layer2}
+                      x={0} y={i * SH + SH * 0.45}
+                      width={SW} height={SH * 0.55 + 1} fit="cover" />
+                  )}
+                  {hills.layer3 && (
+                    <SkiaImage image={hills.layer3}
+                      x={0} y={i * SH + SH * 0.55}
+                      width={SW} height={SH * 0.45 + 1} fit="cover" />
+                  )}
+                  {hills.layer4 && (
+                    <SkiaImage image={hills.layer4}
+                      x={0} y={i * SH + SH * 0.65}
+                      width={SW} height={SH * 0.35 + 1} fit="cover" />
+                  )}
+                </React.Fragment>
+              ))}
+            </>
+          ) : hasLegacyBg(bgImage) && bgImg ? (
             // Legacy themes: tile PNG background images
             Array.from({ length: bgTileCount }).map((_, i) => (
               <SkiaImage

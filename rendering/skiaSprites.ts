@@ -128,3 +128,24 @@ export function areSpritesReady(sprites: SkiaThemeSprites): boolean {
   return !!(sprites.ramp && sprites.bumper && sprites.peg && sprites.wall &&
             sprites.channel && sprites.funnel && sprites.spring);
 }
+
+/**
+ * Load the 4-layer rolling-hills parallax background.
+ * Returned as an array [farthestSky, ..., nearestForeground]. Null entries
+ * are tolerated (loading still in progress). Currently wired up only for the
+ * Classic Zigzag track (bgImage 'grass_hills') as a visual test.
+ */
+export interface HillsParallax {
+  layer1: SkImage | null; // sky / atmosphere
+  layer2: SkImage | null; // distant hills
+  layer3: SkImage | null; // mid hills
+  layer4: SkImage | null; // foreground hills/grass
+}
+export function useHillsParallax(): HillsParallax {
+  return {
+    layer1: useImage(require('../assets/themes/hills/layer1.png')),
+    layer2: useImage(require('../assets/themes/hills/layer2.png')),
+    layer3: useImage(require('../assets/themes/hills/layer3.png')),
+    layer4: useImage(require('../assets/themes/hills/layer4.png')),
+  };
+}

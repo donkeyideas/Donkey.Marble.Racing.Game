@@ -258,7 +258,9 @@ export function buildClassicZigzag(): TrackConfig {
     finishFunnel: finish.finishFunnel,
     springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
-    bgImage: 'grass',
+    // Visual test: layered Hills parallax PNGs instead of the procedural grass scenery.
+    // Only this track points at 'grass_hills'; other grass courses stay procedural.
+    bgImage: 'grass_hills',
     speedBursts: [
       { x: 120, y: 605, width: 50, direction: 'left', activationChance: 0.6 },
       { x: 280, y: 2005, width: 50, direction: 'right', activationChance: 0.6 },
