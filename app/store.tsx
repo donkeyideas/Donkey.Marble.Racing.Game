@@ -100,19 +100,50 @@ export default function StoreScreen() {
     purchaseUpdateSub = IAP.purchaseUpdatedListener(async (purchase: Purchase) => {
       const packId = STORE_ID_TO_PACK[purchase.productId] || purchase.productId;
       const isPass = packId === 'season_pass' || packId === 'season_pass_premium';
+      // Android returns purchaseToken; iOS returns transactionReceipt. Either
+      // is fine — the server's iap-verify picks the right verifier based on
+      // the player's platform.
+      const purchaseToken: string =
+        purchase.purchaseToken ?? purchase.transactionReceipt ?? '';
+      const storeProductId: string = purchase.productId;
+
+      if (!purchaseToken) {
+        setErrorMsg('Purchase token missing — please contact support.');
+        setTimeout(() => setErrorMsg(null), 3000);
+        setPurchasing(null);
+        return;
+      }
+
       try {
-        await IAP!.finishTransaction({ purchase, isConsumable: !isPass });
         if (isPass) {
           const track = packId === 'season_pass' ? 'premium' : 'plus';
-          purchaseSeasonPass(track);
+          const result = await purchaseSeasonPass(track, purchaseToken, storeProductId);
+          if (!result.success) {
+            if (result.error) {
+              setErrorMsg(result.error);
+              setTimeout(() => setErrorMsg(null), 4000);
+            }
+            setPurchasing(null);
+            return;
+          }
+          // Server verified the purchase. Now acknowledge with the store so
+          // the user is actually charged. Non-consumable for passes.
+          await IAP!.finishTransaction({ purchase, isConsumable: false });
           setSuccessPack(packId);
           setTimeout(() => setSuccessPack(null), 2000);
         } else {
-          const result = purchaseCoinPack(packId);
-          if (result.success) {
-            setSuccessPack(packId);
-            setTimeout(() => setSuccessPack(null), 2000);
+          const result = await purchaseCoinPack(packId, purchaseToken, storeProductId);
+          if (!result.success) {
+            if (result.error) {
+              setErrorMsg(result.error);
+              setTimeout(() => setErrorMsg(null), 4000);
+            }
+            setPurchasing(null);
+            return;
           }
+          await IAP!.finishTransaction({ purchase, isConsumable: true });
+          setSuccessPack(packId);
+          setTimeout(() => setSuccessPack(null), 2000);
         }
       } catch (err) {
         console.warn('Failed to finish transaction:', err);

@@ -59,24 +59,41 @@ export function syncRaceResult(
   });
 }
 
-export function syncPurchase(data: {
+interface PurchaseSyncResponse {
+  success: true;
+  duplicate?: boolean;
+}
+
+/**
+ * Send a verified store purchase to the server. Server re-verifies the
+ * token against Google Play / App Store before recording. Returns success
+ * so the caller can finalize the purchase (call finishPurchase to ack).
+ *
+ * Unlike race/state sync, this is NOT fire-and-forget: callers need to
+ * know whether the server accepted before they grant entitlements
+ * locally and acknowledge the transaction with the store.
+ */
+export async function syncPurchase(data: {
+  /** Platform-specific store SKU (matches what was sent to the store). */
   productId: string;
-  /** Real purchase token from the platform store (Google Play / App Store). REQUIRED. */
+  /** Token from the store SDK after a successful purchase. */
   purchaseToken: string;
-  currentCoins: number;
-}): void {
+}): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
   if (!data.purchaseToken) {
-    // Hard guard: never call sync without a real store token. The server
-    // requires Google Play / App Store verification and will reject empty
-    // tokens with 402.
-    if (__DEV__) console.warn('[syncPurchase] called without purchaseToken — skipping');
-    return;
+    return { ok: false, status: 400, message: 'Missing purchaseToken' };
   }
-  syncInBackground(async () => {
-    const token = await getToken();
-    if (!token) return;
-    await api.post('/sync/purchase', data);
-  });
+  const token = await getToken();
+  if (!token) return { ok: false, status: 401, message: 'Not signed in' };
+
+  try {
+    await api.post<PurchaseSyncResponse>('/sync/purchase', data);
+    return { ok: true };
+  } catch (err: any) {
+    const status: number = err?.response?.status ?? 0;
+    const message: string =
+      err?.response?.data?.error?.message ?? err?.message ?? 'Purchase sync failed';
+    return { ok: false, status, message };
+  }
 }
 
 interface StateSyncResponse {

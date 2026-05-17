@@ -14,7 +14,7 @@ import {
   generateEventCourses, calculateNationalPayout, SERIES_POINTS,
   getETDateString,
 } from '../data/nationalRaces';
-import { syncRaceResult } from '../lib/sync';
+import { syncRaceResult, syncPurchase } from '../lib/sync';
 import { applyEconomyAction } from '../lib/economy';
 import { getConfig, fetchRemoteConfig, loadCachedConfig } from '../lib/remoteConfig';
 import { getPromoMultiplier } from '../lib/liveOps';
@@ -265,7 +265,16 @@ interface GameState {
   passLevel: number;
   passXp: number;
   passTrack: PassTrack;
-  purchaseSeasonPass: (track: 'premium' | 'plus') => void;
+  /**
+   * Called by app/store.tsx after the store SDK has confirmed the purchase.
+   * Receives the store-issued purchase token, which the server re-verifies
+   * before granting the entitlement.
+   */
+  purchaseSeasonPass: (
+    track: 'premium' | 'plus',
+    purchaseToken: string,
+    storeProductId: string,
+  ) => Promise<{ success: boolean; error?: string }>;
 
   // Structured Season
   season: SeasonState | null;
@@ -299,7 +308,16 @@ interface GameState {
   storePurchasesToday: number;
   storeCoinsPurchasedToday: number;
   storeLastPurchaseDate: string;
-  purchaseCoinPack: (packId: string) => { success: boolean; coins?: number; error?: string };
+  /**
+   * Called by app/store.tsx after the store SDK has confirmed the purchase.
+   * Receives the store-issued purchase token, which the server re-verifies
+   * before granting coins.
+   */
+  purchaseCoinPack: (
+    packId: string,
+    purchaseToken: string,
+    storeProductId: string,
+  ) => Promise<{ success: boolean; coins?: number; error?: string }>;
 
   // Odds
   getOdds: () => Record<string, number>;
@@ -609,15 +627,27 @@ export const useGameStore = create<GameState>()(
   passXp: 0,
   passTrack: 'free' as PassTrack,
 
-  purchaseSeasonPass: (track: 'premium' | 'plus') => {
+  purchaseSeasonPass: async (track, purchaseToken, storeProductId) => {
     const { passTrack, coinHistory } = get();
-    // Plus is the highest tier — don't downgrade
-    if (passTrack === 'plus') return;
-    // Don't re-purchase same tier
-    if (passTrack === track) return;
+    if (passTrack === 'plus') return { success: false, error: 'Already on Plus tier' };
+    if (passTrack === track) return { success: false, error: 'Already own this pass' };
 
     const label = track === 'premium' ? 'Premium Pass' : 'Plus Pass';
     const price = track === 'premium' ? 9.99 : 24.99;
+
+    if (!purchaseToken || !storeProductId) {
+      if (__DEV__) console.warn('[purchaseSeasonPass] called without purchaseToken');
+      return { success: false, error: 'Missing purchase token — purchase not verified' };
+    }
+
+    const syncResult = await syncPurchase({
+      productId: storeProductId,
+      purchaseToken,
+    });
+    if (!syncResult.ok) {
+      if (__DEV__) console.warn('[purchaseSeasonPass] server rejected', syncResult.message);
+      return { success: false, error: `Verification failed: ${syncResult.message}` };
+    }
 
     const newCoinHistory = [...coinHistory, {
       type: 'purchase' as const,
@@ -628,11 +658,7 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({ passTrack: track, coinHistory: newCoinHistory });
-
-    // TODO: wire real IAP. The previous syncPurchase call here was creating
-    // fake $4.99/$9.99 records server-side because no actual store transaction
-    // happened — just a button press. Server now requires verified purchase
-    // tokens. Re-enable this once expo-in-app-purchases is integrated.
+    return { success: true };
   },
 
   // ── Structured Season ──
@@ -1366,8 +1392,8 @@ export const useGameStore = create<GameState>()(
   storeCoinsPurchasedToday: 0,
   storeLastPurchaseDate: '',
 
-  purchaseCoinPack: (packId) => {
-    const { coins, coinHistory, storePurchasesToday, storeCoinsPurchasedToday, storeLastPurchaseDate } = get();
+  purchaseCoinPack: async (packId, purchaseToken, storeProductId) => {
+    const { coinHistory, storePurchasesToday, storeCoinsPurchasedToday, storeLastPurchaseDate } = get();
     const today = new Date().toISOString().slice(0, 10);
 
     // Reset daily limits if new day
@@ -1375,21 +1401,36 @@ export const useGameStore = create<GameState>()(
     const purchasesToday = isNewDay ? 0 : storePurchasesToday;
     const coinsPurchasedToday = isNewDay ? 0 : storeCoinsPurchasedToday;
 
-    // Find pack
     const pack = COIN_PACKS.find(p => p.id === packId);
     if (!pack) return { success: false, error: 'Invalid pack' };
 
-    // Check daily transaction limit
     if (purchasesToday >= getMaxDailyPurchases()) {
       return { success: false, error: `Daily limit reached (${getMaxDailyPurchases()} purchases per day)` };
     }
-
-    // Check daily coin limit
     if (coinsPurchasedToday + pack.coins > getMaxDailyCoins()) {
       return { success: false, error: `Would exceed daily coin limit (${getMaxDailyCoins().toLocaleString()} coins/day)` };
     }
 
-    // Process purchase — apply double_coins promo if active
+    // Server verifies the store purchase token before granting coins. The
+    // store-side purchase flow (request + listener) lives in app/store.tsx;
+    // this function is called from the listener with the resulting token.
+    if (!purchaseToken || !storeProductId) {
+      // Legacy / fallback path — no real IAP token provided. Refuse to
+      // grant coins. The server would reject the sync anyway.
+      if (__DEV__) console.warn('[purchaseCoinPack] called without purchaseToken');
+      return { success: false, error: 'Missing purchase token — purchase not verified' };
+    }
+
+    const syncResult = await syncPurchase({
+      productId: storeProductId,
+      purchaseToken,
+    });
+    if (!syncResult.ok) {
+      if (__DEV__) console.warn('[purchaseCoinPack] server rejected', syncResult.message);
+      return { success: false, error: `Verification failed: ${syncResult.message}` };
+    }
+
+    // Grant coins locally to match the server's authoritative credit.
     const coinMultiplier = getPromoMultiplier('double_coins');
     const grantedCoins = Math.round(pack.coins * coinMultiplier);
 
@@ -1404,17 +1445,12 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: coins + grantedCoins,
+      coins: get().coins + grantedCoins,
       coinHistory: newCoinHistory,
       storePurchasesToday: purchasesToday + 1,
       storeCoinsPurchasedToday: coinsPurchasedToday + pack.coins,
       storeLastPurchaseDate: today,
     });
-
-    // TODO: wire real IAP. Until expo-in-app-purchases / react-native-iap is
-    // integrated, we cannot call syncPurchase — the server now requires a
-    // valid purchase token verified against Google Play / Apple. The local
-    // coin grant above is for UX testing only and is NOT real revenue.
 
     return { success: true, coins: pack.coins };
   },
