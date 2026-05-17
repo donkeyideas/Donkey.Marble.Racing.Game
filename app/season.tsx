@@ -39,8 +39,11 @@ export default function SeasonScreen() {
   const [selectedSeasonMarble, setSelectedSeasonMarble] = useState<MarbleData | null>(null);
 
   useEffect(() => {
-    const result = checkDailyStreak();
-    if (result) setDailyBonus(result);
+    const optimistic = checkDailyStreak();
+    if (!optimistic) return; // Already claimed today
+    useGameStore.getState().claimDailyBonus().then((serverResult) => {
+      if (serverResult) setDailyBonus(serverResult);
+    });
   }, []);
 
   // Force-clear stale season data from previous format

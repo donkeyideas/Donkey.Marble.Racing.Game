@@ -36,11 +36,17 @@ export function syncRaceResult(data: {
 
 export function syncPurchase(data: {
   productId: string;
-  productName: string;
-  priceUsd: number;
-  coinsGranted: number;
+  /** Real purchase token from the platform store (Google Play / App Store). REQUIRED. */
+  purchaseToken: string;
   currentCoins: number;
 }): void {
+  if (!data.purchaseToken) {
+    // Hard guard: never call sync without a real store token. The server
+    // requires Google Play / App Store verification and will reject empty
+    // tokens with 402.
+    if (__DEV__) console.warn('[syncPurchase] called without purchaseToken — skipping');
+    return;
+  }
   syncInBackground(async () => {
     const token = await getToken();
     if (!token) return;

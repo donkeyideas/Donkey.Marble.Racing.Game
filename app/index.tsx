@@ -1,13 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
   Pressable,
-  TextInput,
   StyleSheet,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform,
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -15,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Fonts, MARBLES } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import { registerOrLogin } from '../lib/auth';
+import { generatePlayerName } from '../lib/playerName';
 import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
 import Matter from 'matter-js';
@@ -120,107 +118,17 @@ export default function SplashScreen() {
   const router = useRouter();
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
-  const [showNameEntry, setShowNameEntry] = useState(false);
-  const [nameInput, setNameInput] = useState('');
   const floatingMarbles = useFloatingMarbles();
 
   const handleStart = () => {
-    if (playerName) {
-      registerOrLogin(playerName); // fire-and-forget
-      router.replace('/lobby');
-    } else {
-      setShowNameEntry(true);
-    }
+    // Auto-generate a friendly name on first launch. Users can change it
+    // anytime via Settings -> "Tap to change name". Skips the name entry
+    // screen entirely to remove first-launch friction.
+    const name = playerName || generatePlayerName();
+    if (!playerName) setPlayerName(name);
+    registerOrLogin(name); // fire-and-forget
+    router.replace('/lobby');
   };
-
-  const handleNameSubmit = () => {
-    const trimmed = nameInput.trim();
-    if (trimmed.length >= 2) {
-      setPlayerName(trimmed);
-      registerOrLogin(trimmed); // fire-and-forget
-      router.replace('/lobby');
-    }
-  };
-
-  if (showNameEntry) {
-    return (
-      <LinearGradient colors={['#6ec1ff', '#1d56d4', '#0a3a96']} style={styles.fill}>
-        <KeyboardAvoidingView
-          style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.container}>
-            {/* Floating marbles behind content */}
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              {floatingMarbles.map((m) => (
-                <Animated.View
-                  key={m.data.id}
-                  style={{
-                    position: 'absolute',
-                    left: m.x,
-                    top: m.y,
-                    width: MARBLE_R * 2,
-                    height: MARBLE_R * 2,
-                    borderRadius: MARBLE_R,
-                    backgroundColor: m.data.colorDark,
-                    opacity: 0.25,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View style={{
-                    position: 'absolute', top: 1, left: 1,
-                    width: MARBLE_R * 2 - 2, height: MARBLE_R * 2 - 2,
-                    borderRadius: MARBLE_R - 1, backgroundColor: m.data.colorLight, opacity: 0.8,
-                  }} />
-                </Animated.View>
-              ))}
-            </View>
-
-            <View style={styles.content}>
-              <Text style={styles.nameTitle}>CREATE YOUR PROFILE</Text>
-              <Text style={styles.nameSubtitle}>What should we call you?</Text>
-
-              <View style={styles.nameInputWrapper}>
-                <TextInput
-                  style={styles.nameInput}
-                  placeholder="Enter your name"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  value={nameInput}
-                  onChangeText={setNameInput}
-                  maxLength={16}
-                  autoFocus
-                  autoCapitalize="words"
-                  returnKeyType="done"
-                  onSubmitEditing={handleNameSubmit}
-                />
-              </View>
-
-              <View style={styles.avatarPreview}>
-                <View style={styles.avatarCircle}>
-                  <Text style={styles.avatarChar}>
-                    {nameInput.trim() ? nameInput.trim()[0].toUpperCase() : '?'}
-                  </Text>
-                </View>
-                <Text style={styles.avatarName}>
-                  {nameInput.trim() || 'Your Name'}
-                </Text>
-              </View>
-
-              <PrimaryButton
-                label="LET'S RACE"
-                onPress={handleNameSubmit}
-                disabled={nameInput.trim().length < 2}
-              />
-            </View>
-
-            <Text style={styles.disclaimer}>
-              For ages 17+ · Virtual coins only · No real money gambling
-            </Text>
-          </View>
-        </KeyboardAvoidingView>
-      </LinearGradient>
-    );
-  }
 
   return (
     <Pressable style={styles.fill} onPress={handleStart}>
@@ -349,63 +257,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: Fonts.display,
     letterSpacing: 3,
-  },
-
-  // Name entry
-  nameTitle: {
-    color: Colors.white,
-    fontSize: 28,
-    fontFamily: Fonts.display,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  nameSubtitle: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 15,
-    fontFamily: Fonts.body,
-    textAlign: 'center',
-    marginBottom: 30,
-  },
-  nameInputWrapper: {
-    width: SCREEN_WIDTH * 0.75,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    marginBottom: 24,
-  },
-  nameInput: {
-    color: Colors.white,
-    fontSize: 22,
-    fontFamily: Fonts.bodyBold,
-    textAlign: 'center',
-  },
-  avatarPreview: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.yellow,
-    borderWidth: 3,
-    borderColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  avatarChar: {
-    fontFamily: Fonts.display,
-    fontSize: 28,
-    color: Colors.ink,
-  },
-  avatarName: {
-    fontFamily: Fonts.bodyBold,
-    fontSize: 16,
-    color: Colors.white,
   },
 
   disclaimer: {

@@ -14,7 +14,8 @@ import {
   generateEventCourses, calculateNationalPayout, SERIES_POINTS,
   getETDateString,
 } from '../data/nationalRaces';
-import { syncRaceResult, syncPurchase } from '../lib/sync';
+import { syncRaceResult } from '../lib/sync';
+import { applyEconomyAction } from '../lib/economy';
 import { getConfig, fetchRemoteConfig, loadCachedConfig } from '../lib/remoteConfig';
 import { getPromoMultiplier } from '../lib/liveOps';
 import { ACHIEVEMENTS, AchievementCheckState } from '../data/achievements';
@@ -329,7 +330,18 @@ interface GameState {
   // Actions
   placeBet: () => boolean;
   resetBet: () => void;
-  checkDailyStreak: () => { reward: number; streak: number } | null;
+  /**
+   * Optimistic check — returns null if already checked today, otherwise marks
+   * today's date locally. The actual coin reward must be claimed via
+   * `claimDailyBonus()` (server-authoritative).
+   */
+  checkDailyStreak: () => { reward: number; streak: number; pendingServer?: boolean } | null;
+  /**
+   * Server-authoritative daily bonus claim. Returns the granted reward and
+   * new authoritative streak. Returns null if already claimed today or on
+   * network failure.
+   */
+  claimDailyBonus: () => Promise<{ reward: number; streak: number } | null>;
 }
 
 // Generate odds with real spread based on weighted stats + season performance + random "form"
@@ -607,14 +619,10 @@ export const useGameStore = create<GameState>()(
 
     set({ passTrack: track, coinHistory: newCoinHistory });
 
-    // Sync to server
-    syncPurchase({
-      productId: track === 'premium' ? 'season_pass' : 'season_pass_premium',
-      productName: label,
-      priceUsd: price,
-      coinsGranted: 0,
-      currentCoins: get().coins,
-    });
+    // TODO: wire real IAP. The previous syncPurchase call here was creating
+    // fake $4.99/$9.99 records server-side because no actual store transaction
+    // happened — just a button press. Server now requires verified purchase
+    // tokens. Re-enable this once expo-in-app-purchases is integrated.
   },
 
   // ── Structured Season ──
@@ -1309,14 +1317,10 @@ export const useGameStore = create<GameState>()(
       storeLastPurchaseDate: today,
     });
 
-    // Sync purchase to server (fire-and-forget)
-    syncPurchase({
-      productId: packId,
-      productName: `${pack.coins.toLocaleString()} Coins`,
-      priceUsd: parseFloat(pack.price.replace('$', '')),
-      coinsGranted: pack.coins,
-      currentCoins: coins + pack.coins,
-    });
+    // TODO: wire real IAP. Until expo-in-app-purchases / react-native-iap is
+    // integrated, we cannot call syncPurchase — the server now requires a
+    // valid purchase token verified against Google Play / Apple. The local
+    // coin grant above is for UX testing only and is NOT real revenue.
 
     return { success: true, coins: pack.coins };
   },
@@ -1520,35 +1524,46 @@ export const useGameStore = create<GameState>()(
   },
 
   checkDailyStreak: () => {
-    const { dailyStreak, lastPlayedDate, coins, coinHistory } = get();
+    const { lastPlayedDate } = get();
     const today = new Date().toISOString().slice(0, 10);
     if (lastPlayedDate === today) return null; // Already checked today
 
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    const isConsecutive = lastPlayedDate === yesterday;
-    const newStreak = isConsecutive ? dailyStreak + 1 : 1;
-    const dailyRewards = getDailyRewards();
-    const baseReward = dailyRewards[(newStreak - 1) % dailyRewards.length];
-    const multiplier = getPromoMultiplier('bonus_reward');
-    const reward = Math.round(baseReward * multiplier);
+    // Optimistic placeholder — actual reward comes from the server.
+    // Caller should `await claimDailyBonus()` for the authoritative result.
+    set({ lastPlayedDate: today });
+    return { reward: 0, streak: 0, pendingServer: true };
+  },
 
+  /**
+   * Server-authoritative daily bonus claim. Server computes the reward
+   * based on the player's authoritative streak, rejects double-claims for
+   * the same day, and returns the new coin balance.
+   */
+  claimDailyBonus: async () => {
+    const { coinHistory } = get();
+    const res = await applyEconomyAction({ action: 'claim_daily' });
+    if (!res.ok) {
+      // 409 = already claimed today — silently swallow, normal state
+      if (res.status === 409) return null;
+      console.warn('[claimDailyBonus]', res.message);
+      return null;
+    }
+    const streak = (res.result?.streak as number | undefined) ?? 0;
+    const bonus = (res.result?.bonus as number | undefined) ?? res.transaction.amount;
     const newCoinHistory = [...coinHistory, {
       type: 'daily_bonus' as const,
-      amount: reward,
-      description: multiplier > 1 ? `Day ${newStreak} streak bonus (${multiplier}x promo!)` : `Day ${newStreak} streak bonus`,
+      amount: bonus,
+      description: `Day ${streak} streak bonus`,
       timestamp: Date.now(),
     }];
     while (newCoinHistory.length > 50) newCoinHistory.shift();
-
     set({
-      dailyStreak: newStreak,
-      bestStreak: Math.max(get().bestStreak, newStreak),
-      lastPlayedDate: today,
-      coins: coins + reward,
+      coins: res.balance,
+      dailyStreak: streak,
+      bestStreak: Math.max(get().bestStreak, streak),
       coinHistory: newCoinHistory,
     });
-
-    return { reward, streak: newStreak };
+    return { reward: bonus, streak };
   },
 }),
     {

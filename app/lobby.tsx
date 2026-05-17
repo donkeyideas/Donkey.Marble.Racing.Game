@@ -64,15 +64,20 @@ export default function LobbyScreen() {
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const result = useGameStore.getState().checkDailyStreak();
-    if (result) {
-      setDailyReward(result);
+    const optimistic = useGameStore.getState().checkDailyStreak();
+    if (!optimistic) return; // Already claimed today (local check)
+
+    // Server returns the authoritative reward + streak. Local state was
+    // marked optimistically; the server response overwrites coins/streak.
+    useGameStore.getState().claimDailyBonus().then((serverResult) => {
+      if (!serverResult) return;
+      setDailyReward(serverResult);
       Animated.sequence([
         Animated.timing(toastOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
         Animated.delay(3000),
         Animated.timing(toastOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
       ]).start(() => setDailyReward(null));
-    }
+    });
   }, []);
 
   // Periodic state sync — fire-and-forget every 5 minutes
