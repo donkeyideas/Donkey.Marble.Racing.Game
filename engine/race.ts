@@ -139,20 +139,45 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   ]);
 
   // === RAMPS ===
+  // Straight runs use rectangles; curved runs (where adjacent segment angles
+  // diverge by more than ~3°) use overlapping circles. Circles have no joints,
+  // so marbles roll through curves without catching on segment seams.
   const RAMP_THICKNESS = 14;
+  const RAMP_R = RAMP_THICKNESS / 2;
+  const ANGLE_THRESHOLD = 0.05; // ~3°
   track.ramps.forEach(ramp => {
-    for (let j = 0; j < ramp.points.length - 1; j++) {
-      const a = ramp.points[j], b = ramp.points[j + 1];
+    const pts = ramp.points;
+    for (let j = 0; j < pts.length - 1; j++) {
+      const a = pts[j], b = pts[j + 1];
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.sqrt(dx * dx + dy * dy);
-      Matter.Composite.add(world,
-        Matter.Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, RAMP_THICKNESS, {
-          isStatic: true, angle: Math.atan2(dy, dx),
-          friction: 0.005, restitution: 0.3, // near-zero rolling friction (avalanche demo pattern)
-          chamfer: { radius: 4 },
-          label: 'ramp',
-        }),
-      );
+      const angle = Math.atan2(dy, dx);
+
+      const prevA = j > 0 ? Math.atan2(a.y - pts[j - 1].y, a.x - pts[j - 1].x) : angle;
+      const nextA = j < pts.length - 2 ? Math.atan2(pts[j + 2].y - b.y, pts[j + 2].x - b.x) : angle;
+      const isCurve = Math.abs(angle - prevA) > ANGLE_THRESHOLD ||
+                      Math.abs(nextA - angle) > ANGLE_THRESHOLD;
+
+      if (isCurve) {
+        const stepLen = RAMP_R * 0.8; // 60% overlap kills all seams
+        const count = Math.max(2, Math.ceil(len / stepLen));
+        for (let k = 0; k <= count; k++) {
+          const t = k / count;
+          Matter.Composite.add(world, Matter.Bodies.circle(
+            a.x + dx * t, a.y + dy * t, RAMP_R,
+            { isStatic: true, friction: 0.005, restitution: 0.3, label: 'ramp' },
+          ));
+        }
+      } else {
+        Matter.Composite.add(world,
+          Matter.Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, RAMP_THICKNESS, {
+            isStatic: true, angle,
+            friction: 0.005, restitution: 0.3,
+            chamfer: { radius: 4 },
+            label: 'ramp',
+          }),
+        );
+      }
     }
   });
 
@@ -584,21 +609,24 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         doomsdayBar = null;
         doomsdayBarActive = false;
       } else {
-        const speed = (doomsdayBarEndY - doomsdayBarStartY) / (doomsdayBarDuration / 16.67);
-        Matter.Body.setVelocity(doomsdayBar, { x: 0, y: speed });
+        // Bar is isStatic so setVelocity is a no-op — only setPosition moves it.
         Matter.Body.setPosition(doomsdayBar, { x: W / 2, y: newY });
       }
     }
+
+    // Windmills rotate every render frame proportional to frame time so they
+    // stay visually smooth on 120Hz displays. Previously rotation lived inside
+    // the physics accumulator gate, which on 120Hz devices made the blade hold
+    // still for one frame then jump 2x — visible jitter.
+    const wmScale = _dt / FRAME_DT;
+    wmBodies.forEach(wm => {
+      Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed * wmScale);
+    });
 
     // Time accumulator — run physics at fixed 60fps regardless of screen refresh rate
     // On 120Hz screens, only every other frame advances physics (prevents 2x speed bug)
     physicsAccumulator += _dt;
     while (physicsAccumulator >= FRAME_DT) {
-      // Windmill rotation per physics frame
-      wmBodies.forEach(wm => {
-        Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed);
-      });
-
       // Substeps for precision
       for (let s = 0; s < SUBSTEPS; s++) {
         Matter.Engine.update(engine, FIXED_DT);

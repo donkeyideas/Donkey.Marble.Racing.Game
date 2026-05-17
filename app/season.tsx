@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
 import { useGameStore, SeasonStandingEntry, SeasonMarbleStats, TrainingSession } from '../state/gameStore';
 import MarbleDot from '../components/MarbleDot';
+import MarbleStatsCard from '../components/MarbleStatsCard';
 import CoinPill from '../components/CoinPill';
 import BackButton from '../components/BackButton';
 import PrimaryButton from '../components/PrimaryButton';
@@ -131,14 +132,12 @@ export default function SeasonScreen() {
                 <Text style={styles.sectionTitle}>PICK YOUR MARBLE</Text>
                 <View style={styles.marblePickerGrid}>
                   {MARBLES.map((m) => (
-                    <Pressable
+                    <MarbleStatsCard
                       key={m.id}
-                      style={[styles.marblePickerCard, selectedSeasonMarble?.id === m.id && styles.marblePickerCardSelected]}
+                      marble={m}
+                      selected={selectedSeasonMarble?.id === m.id}
                       onPress={() => setSelectedSeasonMarble(m)}
-                    >
-                      <MarbleDot marble={m} size={36} />
-                      <Text style={[styles.marblePickerName, selectedSeasonMarble?.id === m.id && { color: Colors.yellow }]}>{m.name}</Text>
-                    </Pressable>
+                    />
                   ))}
                 </View>
               </View>
@@ -701,7 +700,7 @@ const styles = StyleSheet.create({
 
   // Marble picker
   marblePickerSection: { width: '100%', marginTop: 12 },
-  marblePickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  marblePickerGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   marblePickerCard: {
     width: '22%',
     backgroundColor: Colors.whiteAlpha07,

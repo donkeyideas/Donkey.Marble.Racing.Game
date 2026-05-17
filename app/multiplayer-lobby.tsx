@@ -16,6 +16,7 @@ import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
+import MarbleStatsCard from '../components/MarbleStatsCard';
 import { showModal } from '../components/GameModal';
 import {
   LobbyData,
@@ -308,6 +309,18 @@ export default function MultiplayerLobbyScreen() {
             {tierConfig.label} · Prize Pool: {tierConfig.prizePool.toLocaleString()}
           </Text>
 
+          {/* How-it-works card — shown during pre-race phases so first-time
+              players know what's coming. Hidden once racing starts. */}
+          {(phase === 'matching' || phase === 'waiting' || phase === 'drafting') && (
+            <View style={styles.howItWorksCard}>
+              <Text style={styles.howItWorksTitle}>HOW IT WORKS</Text>
+              <Text style={styles.howItWorksStep}>1. Lobby fills with 8 players (bots fill empty slots after 60s).</Text>
+              <Text style={styles.howItWorksStep}>2. Snake draft: each player picks one marble.</Text>
+              <Text style={styles.howItWorksStep}>3. All 8 marbles race together. Last place is eliminated each round.</Text>
+              <Text style={styles.howItWorksStep}>4. Survive 7 rounds to win the prize pool.</Text>
+            </View>
+          )}
+
           {/* PHASE: Matching */}
           {phase === 'matching' && (
             <View style={styles.centerCard}>
@@ -406,19 +419,13 @@ export default function MultiplayerLobbyScreen() {
                     {(lobby.availableMarbles || []).map((mId) => {
                       const marble = MARBLES.find((m) => m.id === mId);
                       if (!marble) return null;
-                      const isSelected = selectedMarble === mId;
                       return (
-                        <Pressable
+                        <MarbleStatsCard
                           key={mId}
+                          marble={marble}
+                          selected={selectedMarble === mId}
                           onPress={() => setSelectedMarble(mId)}
-                          style={[
-                            styles.marbleCell,
-                            isSelected && styles.marbleCellSelected,
-                          ]}
-                        >
-                          <MarbleDot marble={marble} size={36} />
-                          <Text style={styles.marbleCellName}>{marble.name}</Text>
-                        </Pressable>
+                        />
                       );
                     })}
                   </View>
@@ -451,7 +458,7 @@ export default function MultiplayerLobbyScreen() {
                   >
                     <Text style={styles.draftNum}>{i + 1}</Text>
                     <Text style={[styles.draftName, draftUid === uid && { color: Colors.yellow }]}>
-                      {p.displayName} {draftUid === uid ? '(YOU)' : ''} {p.isBot ? '(BOT)' : ''}
+                      {p.displayName} {draftUid === uid ? '(YOU)' : ''}
                     </Text>
                     {pickedMarble ? (
                       <MarbleDot marble={pickedMarble} size={20} />
@@ -531,9 +538,13 @@ export default function MultiplayerLobbyScreen() {
                 })()}
 
                 {amEliminated ? (
-                  <View style={{ marginTop: 16 }}>
+                  <View style={{ marginTop: 16, alignItems: 'center' }}>
                     <Text style={[styles.statusSub, { color: Colors.red }]}>
-                      You were eliminated
+                      You were eliminated in Round {lobby.currentRound}
+                    </Text>
+                    <Text style={[styles.statusSub, { marginTop: 4, fontSize: 11 }]}>
+                      The tournament continues without you. Your placement and
+                      payout are locked in for the final standings.
                     </Text>
                     <Pressable onPress={handleLeave} style={styles.leaveBtn}>
                       <Text style={styles.leaveBtnText}>LEAVE TOURNAMENT</Text>
@@ -601,7 +612,7 @@ export default function MultiplayerLobbyScreen() {
                         styles.standingName,
                         p.uid === uid && { color: Colors.yellow },
                       ]}>
-                        {p.displayName} {p.uid === uid ? '(YOU)' : ''} {p.isBot ? '(BOT)' : ''}
+                        {p.displayName} {p.uid === uid ? '(YOU)' : ''}
                       </Text>
                       <Text style={styles.standingPayout}>
                         +{calculateMPPayout(lobby, i + 1).toLocaleString()}
@@ -668,6 +679,27 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     marginBottom: 16,
+  },
+  howItWorksCard: {
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 1,
+    borderColor: Colors.yellowAlpha20,
+    borderRadius: BorderRadius.md,
+    padding: 12,
+    marginBottom: 12,
+  },
+  howItWorksTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 12,
+    color: Colors.yellow,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  howItWorksStep: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha60,
+    lineHeight: 16,
   },
   centerText: {
     fontFamily: Fonts.body,
@@ -740,8 +772,7 @@ const styles = StyleSheet.create({
   marbleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   marbleCell: {
     width: 80,

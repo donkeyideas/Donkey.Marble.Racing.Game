@@ -20,7 +20,6 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
-import FloatingMarblesBackground from '../components/FloatingMarblesBackground';
 
 function ModeCard({
   title,
@@ -116,7 +115,6 @@ export default function LobbyScreen() {
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96']} style={styles.fill}>
-      <FloatingMarblesBackground opacity={0.18} />
       <SafeAreaView style={styles.fill}>
         <ScrollView
           style={styles.fill}

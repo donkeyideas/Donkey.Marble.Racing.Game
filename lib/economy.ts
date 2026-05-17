@@ -10,7 +10,7 @@
  * key is seen twice (e.g., network hiccup, optimistic re-tap).
  */
 
-import { api, getToken } from './api';
+import { api, getToken, ApiError } from './api';
 
 export type EconomyAction =
   | 'claim_daily'
@@ -82,9 +82,8 @@ export async function applyEconomyAction(opts: {
     });
     return { ...res, ok: true };
   } catch (err: any) {
-    const status: number = err?.response?.status ?? 0;
-    const message: string =
-      err?.response?.data?.error?.message ?? err?.message ?? 'Economy request failed';
+    const status: number = err instanceof ApiError ? err.status : 0;
+    const message: string = err?.message ?? 'Economy request failed';
     return { ok: false, status, message };
   }
 }

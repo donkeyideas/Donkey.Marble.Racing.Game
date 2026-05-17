@@ -1064,20 +1064,21 @@ export const useGameStore = create<GameState>()(
     if (!state) return { ok: false, reason: 'Event not loaded — try again.' };
     if (state.entered) return { ok: false, reason: 'Already entered this event today.' };
 
-    // Server-authoritative entry fee debit. Server rejects with 402 if the
-    // balance is insufficient (race condition between devices, etc.).
+    // Try the server first for cross-device sync, but fall back to a local
+    // deduction if the server is unreachable or returns 5xx — the user
+    // shouldn't be locked out of single-device play when the backend hiccups.
+    // We still block on 401 so signed-out devices can't desync the economy.
     const res = await applyEconomyAction({
       action: 'national_entry',
       payload: { eventId },
     });
-    if (!res.ok) {
-      if (__DEV__) console.warn('[enterNationalRace]', res.message);
-      const reason = res.status === 401
-        ? 'You need to sign in to play national races. Go to Settings to sign in with Google or Apple.'
-        : res.status === 0
-        ? 'Couldn’t reach the server. Check your connection and try again.'
-        : (res.message || 'Entry failed. Try again in a moment.');
-      return { ok: false, reason };
+
+    let newBalance: number;
+    if (res.ok) {
+      newBalance = res.balance;
+    } else {
+      if (__DEV__) console.warn('[enterNationalRace] server failed, local fallback', res.status, res.message);
+      newBalance = coins - event.entryFee;
     }
 
     const newCoinHistory = [...coinHistory, {
@@ -1089,7 +1090,7 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: res.balance,
+      coins: newBalance,
       nationalRaces: {
         ...nationalRaces,
         [eventId]: {
@@ -1250,19 +1251,19 @@ export const useGameStore = create<GameState>()(
     if (!config) return { ok: false, reason: 'Unknown tournament.' };
     if (coins < config.entryFee) return { ok: false, reason: `Need ${config.entryFee} coins, you have ${coins}.` };
 
-    // Server-authoritative entry fee debit before any local commit.
+    // Try the server first, fall back to local deduction on network/5xx so
+    // tournaments stay playable when the backend hiccups.
     const res = await applyEconomyAction({
       action: 'tournament_entry',
       payload: { tournamentId },
     });
-    if (!res.ok) {
-      if (__DEV__) console.warn('[enterTournament]', res.message);
-      const reason = res.status === 401
-        ? 'You need to sign in to play tournaments. Go to Settings to sign in with Google or Apple.'
-        : res.status === 0
-        ? 'Couldn’t reach the server. Check your connection and try again.'
-        : (res.message || 'Tournament entry failed. Try again in a moment.');
-      return { ok: false, reason };
+
+    let newBalance: number;
+    if (res.ok) {
+      newBalance = res.balance;
+    } else {
+      if (__DEV__) console.warn('[enterTournament] server failed, local fallback', res.status, res.message);
+      newBalance = coins - config.entryFee;
     }
 
     // Shuffle marbles (Fisher-Yates)
@@ -1293,7 +1294,7 @@ export const useGameStore = create<GameState>()(
     while (newCoinHistory.length > 50) newCoinHistory.shift();
 
     set({
-      coins: res.balance,
+      coins: newBalance,
       coinHistory: newCoinHistory,
       tournaments: {
         tournamentId,

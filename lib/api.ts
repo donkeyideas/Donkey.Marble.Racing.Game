@@ -30,6 +30,17 @@ export async function clearToken(): Promise<void> {
   }
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+const FETCH_TIMEOUT_MS = 6000;
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getToken();
   const headers: Record<string, string> = {
@@ -37,14 +48,28 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers: { ...headers, ...(options.headers as Record<string, string>) },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers: { ...headers, ...(options.headers as Record<string, string>) },
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    // Distinguish a real network failure (status 0) from a server error so
+    // callers can show "you're offline" vs "server returned 500" correctly.
+    if (err?.name === 'AbortError') throw new ApiError('Request timed out', 0);
+    throw new ApiError(err?.message || 'Network error', 0);
+  }
+  clearTimeout(timeoutId);
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.error?.message || `API error ${res.status}`);
+    throw new ApiError(body?.error?.message || `API error ${res.status}`, res.status);
   }
 
   return res.json();
