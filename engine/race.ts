@@ -602,11 +602,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     marbleBodies.forEach(({ body, data }) => {
       // Finished marbles run on PURE physics from here — gravity pulls them
       // down, shelves catch them, marble-marble collisions stack the column.
-      // No teleporting, no x-snap. Just velocity capping to prevent tunneling
-      // through shelves at high speed.
+      // No teleporting, no x-snap. Just a soft velocity cap on the downward
+      // component so they don't tunnel through shelves at top speed.
       if (finishTimes[data.id]) {
         const vy = body.velocity.y;
-        if (vy > 5) Matter.Body.setVelocity(body, { x: body.velocity.x, y: 5 });
+        if (vy > 10) Matter.Body.setVelocity(body, { x: body.velocity.x, y: 10 });
         return;
       }
 
@@ -640,10 +640,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         finishRankCounter++;
         const rank = finishRankCounter;
 
-        // Heavy damping so the marble settles quickly once it lands.
-        body.frictionAir = 0.25;
-        body.restitution = 0;
-        body.friction = 0.6;
+        // Lighter damping than before — enough so marbles don't bounce
+        // forever in the channel, but not so much that they look slow-mo.
+        body.frictionAir = 0.05;
+        body.restitution = 0.1;
+        body.friction = 0.3;
 
         // Rank 1 lands on the existing channel-floor — no extra shelf needed.
         // Ranks 2..N each get a static shelf placed at the floor of their slot,
@@ -692,9 +693,9 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         Matter.Body.setPosition(body, { x: track.channelCX, y: dropY });
         Matter.Body.setVelocity(body, { x: 0, y: 1 });
         Matter.Body.setAngularVelocity(body, 0);
-        body.frictionAir = 0.25;
-        body.restitution = 0;
-        body.friction = 0.6;
+        body.frictionAir = 0.05;
+        body.restitution = 0.1;
+        body.friction = 0.3;
       });
     }
 

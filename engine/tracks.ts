@@ -333,7 +333,7 @@ export function buildBumperBlitz(): TrackConfig {
     finishFunnel: finish.finishFunnel,
     springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
-    bgImage: 'grass_hills',
+    bgImage: 'grass',
     speedBursts: [
       { x: 300, y: 575, width: 45, direction: 'right', activationChance: 0.55 },
     ],
@@ -609,7 +609,7 @@ export function buildCradleDrop(): TrackConfig {
     finishFunnel: finish.finishFunnel,
     springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
-    bgImage: 'grass_hills',
+    bgImage: 'grass',
     cradles,
   };
 }
@@ -747,7 +747,7 @@ export function buildTerrainValley(): TrackConfig {
     finishFunnel: finish.finishFunnel,
     springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
-    bgImage: 'grass_hills',
+    bgImage: 'grass',
   };
 }
 

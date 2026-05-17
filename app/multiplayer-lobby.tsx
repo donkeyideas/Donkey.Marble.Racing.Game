@@ -93,9 +93,17 @@ export default function MultiplayerLobbyScreen() {
         if (!mounted) return;
         // Refund the entry fee on failure — they never actually got into a lobby.
         useGameStore.getState().addCoins(tierConfig.entryFee);
+        // Surface the actual Firebase / network error so we can diagnose what's
+        // breaking. Common causes: Realtime DB rules locked down, expired
+        // "test mode", missing index for orderByChild('status'), Web SDK auth
+        // state not yet ready when the DB write fires.
+        const errMsg = e?.code
+          ? `${e.code}: ${e.message ?? 'no detail'}`
+          : (e?.message ?? String(e ?? 'unknown error'));
+        console.warn('[Multiplayer] quickMatch failed:', errMsg, e);
         showModal({
-          title: 'Connection Issue',
-          message: 'Couldn’t connect to multiplayer servers. Your entry fee was refunded.',
+          title: 'Multiplayer Unavailable',
+          message: `Couldn't connect: ${errMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
           buttons: [
             { label: 'Retry', variant: 'yellow', onPress: () => router.replace({ pathname: '/multiplayer-lobby', params: { tier } }) },
             { label: 'Back', variant: 'ghost', onPress: () => router.back() },

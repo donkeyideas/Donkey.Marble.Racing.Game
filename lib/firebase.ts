@@ -17,6 +17,13 @@ import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getDatabase as getWebDatabase, Database } from 'firebase/database';
 import { getAuth as getWebAuth, initializeAuth, Auth } from 'firebase/auth';
 import { getAnalytics as getWebAnalytics, isSupported as isAnalyticsSupported, Analytics } from 'firebase/analytics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// getReactNativePersistence isn't always re-exported from 'firebase/auth' in TS
+// typings even though it ships in the runtime. Pull it through `as any` so we
+// can still set proper RN-backed persistence. Without this, the auth session
+// is memory-only and the user is signed out on every cold start.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { getReactNativePersistence } = require('firebase/auth') as any;
 
 // Values copied from GoogleService-Info.plist (iOS) — same project, same DB/auth.
 const FIREBASE_CONFIG = {
@@ -51,9 +58,16 @@ export function getDb(): Database {
 export function getFbAuth(): Auth {
   if (_auth) return _auth;
   try {
-    // initializeAuth gives us a clean instance; fall back to getAuth if already initialized.
-    _auth = initializeAuth(app());
+    // initializeAuth with RN persistence: AsyncStorage-backed so the user
+    // stays signed in across cold starts. Without this, Firebase Auth in RN
+    // defaults to in-memory persistence and silently signs them out on
+    // every app launch — which is why multiplayer kept failing after sign-in.
+    _auth = initializeAuth(app(), {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
   } catch {
+    // initializeAuth throws if auth was already created for this app — that's
+    // fine, fall back to retrieving the existing instance.
     _auth = getWebAuth(app());
   }
   return _auth;
