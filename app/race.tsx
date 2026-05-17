@@ -159,10 +159,12 @@ function computeTrackVisuals(track: TrackConfig) {
 // Static track elements — rendered once, never re-rendered during race
 // React.memo prevents React from diffing 100+ unchanged elements every frame
 const StaticTrackElements = React.memo(function StaticTrackElements({
-  tv, themeSprites,
+  tv, themeSprites, finishTextColor, finishShadowColor,
 }: {
   tv: ReturnType<typeof computeTrackVisuals>;
   themeSprites: ThemeSprites;
+  finishTextColor?: string;
+  finishShadowColor?: string;
 }) {
   return (
     <>
@@ -303,12 +305,16 @@ const StaticTrackElements = React.memo(function StaticTrackElements({
         </View>
       ))}
 
-      {/* Finish zone */}
+      {/* Finish zone — sits ABOVE the checker strip (which starts at
+          finishSY-22). Color adapts to the track's theme so the label
+          stays readable on both dark and light backgrounds. */}
       <Text style={{
-        position: 'absolute', left: 0, right: 0, top: tv.finishSY - ex(42),
-        fontFamily: Fonts.display, fontSize: 18, color: '#000',
+        position: 'absolute', left: 0, right: 0, top: tv.finishSY - ex(60),
+        fontFamily: Fonts.display, fontSize: 22,
+        color: finishTextColor ?? '#ffffff',
         letterSpacing: 4, textAlign: 'center', zIndex: 12,
-        textShadowColor: 'rgba(255,255,255,0.7)', textShadowOffset: { width: 0, height: 1 },
+        textShadowColor: finishShadowColor ?? 'rgba(0,0,0,0.75)',
+        textShadowOffset: { width: 0, height: 1 },
         textShadowRadius: 3,
       }}>FINISH</Text>
       <View style={{
@@ -1014,6 +1020,15 @@ export default function RaceScreen() {
   };
   const containerBg = containerBgMap[trackConfig.bgImage] || '#2a5a1a';
 
+  // Light themes need DARK text for the FINISH banner; dark themes need
+  // WHITE text. Picked manually rather than computing luminance because the
+  // backgrounds are tiled sprites — the container color is a rough proxy.
+  const LIGHT_THEMES = new Set(['beach', 'desert', 'candy', 'snow']);
+  const finishTextColor = LIGHT_THEMES.has(trackConfig.bgImage) ? '#0a1a3a' : '#ffffff';
+  const finishShadowColor = LIGHT_THEMES.has(trackConfig.bgImage)
+    ? 'rgba(255,255,255,0.85)'
+    : 'rgba(0,0,0,0.75)';
+
   return (
     <View style={[st.container, { backgroundColor: containerBg }]}>
 
@@ -1073,21 +1088,25 @@ export default function RaceScreen() {
                 </Text>
               );
             })}
-            {/* FINISH banner — rendered as RN text so it's never font-blocked */}
+            {/* FINISH banner — rendered as RN text so it's never font-blocked.
+                Sits ABOVE the checker strip (which spans finishSY-22 to
+                finishSY-6 in engine units). Color picks white on dark
+                themes, dark navy on light themes (beach/desert/candy/snow)
+                for contrast. */}
             <Text
               pointerEvents="none"
               style={{
                 position: 'absolute',
                 left: 0, right: 0,
-                top: tv.finishSY - ex(40),
+                top: tv.finishSY - ex(60),
                 fontFamily: Fonts.display,
-                fontSize: 22,
-                color: '#000',
+                fontSize: 24,
+                color: finishTextColor,
                 textAlign: 'center',
-                letterSpacing: 2,
-                textShadowColor: 'rgba(255,255,255,0.6)',
+                letterSpacing: 3,
+                textShadowColor: finishShadowColor,
                 textShadowOffset: { width: 0, height: 1 },
-                textShadowRadius: 2,
+                textShadowRadius: 3,
               }}
             >
               FINISH
@@ -1106,7 +1125,12 @@ export default function RaceScreen() {
           {themeOverlay && (
             <View style={{ position: 'absolute', left: 0, top: 0, width: SW, height: totalScreenH, backgroundColor: themeOverlay, zIndex: 0 }} />
           )}
-          <StaticTrackElements tv={tv} themeSprites={themeSprites} />
+          <StaticTrackElements
+            tv={tv}
+            themeSprites={themeSprites}
+            finishTextColor={finishTextColor}
+            finishShadowColor={finishShadowColor}
+          />
 
           {/* Windmills */}
           {wm.map((w, i) => {
