@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Animated,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -169,6 +170,28 @@ export default function LobbyScreen() {
             subtitle="Bracket competitions · 8-marble elimination"
             colors={['#00b4d8', '#0077b6']}
             onPress={() => router.push('/tournaments')}
+          />
+
+          <ModeCard
+            title="MULTIPLAYER"
+            subtitle="Live 8-player tournaments · Real opponents · Real prizes"
+            colors={['#8e44ad', '#6c3483']}
+            badge="LIVE"
+            onPress={() => {
+              const uid = useGameStore.getState().firebaseUid;
+              if (!uid) {
+                Alert.alert(
+                  'Sign In Required',
+                  'Multiplayer needs an account so we can sync your lobby and prizes. Sign in with Google or Apple in Settings.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Settings', onPress: () => router.push('/settings') },
+                  ],
+                );
+                return;
+              }
+              router.push({ pathname: '/multiplayer-lobby', params: { tier: 'daily' } });
+            }}
           />
 
           <ModeCard

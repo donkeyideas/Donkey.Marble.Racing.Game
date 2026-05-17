@@ -242,23 +242,17 @@ export function createStaticTrackPicture(
   const depthPaint = makePaint('rgba(0,0,0,0.4)');
   canvas.drawRect(Skia.XYWHRect(tv.chanSX, chanTop, tv.chanW, wallH), depthPaint);
 
-  // Position divider lines
+  // Position divider lines inside the channel — visual hint for slot boundaries.
   const dividerPaint = makePaint('rgba(255,255,255,0.15)');
   for (let pi = 1; pi < 8; pi++) {
     const lineY = tv.finishSY + tv.chanDepth - pi * tv.slotH;
     canvas.drawRect(Skia.XYWHRect(tv.chanSX, lineY, tv.chanW, 1), dividerPaint);
   }
-
-  // Position numbers (1-8) — drawn as colored circles with number to approximate the View-based text
-  const posColors = ['#FFD700', '#C0C0C0', '#CD7F32', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF'];
-  for (let pi = 0; pi < 8; pi++) {
-    const py = tv.finishSY + tv.chanDepth - (pi + 1) * tv.slotH + tv.slotH * 0.4;
-    const px = tv.chanEX + ex(16);
-    const numPaint = makePaint(posColors[pi]);
-    // Small circle marker
-    canvas.drawCircle(px, py, 6, numPaint);
-    // The actual number text will be drawn by declarative <Text> in RaceCanvas
-  }
+  // NOTE: position numbers (1–8) and the "FINISH" label are rendered as plain
+  // React Native <Text> overlays in app/race.tsx — see the Animated.View block
+  // following the RaceCanvas. That bypasses Skia font issues on iOS and gives
+  // crisp, readable digits. The Skia circle markers/text that used to live
+  // here have been removed to prevent the doubled glyphs shown in TestFlight #?.
 
   return recorder.finishRecordingAsPicture();
 }

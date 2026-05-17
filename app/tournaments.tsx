@@ -60,16 +60,36 @@ export default function TournamentsScreen() {
   const enterTournament = useGameStore((s) => s.enterTournament);
 
   const handleEnter = (tourneyId: string) => {
-    // If already in a tournament, go to bracket
+    // If already in a tournament, jump straight to the bracket — no re-charge.
     if (tournaments && tournaments.tournamentId === tourneyId) {
       router.push('/tournament-bracket');
       return;
     }
 
-    const success = enterTournament(tourneyId);
-    if (success) {
-      router.push('/tournament-bracket');
-    }
+    // Confirm the entry-fee charge BEFORE deducting coins. Previously, tapping
+    // any tournament card immediately drained the user's wallet even if they
+    // backed out without playing, and tapping a second tier would charge AGAIN.
+    const cfg = TOURNAMENTS_LIST.find(t => t.id === tourneyId);
+    if (!cfg) return;
+    const alreadyInOther = tournaments && tournaments.tournamentId !== tourneyId && tournaments.status === 'active';
+    const warning = alreadyInOther
+      ? `\n\nWARNING: this abandons your in-progress ${tournaments.tournamentId} tournament.`
+      : '';
+    Alert.alert(
+      `Enter ${cfg.name}?`,
+      `Entry fee: ${cfg.entryFee} coins\nPrize pool: ${cfg.prizePool} coins\nFormat: 8-marble elimination${warning}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Enter',
+          style: 'default',
+          onPress: () => {
+            const success = enterTournament(tourneyId);
+            if (success) router.push('/tournament-bracket');
+          },
+        },
+      ],
+    );
   };
 
   return (

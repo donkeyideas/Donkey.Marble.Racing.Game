@@ -57,14 +57,45 @@ export default function ProfileScreen() {
   const firebaseDisplayName = useGameStore((s) => s.firebaseDisplayName);
   const firebaseEmail = useGameStore((s) => s.firebaseEmail);
   const firebaseUid = useGameStore((s) => s.firebaseUid);
+  const currentStreak = useGameStore((s) => s.currentStreak);
+  const bestStreak = useGameStore((s) => s.bestStreak);
+  const coinHistory = useGameStore((s) => s.coinHistory);
+  const season = useGameStore((s) => s.season);
+  const tournaments = useGameStore((s) => s.tournaments);
 
   const winRate = totalRaces > 0 ? Math.round((totalWins / totalRaces) * 100) : 0;
+
+  // Aggregate coin-flow stats from history (capped at 50 entries in store)
+  const coinsEarned = coinHistory
+    .filter((t) => t.type === 'payout' || t.type === 'daily_bonus')
+    .reduce((sum, t) => sum + Math.max(0, t.amount), 0);
+  const coinsSpent = coinHistory
+    .filter((t) => t.type === 'bet' || t.type === 'purchase')
+    .reduce((sum, t) => sum + Math.abs(Math.min(0, t.amount)), 0);
+
+  // Most-bet vs highest-win-rate marble (separate metrics — both interesting)
+  let mostBetId = '', mostBetCount = 0;
+  let bestWinRateId = '', bestWinRate = 0, bestWinRateCount = 0;
+  for (const [id, stats] of Object.entries(marbleStats)) {
+    if (stats.betCount > mostBetCount) { mostBetCount = stats.betCount; mostBetId = id; }
+    const rate = stats.betCount >= 3 ? stats.wins / stats.betCount : 0;
+    if (rate > bestWinRate) {
+      bestWinRate = rate;
+      bestWinRateId = id;
+      bestWinRateCount = stats.betCount;
+    }
+  }
+  const mostBetMarble = mostBetId ? MARBLES.find((m) => m.id === mostBetId) : null;
+  const bestRateMarble = bestWinRateId ? MARBLES.find((m) => m.id === bestWinRateId) : null;
 
   const league = getLeague(passLevel);
   const currentXP = passXp;
   const nextTierXP = XP_PER_LEVEL;
   const progressPercent = (currentXP / nextTierXP) * 100;
   const favorite = getFavoriteMarble(marbleStats);
+
+  const tournamentEarnings = tournaments?.totalEarned ?? 0;
+  const seasonChampionships = season?.seasonHistory?.length ?? 0;
 
   return (
     <LinearGradient
@@ -175,6 +206,63 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {/* ===== STREAK + ECONOMY ===== */}
+          <Text style={styles.sectionHeader}>STREAK & ECONOMY</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{currentStreak}</Text>
+              <Text style={styles.statLabel}>STREAK</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{bestStreak}</Text>
+              <Text style={styles.statLabel}>BEST</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{(coinsEarned - coinsSpent).toLocaleString()}</Text>
+              <Text style={styles.statLabel}>NET</Text>
+            </View>
+          </View>
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { flex: 1 }]}>
+              <Text style={[styles.statValue, { color: '#2ecc71' }]}>+{coinsEarned.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>EARNED</Text>
+            </View>
+            <View style={[styles.statCard, { flex: 1 }]}>
+              <Text style={[styles.statValue, { color: '#e74c3c' }]}>-{coinsSpent.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>SPENT</Text>
+            </View>
+          </View>
+
+          {/* ===== CAREER ACHIEVEMENTS ===== */}
+          <Text style={styles.sectionHeader}>CAREER</Text>
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { flex: 1 }]}>
+              <Text style={styles.statValue}>{seasonChampionships}</Text>
+              <Text style={styles.statLabel}>SEASON TITLES</Text>
+            </View>
+            <View style={[styles.statCard, { flex: 1 }]}>
+              <Text style={styles.statValue}>{tournamentEarnings.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>TOURNEY $</Text>
+            </View>
+          </View>
+
+          {/* ===== MARBLE INTEL ===== */}
+          {bestRateMarble && bestWinRateCount >= 3 && bestWinRateId !== mostBetId && (
+            <>
+              <Text style={styles.sectionHeader}>HOT PICK</Text>
+              <View style={styles.favoriteCard}>
+                <MarbleDot marble={bestRateMarble} size={40} />
+                <View style={styles.favoriteInfo}>
+                  <Text style={styles.favoriteLabel}>HIGHEST WIN RATE</Text>
+                  <Text style={styles.favoriteName}>{bestRateMarble.name}</Text>
+                  <Text style={styles.favoriteStat}>
+                    {Math.round(bestWinRate * 100)}% over {bestWinRateCount} bets
+                  </Text>
+                </View>
+              </View>
+            </>
+          )}
+
           {/* ===== ACTIONS ===== */}
           <View style={styles.actions}>
             <PrimaryButton
@@ -200,6 +288,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingBottom: 40,
+  },
+
+  sectionHeader: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    letterSpacing: 1.5,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 20,
+    marginBottom: 10,
   },
 
   /* ===== HEADER ===== */

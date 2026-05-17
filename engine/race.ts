@@ -514,8 +514,6 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // Finish-rank counter — increments as each marble crosses finishY so we can
   // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
   let finishRankCounter = 0;
-  // Slot height in engine units — must match `slotH: ex(26)` in app/race.tsx trackVisuals.
-  const SLOT_H = 26;
 
   // No anti-stuck hacks — physics must flow naturally. Doomsday bar is the only safety net.
 
@@ -601,7 +599,23 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     // Post-step marble processing
     const MAX_SPEED = 15; // velocity cap — higher for natural flow with low air friction
     marbleBodies.forEach(({ body, data }) => {
-      if (finishTimes[data.id]) return;
+      // FINISHED marbles: keep dynamic so they fall and stack naturally, but
+      // constrain x to channel center so they form a clean vertical column.
+      // Marble-marble collisions stay enabled, so the next finisher rests on
+      // top of the previous one via gravity (like a real marble race finish).
+      if (finishTimes[data.id]) {
+        const dx = track.channelCX - body.position.x;
+        if (Math.abs(dx) > 0.1) {
+          Matter.Body.setPosition(body, { x: track.channelCX, y: body.position.y });
+        }
+        if (Math.abs(body.velocity.x) > 0.01) {
+          Matter.Body.setVelocity(body, { x: 0, y: body.velocity.y });
+        }
+        if (Math.abs(body.angularVelocity) > 0.01) {
+          Matter.Body.setAngularVelocity(body, 0);
+        }
+        return;
+      }
 
       // Velocity cap — clamp speed to feel natural
       const vx = body.velocity.x, vy = body.velocity.y;
@@ -619,50 +633,49 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         });
       }
 
-      // Finish detection — sub-frame precision time, then snap to numbered slot.
+      // Finish detection — sub-frame precision time, then transition the body
+      // into "settling" mode: heavy damping, no bounce, x snapped to channel
+      // center. From here gravity does the rest and marbles stack physically.
       if (body.position.y >= track.finishY) {
         const overshoot = body.position.y - track.finishY;
-        const vy = Math.max(Math.abs(body.velocity.y), 0.1);
-        finishTimes[data.id] = elapsed - (overshoot / vy);
+        const vy2 = Math.max(Math.abs(body.velocity.y), 0.1);
+        finishTimes[data.id] = elapsed - (overshoot / vy2);
         if (!firstFinishTime) firstFinishTime = finishTimes[data.id];
-
-        // Snap to numbered slot: rank 1 = bottom slot, rank N = N slots up.
-        // Make the body static & disable marble–marble collisions so it stays
-        // put and incoming marbles don't bump it out of its slot. Without this,
-        // marbles pile up chaotically and the slot numbers are meaningless.
         finishRankCounter++;
-        const rank = finishRankCounter;
-        const slotCenterY = track.finishY + track.channelDepth - (rank - 0.5) * SLOT_H;
-        Matter.Body.setPosition(body, { x: track.channelCX, y: slotCenterY });
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+
+        // Center horizontally and kill horizontal velocity — no teleport on Y.
+        Matter.Body.setPosition(body, { x: track.channelCX, y: body.position.y });
+        Matter.Body.setVelocity(body, { x: 0, y: Math.min(body.velocity.y, 4) });
         Matter.Body.setAngularVelocity(body, 0);
-        Matter.Body.setStatic(body, true);
-        // Only the doomsday bar (different category) and walls should still
-        // interact; marble↔marble collisions are disabled so a stacking marble
-        // can pass through a finished one if physics drifts it slightly.
-        body.collisionFilter = { ...body.collisionFilter, mask: CAT_WALL };
+        // Switch to "settling" physics: high air drag, no bounce, sticky friction.
+        // Marble-marble collisions stay ON so the stack forms naturally.
+        body.frictionAir = 0.35;
+        body.restitution = 0;
+        body.friction = 0.8;
       }
     });
 
     const finishedCount = Object.keys(finishTimes).length;
     const isFinished = finishedCount >= totalMarbleCount || elapsed > DOOMSDAY_DEADLINE_MS;
     if (isFinished) {
-      // Sort unfinished marbles by current Y (highest first = closest to finish)
-      // so doomsday-assigned ranks roughly reflect race position, and snap each
-      // one into its slot just like the organic finish path does.
+      // Doomsday: rank stragglers by current Y (closest to finish ranks higher)
+      // and assign fallback finishTimes. Position-wise, drop them into the
+      // channel above the existing stack so gravity settles them naturally.
       const unfinished = marbleBodies
         .filter(mb => !finishTimes[mb.data.id])
         .sort((a, b) => b.body.position.y - a.body.position.y);
       unfinished.forEach(({ data, body }) => {
         finishTimes[data.id] = elapsed + (track.finishY - body.position.y) * 8;
         finishRankCounter++;
-        const rank = finishRankCounter;
-        const slotCenterY = track.finishY + track.channelDepth - (rank - 0.5) * SLOT_H;
-        Matter.Body.setPosition(body, { x: track.channelCX, y: slotCenterY });
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        // Place above the existing stack (top of channel) so gravity stacks them
+        // onto whatever already finished. Same settling physics as the organic path.
+        const dropY = track.finishY + 20 + (finishRankCounter - 1) * 4;
+        Matter.Body.setPosition(body, { x: track.channelCX, y: dropY });
+        Matter.Body.setVelocity(body, { x: 0, y: 1 });
         Matter.Body.setAngularVelocity(body, 0);
-        Matter.Body.setStatic(body, true);
-        body.collisionFilter = { ...body.collisionFilter, mask: CAT_WALL };
+        body.frictionAir = 0.35;
+        body.restitution = 0;
+        body.friction = 0.8;
       });
     }
 

@@ -131,7 +131,11 @@ export default function NationalRacesScreen() {
         >
           {/* Header */}
           <View style={styles.headerRow}>
-            <BackButton onPress={() => router.back()} />
+            {/* router.back() got into an infinite loop on this route — when the
+                user enters → races → returns to this screen, the back stack can
+                refer back to a stale national-races entry. Forcing a navigation
+                to /lobby always exits cleanly. */}
+            <BackButton onPress={() => router.replace('/lobby')} />
             <CoinPill amount={coins} />
           </View>
 

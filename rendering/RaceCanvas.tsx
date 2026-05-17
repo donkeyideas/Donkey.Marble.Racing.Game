@@ -6,7 +6,7 @@ import React, { useMemo } from 'react';
 import { Dimensions } from 'react-native';
 import {
   Canvas, Circle, Rect, Line, Group, Image as SkiaImage,
-  Picture, useFont, Text as SkiaText, vec, Oval,
+  Picture, vec, Oval,
 } from '@shopify/react-native-skia';
 import { SharedValue, useDerivedValue } from 'react-native-reanimated';
 import { useSkiaThemeSprites, useSkiaBgImage, areSpritesReady } from './skiaSprites';
@@ -16,8 +16,6 @@ import { THEME_OVERLAYS } from '../assets/kenney/spriteMap';
 import { PendulumState, BallPitBallState, SpeedBurstState } from '../engine/race';
 import { MarbleData } from '../theme';
 import SkiaMarbles from './SkiaMarbles';
-import { LilitaOne_400Regular } from '@expo-google-fonts/lilita-one';
-import { Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const ENGINE_W = 400;
@@ -28,11 +26,8 @@ const MARBLE_R = ex(11);
 const RAMP_H = Math.max(16, 14 * SCALE);
 const WM_H = ex(8);
 
-// Font sources — loaded via useFont() inside the component below.
-// matchFont() doesn't work for custom fonts on Android (only system fonts), which is why
-// the slot numbers and FINISH text were invisible despite the code being present.
-const DISPLAY_FONT_SRC = LilitaOne_400Regular;
-const BODY_FONT_SRC = Fredoka_700Bold;
+// Skia font setup removed — slot numbers + FINISH banner are rendered as RN
+// <Text> overlays in app/race.tsx, which is more reliable across iOS/Android.
 
 /** Static positions for animated elements — captured once at race start so
  *  RaceCanvas can mount these components and rely on SharedValues for animation. */
@@ -106,12 +101,6 @@ function RaceCanvasInner(props: RaceCanvasProps) {
   const themeOverlay = THEME_OVERLAYS[bgImage] || null;
   const totalScreenH = ex(totalHeight);
   const bgTileCount = Math.ceil(totalScreenH / SH) + 1;
-
-  // Load custom Skia fonts for finish-line text and position numbers.
-  // useFont returns null while loading on first render; the gated renders below
-  // skip text until the font is ready.
-  const displayFont = useFont(DISPLAY_FONT_SRC, 18);
-  const bodyFont = useFont(BODY_FONT_SRC, 16);
 
   // Theme-aware element colors for track contrast
   const themeElementColors = useMemo(() => getBgTheme(bgImage).elements, [bgImage]);
@@ -193,32 +182,10 @@ function RaceCanvasInner(props: RaceCanvasProps) {
           {/* ===== STATIC TRACK ELEMENTS (single Picture draw) ===== */}
           {staticPicture && <Picture picture={staticPicture} />}
 
-          {/* ===== FINISH TEXT ===== */}
-          {displayFont && (
-            <SkiaText
-              x={SW / 2 - 40}
-              y={tv.finishSY - ex(30)}
-              text="FINISH"
-              font={displayFont}
-              color="#000"
-            />
-          )}
-
-          {/* ===== POSITION NUMBERS ===== */}
-          {bodyFont && Array.from({ length: 8 }).map((_, pi) => {
-            const posColor = pi === 0 ? '#FFD700' : pi === 1 ? '#C0C0C0' : pi === 2 ? '#CD7F32' : '#FFFFFF';
-            const py = tv.finishSY + tv.chanDepth - (pi + 1) * tv.slotH + tv.slotH * 0.5;
-            return (
-              <SkiaText
-                key={`pos${pi}`}
-                x={tv.chanEX + ex(12)}
-                y={py}
-                text={`${pi + 1}`}
-                font={bodyFont}
-                color={posColor}
-              />
-            );
-          })}
+          {/* FINISH banner and slot numbers (1-8) are rendered as plain RN <Text>
+              overlays in app/race.tsx — see the Animated.View following <RaceCanvas/>.
+              Drawing them in Skia produced a ghosted double-glyph in TestFlight
+              because the layout differed slightly from the RN Text positions. */}
 
           {/* ===== WINDMILLS — SharedValue path ===== */}
           {useSharedValuePath && staticConfig!.windmills.map((w, i) => (
