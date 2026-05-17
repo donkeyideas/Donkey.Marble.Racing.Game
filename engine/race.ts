@@ -598,22 +598,15 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
 
     // Post-step marble processing
     const MAX_SPEED = 15; // velocity cap — higher for natural flow with low air friction
+    const SLOT_H = 26;    // slot height in engine units, matches trackVisuals.slotH = ex(26)
     marbleBodies.forEach(({ body, data }) => {
-      // FINISHED marbles: keep dynamic so they fall and stack naturally, but
-      // constrain x to channel center so they form a clean vertical column.
-      // Marble-marble collisions stay enabled, so the next finisher rests on
-      // top of the previous one via gravity (like a real marble race finish).
+      // Finished marbles run on PURE physics from here — gravity pulls them
+      // down, shelves catch them, marble-marble collisions stack the column.
+      // No teleporting, no x-snap. Just velocity capping to prevent tunneling
+      // through shelves at high speed.
       if (finishTimes[data.id]) {
-        const dx = track.channelCX - body.position.x;
-        if (Math.abs(dx) > 0.1) {
-          Matter.Body.setPosition(body, { x: track.channelCX, y: body.position.y });
-        }
-        if (Math.abs(body.velocity.x) > 0.01) {
-          Matter.Body.setVelocity(body, { x: 0, y: body.velocity.y });
-        }
-        if (Math.abs(body.angularVelocity) > 0.01) {
-          Matter.Body.setAngularVelocity(body, 0);
-        }
+        const vy = body.velocity.y;
+        if (vy > 5) Matter.Body.setVelocity(body, { x: body.velocity.x, y: 5 });
         return;
       }
 
@@ -633,49 +626,75 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         });
       }
 
-      // Finish detection — sub-frame precision time, then transition the body
-      // into "settling" mode: heavy damping, no bounce, x snapped to channel
-      // center. From here gravity does the rest and marbles stack physically.
+      // Finish detection. Marble crossed finishY — record the time and increment
+      // the rank counter. CRUCIALLY: no setPosition, no setStatic, no x-snap.
+      // We spawn a horizontal "shelf" body inside the channel at the floor of
+      // this marble's slot; gravity carries the marble down to land on it.
+      // The earlier teleport-snap looked ghosty because the body's x jumped
+      // 10-15px instantly when it crossed. Now it's pure physics start to end.
       if (body.position.y >= track.finishY) {
         const overshoot = body.position.y - track.finishY;
-        const vy2 = Math.max(Math.abs(body.velocity.y), 0.1);
-        finishTimes[data.id] = elapsed - (overshoot / vy2);
+        const vyAbs = Math.max(Math.abs(body.velocity.y), 0.1);
+        finishTimes[data.id] = elapsed - (overshoot / vyAbs);
         if (!firstFinishTime) firstFinishTime = finishTimes[data.id];
         finishRankCounter++;
+        const rank = finishRankCounter;
 
-        // Center horizontally and kill horizontal velocity — no teleport on Y.
-        Matter.Body.setPosition(body, { x: track.channelCX, y: body.position.y });
-        Matter.Body.setVelocity(body, { x: 0, y: Math.min(body.velocity.y, 4) });
-        Matter.Body.setAngularVelocity(body, 0);
-        // Switch to "settling" physics: high air drag, no bounce, sticky friction.
-        // Marble-marble collisions stay ON so the stack forms naturally.
-        body.frictionAir = 0.35;
+        // Heavy damping so the marble settles quickly once it lands.
+        body.frictionAir = 0.25;
         body.restitution = 0;
-        body.friction = 0.8;
+        body.friction = 0.6;
+
+        // Rank 1 lands on the existing channel-floor — no extra shelf needed.
+        // Ranks 2..N each get a static shelf placed at the floor of their slot,
+        // which is the TOP of the slot below. The shelf catches them before
+        // they collide with the previous finisher.
+        if (rank >= 2) {
+          const shelfY = track.finishY + track.channelDepth - (rank - 1) * SLOT_H;
+          const shelf = Matter.Bodies.rectangle(
+            track.channelCX, shelfY,
+            track.channelRight - track.channelLeft, 3,
+            { isStatic: true, friction: 0.6, restitution: 0, label: 'slot-shelf' },
+          );
+          Matter.Composite.add(world, shelf);
+        }
       }
     });
 
     const finishedCount = Object.keys(finishTimes).length;
     const isFinished = finishedCount >= totalMarbleCount || elapsed > DOOMSDAY_DEADLINE_MS;
     if (isFinished) {
-      // Doomsday: rank stragglers by current Y (closest to finish ranks higher)
-      // and assign fallback finishTimes. Position-wise, drop them into the
-      // channel above the existing stack so gravity settles them naturally.
+      // Doomsday fallback. Rank remaining marbles by current Y (closer to the
+      // finish = better rank). Drop each one into the channel above the stack
+      // and add its shelf so the stack completes cleanly. Stragglers DO get
+      // teleported here — they got stuck somewhere upstream, so there's no
+      // meaningful "natural" finish for them. The organic path above is pure
+      // physics; this is only for the timeout case.
+      const SLOT_H_DOOMSDAY = 26;
       const unfinished = marbleBodies
         .filter(mb => !finishTimes[mb.data.id])
         .sort((a, b) => b.body.position.y - a.body.position.y);
       unfinished.forEach(({ data, body }) => {
         finishTimes[data.id] = elapsed + (track.finishY - body.position.y) * 8;
         finishRankCounter++;
-        // Place above the existing stack (top of channel) so gravity stacks them
-        // onto whatever already finished. Same settling physics as the organic path.
-        const dropY = track.finishY + 20 + (finishRankCounter - 1) * 4;
+        const rank = finishRankCounter;
+        if (rank >= 2) {
+          const shelfY = track.finishY + track.channelDepth - (rank - 1) * SLOT_H_DOOMSDAY;
+          const shelf = Matter.Bodies.rectangle(
+            track.channelCX, shelfY,
+            track.channelRight - track.channelLeft, 3,
+            { isStatic: true, friction: 0.6, restitution: 0, label: 'slot-shelf' },
+          );
+          Matter.Composite.add(world, shelf);
+        }
+        // Drop the marble just above the channel top so it falls onto its shelf.
+        const dropY = track.finishY + 12;
         Matter.Body.setPosition(body, { x: track.channelCX, y: dropY });
         Matter.Body.setVelocity(body, { x: 0, y: 1 });
         Matter.Body.setAngularVelocity(body, 0);
-        body.frictionAir = 0.35;
+        body.frictionAir = 0.25;
         body.restitution = 0;
-        body.friction = 0.8;
+        body.friction = 0.6;
       });
     }
 

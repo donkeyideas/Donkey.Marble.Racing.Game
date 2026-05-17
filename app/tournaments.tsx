@@ -14,6 +14,7 @@ import { Colors, Fonts, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
+import { showModal } from '../components/GameModal';
 import { MP_TIERS } from '../lib/multiplayer';
 
 const TOURNAMENTS_LIST = [
@@ -66,30 +67,29 @@ export default function TournamentsScreen() {
       return;
     }
 
-    // Confirm the entry-fee charge BEFORE deducting coins. Previously, tapping
-    // any tournament card immediately drained the user's wallet even if they
-    // backed out without playing, and tapping a second tier would charge AGAIN.
+    // Confirm the entry-fee charge BEFORE deducting coins. Themed modal instead
+    // of native Alert so it looks like the rest of the app.
     const cfg = TOURNAMENTS_LIST.find(t => t.id === tourneyId);
     if (!cfg) return;
     const alreadyInOther = tournaments && tournaments.tournamentId !== tourneyId && tournaments.status === 'active';
     const warning = alreadyInOther
-      ? `\n\nWARNING: this abandons your in-progress ${tournaments.tournamentId} tournament.`
+      ? `\n\nThis abandons your in-progress tournament.`
       : '';
-    Alert.alert(
-      `Enter ${cfg.name}?`,
-      `Entry fee: ${cfg.entryFee} coins\nPrize pool: ${cfg.prizePool} coins\nFormat: 8-marble elimination${warning}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
+    showModal({
+      title: `Enter ${cfg.name}?`,
+      message: `Entry: ${cfg.entryFee} coins · Prize pool: ${cfg.prizePool}\nFormat: 8-marble elimination${warning}`,
+      buttons: [
+        { label: 'Cancel', variant: 'ghost' },
         {
-          text: 'Enter',
-          style: 'default',
+          label: `Enter for ${cfg.entryFee}`,
+          variant: 'yellow',
           onPress: () => {
             const success = enterTournament(tourneyId);
             if (success) router.push('/tournament-bracket');
           },
         },
       ],
-    );
+    });
   };
 
   return (

@@ -16,6 +16,7 @@ import { loadCachedConfig, fetchRemoteConfig } from '../lib/remoteConfig';
 import { fetchAllLiveOps } from '../lib/liveOps';
 import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth';
 import { useGameStore } from '../state/gameStore';
+import { GameModalHost } from '../components/GameModal';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -75,6 +76,8 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: '#0a3a96' },
         }}
       />
+      {/* Themed Alert replacement — consumes showModal() / hideModal() calls. */}
+      <GameModalHost />
     </GestureHandlerRootView>
   );
 }

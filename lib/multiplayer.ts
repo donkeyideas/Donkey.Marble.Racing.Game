@@ -91,7 +91,7 @@ export interface LobbyData {
 // ---------------------------------------------------------------------------
 
 export const MAX_PLAYERS = 8;
-export const AI_BACKFILL_DELAY_MS = 15_000;  // 15s before AI fills empty slots
+export const AI_BACKFILL_DELAY_MS = 60_000;  // 60s window for humans before AI fills empty slots
 export const LOBBY_EXPIRY_MS = 30 * 60_000;  // 30 min stale lobby cleanup
 
 export const MP_TIERS = {

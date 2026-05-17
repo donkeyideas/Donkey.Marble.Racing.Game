@@ -16,6 +16,7 @@ import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
+import { showModal } from '../components/GameModal';
 import {
   LobbyData,
   LobbyPlayer,
@@ -52,7 +53,8 @@ export default function MultiplayerLobbyScreen() {
   const [lobby, setLobby] = useState<LobbyData | null>(null);
   const [phase, setPhase] = useState<Phase>('matching');
   const [selectedMarble, setSelectedMarble] = useState<string | null>(null);
-  const [countdown, setCountdown] = useState(15);
+  const [countdown, setCountdown] = useState(Math.ceil(AI_BACKFILL_DELAY_MS / 1000));
+  const [matchingText, setMatchingText] = useState('Searching for opponents...');
   const backfillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,11 +70,16 @@ export default function MultiplayerLobbyScreen() {
 
     async function match() {
       try {
-        // Deduct entry fee
         const store = useGameStore.getState();
         if (store.coins < tierConfig.entryFee) {
-          Alert.alert('Not Enough Coins', `You need ${tierConfig.entryFee} coins to enter.`);
-          router.back();
+          showModal({
+            title: 'Not Enough Coins',
+            message: `You need ${tierConfig.entryFee} coins to enter this tier.`,
+            buttons: [
+              { label: 'Coin Store', variant: 'yellow', onPress: () => router.replace('/store') },
+              { label: 'Back', variant: 'ghost', onPress: () => router.back() },
+            ],
+          });
           return;
         }
         store.removeCoins(tierConfig.entryFee);
@@ -82,17 +89,43 @@ export default function MultiplayerLobbyScreen() {
         setLobbyId(id);
         setMpLobbyId(id);
         setPhase('waiting');
-      } catch (e) {
-        if (mounted) {
-          Alert.alert('Error', 'Could not find a match. Please try again.');
-          router.back();
-        }
+      } catch (e: any) {
+        if (!mounted) return;
+        // Refund the entry fee on failure — they never actually got into a lobby.
+        useGameStore.getState().addCoins(tierConfig.entryFee);
+        showModal({
+          title: 'Connection Issue',
+          message: 'Couldn’t connect to multiplayer servers. Your entry fee was refunded.',
+          buttons: [
+            { label: 'Retry', variant: 'yellow', onPress: () => router.replace({ pathname: '/multiplayer-lobby', params: { tier } }) },
+            { label: 'Back', variant: 'ghost', onPress: () => router.back() },
+          ],
+        });
       }
     }
 
     match();
     return () => { mounted = false; };
   }, []);
+
+  // Cycle the matching-phase status text so the screen feels alive while we
+  // do the actual Firebase lookup. Roughly mirrors what a matchmaker would
+  // show — "looking", "found a lobby", "loading". Stops once phase != matching.
+  useEffect(() => {
+    if (phase !== 'matching') return;
+    const messages = [
+      'Searching for opponents...',
+      'Looking for active lobbies...',
+      'Pinging server...',
+      'Almost ready...',
+    ];
+    let i = 0;
+    const t = setInterval(() => {
+      i = (i + 1) % messages.length;
+      setMatchingText(messages[i]);
+    }, 1400);
+    return () => clearInterval(t);
+  }, [phase]);
 
   // ---------------------------------------------------------------------------
   // Subscribe to lobby updates
@@ -271,7 +304,11 @@ export default function MultiplayerLobbyScreen() {
           {phase === 'matching' && (
             <View style={styles.centerCard}>
               <ActivityIndicator size="large" color={Colors.yellow} />
-              <Text style={styles.centerText}>Finding a match...</Text>
+              <Text style={styles.statusTitle}>MATCHING</Text>
+              <Text style={styles.centerText}>{matchingText}</Text>
+              <Text style={[styles.statusSub, { marginTop: 12 }]}>
+                Tier: {tierConfig.label} · Entry: {tierConfig.entryFee}
+              </Text>
             </View>
           )}
 

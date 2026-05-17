@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
+import { showModal } from '../components/GameModal';
 import { syncPlayerState } from '../lib/sync';
 import { getAnnouncements, getActivePromos } from '../lib/liveOps';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -180,14 +181,14 @@ export default function LobbyScreen() {
             onPress={() => {
               const uid = useGameStore.getState().firebaseUid;
               if (!uid) {
-                Alert.alert(
-                  'Sign In Required',
-                  'Multiplayer needs an account so we can sync your lobby and prizes. Sign in with Google or Apple in Settings.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Settings', onPress: () => router.push('/settings') },
+                showModal({
+                  title: 'Sign In Required',
+                  message: 'Multiplayer needs an account so we can sync your lobby and prizes. Sign in with Google or Apple in Settings.',
+                  buttons: [
+                    { label: 'Cancel', variant: 'ghost' },
+                    { label: 'Settings', variant: 'yellow', onPress: () => router.push('/settings') },
                   ],
-                );
+                });
                 return;
               }
               router.push({ pathname: '/multiplayer-lobby', params: { tier: 'daily' } });
