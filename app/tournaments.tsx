@@ -84,8 +84,20 @@ export default function TournamentsScreen() {
           label: `Enter for ${cfg.entryFee}`,
           variant: 'yellow',
           onPress: async () => {
-            const success = await enterTournament(tourneyId);
-            if (success) router.push('/tournament-bracket');
+            const result = await enterTournament(tourneyId);
+            if (result.ok) {
+              router.push('/tournament-bracket');
+            } else {
+              // Previously this failed silently — modal closed, no
+              // navigation, user stared at the screen confused. Now surface
+              // the actual reason so they know if it's auth, network, or
+              // coin balance.
+              showModal({
+                title: 'Couldn’t Enter Tournament',
+                message: result.reason,
+                buttons: [{ label: 'OK', variant: 'yellow' }],
+              });
+            }
           },
         },
       ],

@@ -8,8 +8,19 @@ export interface PassReward {
   icon: string;
 }
 
-/** XP required per level */
-export const XP_PER_LEVEL = 1000;
+/**
+ * XP required per level. Tuned 1000 → 3500 to slow progression to a crawl —
+ * playtester hit lvl 17 in 2 days at the old rate, which trivialized the
+ * pass-reward unlocks (the lvl 30 marble skin was reachable in a week).
+ *
+ * Math at the new value:
+ *   Race base    250 XP, win bonus 500 XP → 750 XP per won race
+ *   Avg player wins ~30% → ~ 350 XP / race average
+ *   Heavy player: 30 races/day × 350 = 10500 XP/day = 3 levels/day
+ *   Casual player: 8 races/day × 350 = 2800 XP/day = 0.8 levels/day
+ * Lvl 30 takes ~10 days for a heavy grinder, several weeks casual.
+ */
+export const XP_PER_LEVEL = 3500;
 
 /** Reward definitions — state computed dynamically from player's level */
 export const PASS_REWARDS: PassReward[] = [

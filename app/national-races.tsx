@@ -95,8 +95,18 @@ export default function NationalRacesScreen() {
     if (!state) return;
 
     if (!state.entered) {
-      const success = await enterNationalRace(event.id);
-      if (!success) return;
+      const result = await enterNationalRace(event.id);
+      if (!result.ok) {
+        // Don't swallow failures — show the user why entry was rejected so
+        // they can actually do something about it (sign in, check network).
+        const { showModal } = await import('../components/GameModal');
+        showModal({
+          title: 'Couldn’t Enter Event',
+          message: result.reason,
+          buttons: [{ label: 'OK', variant: 'yellow' }],
+        });
+        return;
+      }
     }
 
     const raceState = useGameStore.getState().nationalRaces?.[event.id];

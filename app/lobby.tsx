@@ -140,9 +140,20 @@ export default function LobbyScreen() {
           {/* ===== ANNOUNCEMENT BANNER ===== */}
           {getAnnouncements().length > 0 && (
             <View style={styles.announcementBanner}>
-              <Text style={styles.announcementIcon}>
-                {getAnnouncements()[0].type === 'warning' ? '⚠️' : getAnnouncements()[0].type === 'maintenance' ? '🔧' : getAnnouncements()[0].type === 'promo' ? '🎉' : 'ℹ️'}
-              </Text>
+              <View style={[styles.announcementBadge, {
+                backgroundColor:
+                  getAnnouncements()[0].type === 'warning' ? '#e74c3c'
+                  : getAnnouncements()[0].type === 'maintenance' ? '#f39c12'
+                  : getAnnouncements()[0].type === 'promo' ? '#2ecc71'
+                  : '#3498db',
+              }]}>
+                <Text style={styles.announcementBadgeText}>
+                  {getAnnouncements()[0].type === 'warning' ? 'WARNING'
+                    : getAnnouncements()[0].type === 'maintenance' ? 'MAINTENANCE'
+                    : getAnnouncements()[0].type === 'promo' ? 'PROMO'
+                    : 'INFO'}
+                </Text>
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.announcementTitle}>{getAnnouncements()[0].title}</Text>
                 <Text style={styles.announcementBody}>{getAnnouncements()[0].body}</Text>
@@ -153,7 +164,7 @@ export default function LobbyScreen() {
           {/* ===== ACTIVE PROMO BANNER ===== */}
           {getActivePromos().length > 0 && (
             <View style={styles.promoBanner}>
-              <Text style={styles.promoText}>🔥 {getActivePromos()[0].name} — {Number(getActivePromos()[0].multiplier)}x rewards active!</Text>
+              <Text style={styles.promoText}>{getActivePromos()[0].name} — {Number(getActivePromos()[0].multiplier)}x rewards active</Text>
             </View>
           )}
 
@@ -337,9 +348,11 @@ export default function LobbyScreen() {
       </SafeAreaView>
       {dailyReward && (
         <Animated.View style={[styles.dailyToast, { opacity: toastOpacity }]} pointerEvents="none">
-          <Text style={styles.dailyToastIcon}>🔥</Text>
+          <View style={styles.dailyToastBadge}>
+            <Text style={styles.dailyToastBadgeText}>{dailyReward.streak}</Text>
+          </View>
           <View>
-            <Text style={styles.dailyToastTitle}>Day {dailyReward.streak} Streak!</Text>
+            <Text style={styles.dailyToastTitle}>Day {dailyReward.streak} Streak</Text>
             <Text style={styles.dailyToastSub}>+{dailyReward.reward} coins</Text>
           </View>
         </Animated.View>
@@ -417,6 +430,21 @@ const styles = StyleSheet.create({
   },
   announcementIcon: {
     fontSize: 18,
+  },
+  announcementBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    marginRight: 4,
+    minWidth: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: '#fff',
+    letterSpacing: 0.5,
   },
   announcementTitle: {
     fontFamily: Fonts.bodySemiBold,
@@ -544,6 +572,21 @@ const styles = StyleSheet.create({
   },
   dailyToastIcon: {
     fontSize: 28,
+  },
+  dailyToastBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.yellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#cc9a00',
+  },
+  dailyToastBadgeText: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.ink,
   },
   dailyToastTitle: {
     fontFamily: Fonts.display,

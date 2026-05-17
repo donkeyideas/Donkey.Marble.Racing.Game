@@ -113,6 +113,24 @@ export async function scheduleEventNotifications(): Promise<boolean> {
     });
   }
 
+  // Daily-bonus reminder — fires every day at 6:00 AM local time, plain text
+  // (no emoji per UX feedback). The actual coin grant happens server-side
+  // when the user opens the app and claimDailyBonus() runs; this notification
+  // just nudges them to come collect it.
+  await Notifications!.scheduleNotificationAsync({
+    content: {
+      title: 'Daily Streak Bonus Ready',
+      body: 'Open Donkey Marble Racing to claim today’s coin reward and keep your streak alive.',
+      sound: true,
+      data: { screen: '/lobby', daily: true },
+    },
+    trigger: {
+      type: Notifications!.SchedulableTriggerInputTypes.DAILY,
+      hour: 6,
+      minute: 0,
+    },
+  });
+
   await AsyncStorage.setItem(NOTIF_SCHEDULED_KEY, 'true');
   return true;
 }

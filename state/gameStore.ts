@@ -279,13 +279,13 @@ interface GameState {
 
   // National Races
   nationalRaces: Record<string, NationalEventState>;
-  enterNationalRace: (eventId: string) => Promise<boolean>;
+  enterNationalRace: (eventId: string) => Promise<{ ok: true } | { ok: false; reason: string }>;
   refreshNationalEvents: () => void;
   handleNationalRaceResult: (positions: string[]) => void;
 
   // Tournaments
   tournaments: TournamentState | null;
-  enterTournament: (tournamentId: string) => Promise<boolean>;
+  enterTournament: (tournamentId: string) => Promise<{ ok: true } | { ok: false; reason: string }>;
   handleTournamentResult: (positions: string[]) => void;
 
   // Multiplayer Tournaments
@@ -1024,13 +1024,14 @@ export const useGameStore = create<GameState>()(
 
   enterNationalRace: async (eventId) => {
     const event = NATIONAL_EVENTS.find((e) => e.id === eventId);
-    if (!event) return false;
+    if (!event) return { ok: false, reason: 'Unknown event.' };
     const { coins, nationalRaces: nr, coinHistory } = get();
     const nationalRaces = nr ?? {};
-    if (coins < event.entryFee) return false;
+    if (coins < event.entryFee) return { ok: false, reason: `Need ${event.entryFee} coins, you have ${coins}.` };
 
     const state = nationalRaces[eventId];
-    if (!state || state.entered) return false;
+    if (!state) return { ok: false, reason: 'Event not loaded — try again.' };
+    if (state.entered) return { ok: false, reason: 'Already entered this event today.' };
 
     // Server-authoritative entry fee debit. Server rejects with 402 if the
     // balance is insufficient (race condition between devices, etc.).
@@ -1040,7 +1041,12 @@ export const useGameStore = create<GameState>()(
     });
     if (!res.ok) {
       if (__DEV__) console.warn('[enterNationalRace]', res.message);
-      return false;
+      const reason = res.status === 401
+        ? 'You need to sign in to play national races. Go to Settings to sign in with Google or Apple.'
+        : res.status === 0
+        ? 'Couldn’t reach the server. Check your connection and try again.'
+        : (res.message || 'Entry failed. Try again in a moment.');
+      return { ok: false, reason };
     }
 
     const newCoinHistory = [...coinHistory, {
@@ -1067,7 +1073,7 @@ export const useGameStore = create<GameState>()(
       },
       coinHistory: newCoinHistory,
     });
-    return true;
+    return { ok: true };
   },
 
   handleNationalRaceResult: (positions) => {
@@ -1210,7 +1216,8 @@ export const useGameStore = create<GameState>()(
       'champion-invitational': { entryFee: 1000, prizePool: 50000 },
     };
     const config = configs[tournamentId];
-    if (!config || coins < config.entryFee) return false;
+    if (!config) return { ok: false, reason: 'Unknown tournament.' };
+    if (coins < config.entryFee) return { ok: false, reason: `Need ${config.entryFee} coins, you have ${coins}.` };
 
     // Server-authoritative entry fee debit before any local commit.
     const res = await applyEconomyAction({
@@ -1219,7 +1226,12 @@ export const useGameStore = create<GameState>()(
     });
     if (!res.ok) {
       if (__DEV__) console.warn('[enterTournament]', res.message);
-      return false;
+      const reason = res.status === 401
+        ? 'You need to sign in to play tournaments. Go to Settings to sign in with Google or Apple.'
+        : res.status === 0
+        ? 'Couldn’t reach the server. Check your connection and try again.'
+        : (res.message || 'Tournament entry failed. Try again in a moment.');
+      return { ok: false, reason };
     }
 
     // Shuffle marbles (Fisher-Yates)
@@ -1266,7 +1278,7 @@ export const useGameStore = create<GameState>()(
         totalEarned: 0,
       },
     });
-    return true;
+    return { ok: true };
   },
 
   handleTournamentResult: (positions) => {
