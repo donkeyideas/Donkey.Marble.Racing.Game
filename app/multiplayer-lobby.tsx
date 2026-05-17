@@ -21,6 +21,11 @@ import { showModal } from '../components/GameModal';
 import {
   LobbyData,
   LobbyPlayer,
+  PayoutMode,
+  PAYOUT_BREAKDOWNS,
+  PAYOUT_MODE_META,
+  computePool,
+  MP_RAKE,
   subscribeLobby,
   quickMatch,
   backfillWithBots,
@@ -37,7 +42,7 @@ import {
   AI_BACKFILL_DELAY_MS,
 } from '../lib/multiplayer';
 
-type Phase = 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished';
+type Phase = 'pick_payout' | 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished';
 
 export default function MultiplayerLobbyScreen() {
   const router = useRouter();
@@ -52,7 +57,8 @@ export default function MultiplayerLobbyScreen() {
 
   const [lobbyId, setLobbyId] = useState<string | null>(null);
   const [lobby, setLobby] = useState<LobbyData | null>(null);
-  const [phase, setPhase] = useState<Phase>('matching');
+  const [phase, setPhase] = useState<Phase>('pick_payout');
+  const [payoutMode, setPayoutMode] = useState<PayoutMode>('standard');
   const [selectedMarble, setSelectedMarble] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(Math.ceil(AI_BACKFILL_DELAY_MS / 1000));
   const [matchingText, setMatchingText] = useState('Searching for opponents...');
@@ -70,63 +76,61 @@ export default function MultiplayerLobbyScreen() {
   const tierConfig = MP_TIERS[tier];
 
   // ---------------------------------------------------------------------------
-  // Quick match on mount
+  // Wipe stale lastResult on mount
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    let mounted = true;
-
-    // Wipe any stale `lastResult` from a previous quick race so the
-    // racing-phase auto-submit doesn't pick up old finish data and skip
-    // straight to round results without actually racing.
+    // Stale race result from a prior quick race would auto-submit the moment
+    // the lobby flips to 'racing', skipping the actual race. Clear it now.
     useGameStore.setState({ lastResult: null });
-
-    async function match() {
-      try {
-        const store = useGameStore.getState();
-        if (store.coins < tierConfig.entryFee) {
-          showModal({
-            title: 'Not Enough Coins',
-            message: `You need ${tierConfig.entryFee} coins to enter this tier.`,
-            buttons: [
-              { label: 'Coin Store', variant: 'yellow', onPress: () => router.replace('/store') },
-              { label: 'Back', variant: 'ghost', onPress: () => router.back() },
-            ],
-          });
-          return;
-        }
-        store.removeCoins(tierConfig.entryFee);
-
-        const id = await quickMatch(uid, displayName, tier);
-        if (!mounted) return;
-        setLobbyId(id);
-        setMpLobbyId(id);
-        setPhase('waiting');
-      } catch (e: any) {
-        if (!mounted) return;
-        // Refund the entry fee on failure — they never actually got into a lobby.
-        useGameStore.getState().addCoins(tierConfig.entryFee);
-        // Surface the actual Firebase / network error so we can diagnose what's
-        // breaking. Common causes: Realtime DB rules locked down, expired
-        // "test mode", missing index for orderByChild('status'), Web SDK auth
-        // state not yet ready when the DB write fires.
-        const errMsg = e?.code
-          ? `${e.code}: ${e.message ?? 'no detail'}`
-          : (e?.message ?? String(e ?? 'unknown error'));
-        console.warn('[Multiplayer] quickMatch failed:', errMsg, e);
-        showModal({
-          title: 'Multiplayer Unavailable',
-          message: `Couldn't connect: ${errMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
-          buttons: [
-            { label: 'Retry', variant: 'yellow', onPress: () => router.replace({ pathname: '/multiplayer-lobby', params: { tier } }) },
-            { label: 'Back', variant: 'ghost', onPress: () => router.back() },
-          ],
-        });
-      }
-    }
-
-    match();
-    return () => { mounted = false; };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Start matchmaking with the player's chosen payout mode
+  // ---------------------------------------------------------------------------
+  const beginMatchmaking = useCallback(async (mode: PayoutMode) => {
+    setPayoutMode(mode);
+    setPhase('matching');
+
+    const store = useGameStore.getState();
+    if (store.coins < tierConfig.entryFee) {
+      showModal({
+        title: 'Not Enough Coins',
+        message: `You need ${tierConfig.entryFee} coins to enter this tier.`,
+        buttons: [
+          { label: 'Coin Store', variant: 'yellow', onPress: () => router.replace('/store') },
+          { label: 'Back', variant: 'ghost', onPress: () => router.back() },
+        ],
+      });
+      setPhase('pick_payout');
+      return;
+    }
+    store.removeCoins(tierConfig.entryFee);
+
+    try {
+      const id = await quickMatch(uid, displayName, tier, mode);
+      setLobbyId(id);
+      setMpLobbyId(id);
+      setPhase('waiting');
+    } catch (e: any) {
+      // Refund and surface the actual error so we can diagnose. Common
+      // causes: locked-down RTDB rules, missing index, Web SDK auth not
+      // ready yet when the DB write fires.
+      useGameStore.getState().addCoins(tierConfig.entryFee);
+      const errMsg = e?.code
+        ? `${e.code}: ${e.message ?? 'no detail'}`
+        : (e?.message ?? String(e ?? 'unknown error'));
+      console.warn('[Multiplayer] quickMatch failed:', errMsg, e);
+      showModal({
+        title: 'Multiplayer Unavailable',
+        message: `Couldn't connect: ${errMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
+        buttons: [
+          { label: 'Retry', variant: 'yellow', onPress: () => setPhase('pick_payout') },
+          { label: 'Back', variant: 'ghost', onPress: () => router.back() },
+        ],
+      });
+      setPhase('pick_payout');
+    }
+  }, [tier, tierConfig.entryFee, uid, displayName, router, setMpLobbyId]);
 
   // Cycle the matching-phase status text so the screen feels alive while we
   // do the actual Firebase lookup. Roughly mirrors what a matchmaker would
@@ -296,14 +300,21 @@ export default function MultiplayerLobbyScreen() {
 
   // ---------------------------------------------------------------------------
   // Leave lobby
+  //
+  // Always routes EXPLICITLY to /lobby (main menu) rather than router.back().
+  // After a multi-round race the back stack can be rewritten by the race +
+  // results screens, so router.back() sometimes lands the user on a stale
+  // queue / results page they thought they'd already left. router.replace
+  // also nukes the back stack so the user can't accidentally re-enter the
+  // dead lobby via the OS back button.
   // ---------------------------------------------------------------------------
   const handleLeave = useCallback(async () => {
     if (lobbyId) {
       await leaveLobby(lobbyId, uid);
       setMpLobbyId(null);
     }
-    router.back();
-  }, [lobbyId, uid]);
+    router.replace('/lobby');
+  }, [lobbyId, uid, router, setMpLobbyId]);
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -319,6 +330,21 @@ export default function MultiplayerLobbyScreen() {
   const currentDrafter = lobby?.status === 'drafting'
     ? lobby.players?.[lobby.draftOrder?.[lobby.draftTurn] || '']
     : null;
+
+  // Live pool — entry × paid-in players × (1 − rake). Shown in the header
+  // so players watch it grow as humans join. Before matching exists, fall
+  // back to "max possible pool" so the player knows what they're chasing.
+  const paidInPlayers = players.filter(p => !p.isBot).length;
+  const livePool = lobby
+    ? computePool(lobby.entryFee, Math.max(paidInPlayers, 1))
+    : 0;
+  const maxPool = computePool(tierConfig.entryFee, 8);
+  const myPlacement = myPlayer?.eliminated && myPlayer.eliminatedRound != null
+    ? totalCount - myPlayer.eliminatedRound
+    : null;
+  const projectedPayout = lobby && myPlacement
+    ? calculateMPPayout(lobby, myPlacement)
+    : 0;
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96']} style={styles.fill}>
@@ -337,8 +363,24 @@ export default function MultiplayerLobbyScreen() {
           {/* Title */}
           <Text style={styles.title}>MULTIPLAYER</Text>
           <Text style={styles.subtitle}>
-            {tierConfig.label} · Prize Pool: {tierConfig.prizePool.toLocaleString()}
+            {tierConfig.label} · Entry: {tierConfig.entryFee} · Max pool: {maxPool.toLocaleString()}
           </Text>
+
+          {/* Live pool ticker — shown once a lobby exists. Pool grows as
+              humans join the lobby. */}
+          {lobby && phase !== 'pick_payout' && (
+            <View style={styles.poolTicker}>
+              <View>
+                <Text style={styles.poolTickerLabel}>LIVE POOL</Text>
+                <Text style={styles.poolTickerValue}>{livePool.toLocaleString()}</Text>
+              </View>
+              <View style={styles.poolTickerDivider} />
+              <View>
+                <Text style={styles.poolTickerLabel}>MODE</Text>
+                <Text style={styles.poolTickerMode}>{PAYOUT_MODE_META[lobby.payoutMode || 'standard'].label}</Text>
+              </View>
+            </View>
+          )}
 
           {/* How-it-works card — shown during pre-race phases so first-time
               players know what's coming. Hidden once racing starts. */}
@@ -350,6 +392,55 @@ export default function MultiplayerLobbyScreen() {
               <Text style={styles.howItWorksStep}>3. All 8 marbles race together. Last place is eliminated each round.</Text>
               <Text style={styles.howItWorksStep}>4. Survive 7 rounds to win the prize pool.</Text>
             </View>
+          )}
+
+          {/* PHASE: Pick payout mode — first thing the player sees. They
+              choose their risk profile, then matchmaking starts. */}
+          {phase === 'pick_payout' && (
+            <>
+              <View style={styles.payoutPickerHeader}>
+                <Text style={styles.payoutPickerTitle}>PICK YOUR STAKES</Text>
+                <Text style={styles.payoutPickerSub}>
+                  Pool grows as players join (max {maxPool.toLocaleString()} at full lobby).
+                  Pick how the pot pays out.
+                </Text>
+              </View>
+
+              {(['standard', 'winner_takes_all', 'survivors'] as PayoutMode[]).map((mode) => {
+                const meta = PAYOUT_MODE_META[mode];
+                const breakdown = PAYOUT_BREAKDOWNS[mode];
+                const top = breakdown[0];
+                const topPayout = Math.floor(maxPool * top.pct / 100);
+                return (
+                  <Pressable
+                    key={mode}
+                    onPress={() => beginMatchmaking(mode)}
+                    style={({ pressed }) => [
+                      styles.payoutModeCard,
+                      pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                    ]}
+                  >
+                    <View style={styles.payoutModeHeader}>
+                      <Text style={styles.payoutModeLabel}>{meta.label}</Text>
+                      <Text style={styles.payoutModeTopPrize}>up to {topPayout.toLocaleString()}</Text>
+                    </View>
+                    <Text style={styles.payoutModeTagline}>{meta.tagline}</Text>
+                    <View style={styles.payoutBreakdownRow}>
+                      {breakdown.map((b, i) => (
+                        <View key={i} style={styles.payoutBreakdownPill}>
+                          <Text style={styles.payoutBreakdownPlace}>{b.placement}</Text>
+                          <Text style={styles.payoutBreakdownPct}>{b.pct}%</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </Pressable>
+                );
+              })}
+
+              <Text style={styles.rakeFootnote}>
+                {Math.round(MP_RAKE * 100)}% of each pot is held back by the house. The rest is paid out.
+              </Text>
+            </>
           )}
 
           {/* PHASE: Matching */}
@@ -651,8 +742,17 @@ export default function MultiplayerLobbyScreen() {
                     </View>
                   ))}
 
-                <Pressable onPress={handleLeave} style={[styles.raceBtn, { marginTop: 20 }]}>
-                  <Text style={styles.raceBtnText}>BACK TO LOBBY</Text>
+                <Pressable
+                  onPress={handleLeave}
+                  style={[styles.raceBtn, { marginTop: 20 }]}
+                >
+                  <Text style={styles.raceBtnText}>MAIN MENU</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => router.replace({ pathname: '/multiplayer-lobby', params: { tier } })}
+                  style={[styles.raceBtnSecondary, { marginTop: 8 }]}
+                >
+                  <Text style={styles.raceBtnSecondaryText}>PLAY AGAIN</Text>
                 </Pressable>
               </View>
             );
@@ -711,6 +811,129 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  // === Payout picker ===
+  payoutPickerHeader: {
+    marginTop: 4,
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  payoutPickerTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.yellow,
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  payoutPickerSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha60,
+    textAlign: 'center',
+    lineHeight: 17,
+    paddingHorizontal: 12,
+  },
+  payoutModeCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,194,32,0.35)',
+    borderRadius: BorderRadius.lg,
+    padding: 14,
+    marginBottom: 10,
+  },
+  payoutModeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  payoutModeLabel: {
+    fontFamily: Fonts.display,
+    fontSize: 16,
+    color: Colors.white,
+    letterSpacing: 1,
+  },
+  payoutModeTopPrize: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.yellow,
+  },
+  payoutModeTagline: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha60,
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  payoutBreakdownRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  payoutBreakdownPill: {
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    borderRadius: BorderRadius.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  payoutBreakdownPlace: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: Colors.whiteAlpha60,
+    letterSpacing: 0.5,
+  },
+  payoutBreakdownPct: {
+    fontFamily: Fonts.display,
+    fontSize: 12,
+    color: Colors.yellow,
+  },
+  rakeFootnote: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: Colors.whiteAlpha40,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+  },
+
+  // === Live pool ticker ===
+  poolTicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,194,32,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,194,32,0.3)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    gap: 14,
+  },
+  poolTickerLabel: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 9,
+    color: Colors.whiteAlpha50,
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  poolTickerValue: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: Colors.yellow,
+  },
+  poolTickerMode: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+  },
+  poolTickerDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+
   howItWorksCard: {
     backgroundColor: Colors.whiteAlpha07,
     borderWidth: 1,
@@ -912,6 +1135,21 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.display,
     fontSize: 16,
     color: Colors.white,
+  },
+  raceBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  raceBtnSecondaryText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.whiteAlpha60,
+    letterSpacing: 1,
   },
 
   /* Leave button */

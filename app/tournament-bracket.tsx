@@ -1,10 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
   Pressable,
   StyleSheet,
+  Animated as RNAnimated,
+  Dimensions,
+  Easing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +22,175 @@ import PrimaryButton from '../components/PrimaryButton';
 
 function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
+}
+
+// ── Confetti for champion screen ───────────────────────────────────────────
+const { width: SCREEN_W } = Dimensions.get('window');
+const CONFETTI_COLORS = ['#ffc220', '#2ecc71', '#e74c3c', '#3498db', '#9b59b6', '#ff9a1a', '#1abc9c'];
+const CONFETTI_COUNT = 28;
+
+function ConfettiBurst() {
+  const pieces = useRef(
+    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+      tx: new RNAnimated.Value(0),
+      ty: new RNAnimated.Value(-20),
+      rot: new RNAnimated.Value(0),
+      opacity: new RNAnimated.Value(0),
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      startX: Math.random() * SCREEN_W,
+      driftX: (Math.random() - 0.5) * 120,
+      fallY: 400 + Math.random() * 350,
+      delay: Math.random() * 400,
+      spin: (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 2),
+      size: 6 + Math.random() * 6,
+    })),
+  ).current;
+
+  useEffect(() => {
+    pieces.forEach((p) => {
+      RNAnimated.parallel([
+        RNAnimated.timing(p.opacity, { toValue: 1, duration: 200, delay: p.delay, useNativeDriver: true }),
+        RNAnimated.timing(p.tx, { toValue: p.driftX, duration: 2200, delay: p.delay, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+        RNAnimated.timing(p.ty, { toValue: p.fallY, duration: 2200, delay: p.delay, useNativeDriver: true, easing: Easing.in(Easing.quad) }),
+        RNAnimated.timing(p.rot, { toValue: p.spin, duration: 2200, delay: p.delay, useNativeDriver: true }),
+        RNAnimated.sequence([
+          RNAnimated.delay(p.delay + 1600),
+          RNAnimated.timing(p.opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ]),
+      ]).start();
+    });
+  }, []);
+
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {pieces.map((p, i) => (
+        <RNAnimated.View
+          key={i}
+          style={{
+            position: 'absolute',
+            left: p.startX,
+            top: 0,
+            width: p.size,
+            height: p.size * 0.6,
+            backgroundColor: p.color,
+            opacity: p.opacity,
+            transform: [
+              { translateX: p.tx },
+              { translateY: p.ty },
+              { rotate: p.rot.interpolate({ inputRange: [-3, 3], outputRange: ['-540deg', '540deg'] }) },
+            ],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ── Champion banner with spring-in + pulse ─────────────────────────────────
+function ChampionBanner({ totalEarned }: { totalEarned: number }) {
+  const scale = useRef(new RNAnimated.Value(0)).current;
+  const pulse = useRef(new RNAnimated.Value(1)).current;
+  const glow = useRef(new RNAnimated.Value(0)).current;
+  const [displayCoins, setDisplayCoins] = useState(0);
+
+  useEffect(() => {
+    // Spring in
+    RNAnimated.spring(scale, {
+      toValue: 1,
+      tension: 60,
+      friction: 5,
+      useNativeDriver: true,
+    }).start();
+    // Continuous pulse on the CHAMPION text
+    RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(pulse, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+        RNAnimated.timing(pulse, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ]),
+    ).start();
+    // Glow ring
+    RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(glow, { toValue: 1, duration: 900, useNativeDriver: true }),
+        RNAnimated.timing(glow, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ]),
+    ).start();
+    // Coin count-up over ~1.2s
+    const start = Date.now();
+    const duration = 1200;
+    const tick = () => {
+      const t = Math.min(1, (Date.now() - start) / duration);
+      setDisplayCoins(Math.floor(t * totalEarned));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }, [totalEarned]);
+
+  return (
+    <RNAnimated.View style={[styles.championBanner, { transform: [{ scale }] }]}>
+      <RNAnimated.View
+        pointerEvents="none"
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          borderRadius: 16,
+          backgroundColor: '#ffc220',
+          opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.15] }),
+        }}
+      />
+      <RNAnimated.Text style={[styles.championText, { transform: [{ scale: pulse }] }]}>
+        CHAMPION!
+      </RNAnimated.Text>
+      <Text style={styles.championPrize}>+{displayCoins.toLocaleString()} coins total</Text>
+    </RNAnimated.View>
+  );
+}
+
+// ── Eliminated banner with shake + red flash ───────────────────────────────
+function EliminatedBanner({ currentRound, marbleName, totalEarned }: {
+  currentRound: number; marbleName: string; totalEarned: number;
+}) {
+  const shake = useRef(new RNAnimated.Value(0)).current;
+  const flashOpacity = useRef(new RNAnimated.Value(0)).current;
+  const fadeIn = useRef(new RNAnimated.Value(0)).current;
+
+  useEffect(() => {
+    // Red flash burst on mount
+    RNAnimated.sequence([
+      RNAnimated.timing(flashOpacity, { toValue: 0.7, duration: 120, useNativeDriver: true }),
+      RNAnimated.timing(flashOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+    ]).start();
+    // Shake the ELIMINATED text on impact
+    RNAnimated.sequence([
+      RNAnimated.timing(shake, { toValue: -1, duration: 60, useNativeDriver: true }),
+      RNAnimated.timing(shake, { toValue: 1, duration: 60, useNativeDriver: true }),
+      RNAnimated.timing(shake, { toValue: -0.7, duration: 60, useNativeDriver: true }),
+      RNAnimated.timing(shake, { toValue: 0.7, duration: 60, useNativeDriver: true }),
+      RNAnimated.timing(shake, { toValue: -0.4, duration: 60, useNativeDriver: true }),
+      RNAnimated.timing(shake, { toValue: 0, duration: 60, useNativeDriver: true }),
+    ]).start();
+    RNAnimated.timing(fadeIn, { toValue: 1, duration: 350, useNativeDriver: true }).start();
+  }, []);
+
+  const shakeX = shake.interpolate({ inputRange: [-1, 1], outputRange: [-8, 8] });
+
+  return (
+    <>
+      {/* Full-screen red flash on impact */}
+      <RNAnimated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: '#e74c3c', opacity: flashOpacity, zIndex: 100 }]}
+      />
+      <RNAnimated.View style={[styles.eliminatedBanner, { opacity: fadeIn }]}>
+        <RNAnimated.Text style={[styles.eliminatedText, { transform: [{ translateX: shakeX }] }]}>
+          ELIMINATED
+        </RNAnimated.Text>
+        <Text style={styles.eliminatedSub}>
+          Round {currentRound} · {marbleName} finished last
+          {totalEarned > 0 ? ` · Earned ${totalEarned.toLocaleString()} coins` : ''}
+        </Text>
+      </RNAnimated.View>
+    </>
+  );
 }
 
 // Summarize a stat value (1-5) as a descriptive word
@@ -276,21 +448,20 @@ export default function TournamentBracketScreen() {
                 : `Round ${currentRound + 1} of 7 · ${marblesInRound} marbles racing · Prize: ${prizePool.toLocaleString()}`}
           </Text>
 
-          {/* Status banners */}
+          {/* Status banners — animated. Champion gets confetti + pulse +
+              coin count-up; eliminated gets a red flash + shake. */}
           {status === 'champion' && (
-            <View style={styles.championBanner}>
-              <Text style={styles.championText}>CHAMPION!</Text>
-              <Text style={styles.championPrize}>+{totalEarned.toLocaleString()} coins total</Text>
-            </View>
+            <>
+              <ConfettiBurst />
+              <ChampionBanner totalEarned={totalEarned} />
+            </>
           )}
           {status === 'eliminated' && (
-            <View style={styles.eliminatedBanner}>
-              <Text style={styles.eliminatedText}>ELIMINATED</Text>
-              <Text style={styles.eliminatedSub}>
-                Round {currentRound} · {playerMarble.name} finished last
-                {totalEarned > 0 ? ` · Earned ${totalEarned.toLocaleString()} coins` : ''}
-              </Text>
-            </View>
+            <EliminatedBanner
+              currentRound={currentRound}
+              marbleName={playerMarble.name}
+              totalEarned={totalEarned}
+            />
           )}
 
           {/* Your marble */}

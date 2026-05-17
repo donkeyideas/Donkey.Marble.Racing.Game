@@ -65,12 +65,19 @@ export interface LobbyRound {
   eliminatedPlayerId: string;   // Owner of eliminated marble
 }
 
+/** How prize money is split among placements. */
+export type PayoutMode = 'standard' | 'winner_takes_all' | 'survivors';
+
 export interface LobbyData {
   hostUid: string;
   status: LobbyStatus;
   tier: 'daily' | 'weekly' | 'champion';
   entryFee: number;
+  /** Legacy: pre-computed fixed pool, now derived dynamically from entryFee
+   *  × players − rake at payout time. Kept as a serialized snapshot for
+   *  historical lobbies in the DB. New lobbies set this to 0 at creation. */
   prizePool: number;
+  payoutMode: PayoutMode;
   players: Record<string, LobbyPlayer>;
   rounds: LobbyRound[];
   currentRound: number;
@@ -82,6 +89,17 @@ export interface LobbyData {
   createdAt: number;
   startedAt: number | null;     // When draft started (after AI backfill)
   maxPlayers: number;
+}
+
+/** Fraction of the pot the house keeps as a rake. The rest is paid out to
+ *  placements. Keeps coins from inflating unbounded as players churn. */
+export const MP_RAKE = 0.10;
+
+/** Live pool = (entry × number of paid-in players) × (1 − rake). Called from
+ *  the lobby UI to show the pot growing as humans join, and from the payout
+ *  calc at finish time. */
+export function computePool(entryFee: number, paidInPlayers: number): number {
+  return Math.floor(entryFee * paidInPlayers * (1 - MP_RAKE));
 }
 
 // ---------------------------------------------------------------------------
@@ -98,10 +116,14 @@ export const MP_TIERS = {
   champion: { label: 'Champion Invitational', entryFee: 1000, prizePool: 50_000, minLevel: 10 },
 } as const;
 
+// Bot display names are meant to feel like opponents, not obvious AI.
+// "Bot" / "AI" stripped out so the lobby doesn't look like you're racing
+// computers — the UI can still flag them as bots if it ever needs to,
+// it just shouldn't be baked into the name string.
 const BOT_NAMES = [
-  'RoboRoll', 'MarbleBot', 'BounceAI', 'CyberSphere',
-  'AutoRacer', 'NeonBot', 'TurboAI', 'PhantomRoll',
-  'BlitzBot', 'SteelSphere', 'VoltRacer', 'PixelRoll',
+  'RoboRoll', 'MarbleMike', 'Bouncer', 'CyberSphere',
+  'AutoRacer', 'NeonStrike', 'Turbo', 'PhantomRoll',
+  'BlitzKid', 'SteelSphere', 'VoltRacer', 'PixelRoll',
 ];
 
 // ---------------------------------------------------------------------------
@@ -124,6 +146,7 @@ export async function createLobby(
   uid: string,
   displayName: string,
   tier: 'daily' | 'weekly' | 'champion',
+  payoutMode: PayoutMode = 'standard',
 ): Promise<string> {
   const newRef = push(activeLobbiesRef());
   const lobbyId = newRef.key!;
@@ -139,7 +162,10 @@ export async function createLobby(
     status: 'waiting',
     tier,
     entryFee: tierConfig.entryFee,
-    prizePool: tierConfig.prizePool,
+    // Pool now computed dynamically from paid-in players at payout time.
+    // Persisted as 0 here so old code that reads .prizePool doesn't crash.
+    prizePool: 0,
+    payoutMode,
     players: {
       [uid]: {
         uid,
@@ -247,16 +273,22 @@ export async function quickMatch(
   uid: string,
   displayName: string,
   tier: 'daily' | 'weekly' | 'champion',
+  payoutMode: PayoutMode = 'standard',
 ): Promise<string> {
+  // Players in matchmaking get bucketed by their chosen payout mode so a
+  // "Winner Takes All" risk-taker doesn't get dropped into a Standard
+  // lobby (and vice versa). Easiest way is to look only for open lobbies
+  // that already have the same mode set; if none, create a fresh one.
   const openLobbies = await findOpenLobbies(tier);
 
-  for (const { lobbyId } of openLobbies) {
+  for (const { lobbyId, lobby } of openLobbies) {
+    if (lobby.payoutMode && lobby.payoutMode !== payoutMode) continue;
     const joined = await joinLobby(lobbyId, uid, displayName);
     if (joined) return lobbyId;
   }
 
   // No open lobby found — create one
-  return createLobby(uid, displayName, tier);
+  return createLobby(uid, displayName, tier, payoutMode);
 }
 
 // ---------------------------------------------------------------------------
@@ -516,17 +548,90 @@ export function getPlayerPlacement(lobby: LobbyData, uid: string): number {
 // Calculate Payout
 // ---------------------------------------------------------------------------
 
+/** Number of players who actually paid an entry fee (i.e. humans — bots
+ *  don't fund the pot). The pot scales with this so a half-bot lobby still
+ *  has real stakes from the humans who DID pay. */
+function paidInCount(lobby: LobbyData): number {
+  return Object.values(lobby.players || {}).filter(p => !p.isBot).length;
+}
+
+/**
+ * Payout for a given placement under the lobby's selected mode.
+ *
+ * Modes:
+ *   - standard         50 / 30 / 20 to top 3, 4-8 lose entry → casual stakes
+ *   - winner_takes_all 100% to 1st, everyone else gets nothing → max risk
+ *   - survivors        ladder paying every round survived past R4, with the
+ *                      champion still taking the largest slice → tournament
+ *                      vibes, more places earn something, fewer go home dry
+ *
+ * Pool is derived dynamically from (entry × paid-in players) × (1 − rake).
+ * Legacy lobbies in the DB with a fixed prizePool still work — if no
+ * paid-in players are recorded, we fall back to lobby.prizePool.
+ */
 export function calculateMPPayout(
   lobby: LobbyData,
   placement: number,
 ): number {
-  const pool = lobby.prizePool;
-  // 1st: 60%, 2nd: 20%, 3rd: 10%, 4th: 5%, 5th-8th: split 5%
-  switch (placement) {
-    case 1: return Math.floor(pool * 0.60);
-    case 2: return Math.floor(pool * 0.20);
-    case 3: return Math.floor(pool * 0.10);
-    case 4: return Math.floor(pool * 0.05);
-    default: return Math.floor(pool * 0.05 / 4); // 5-8th split remaining
+  const paid = paidInCount(lobby);
+  const pool = paid > 0
+    ? computePool(lobby.entryFee, paid)
+    : lobby.prizePool; // back-compat for old lobbies
+
+  const mode = lobby.payoutMode || 'standard';
+
+  switch (mode) {
+    case 'winner_takes_all':
+      return placement === 1 ? pool : 0;
+
+    case 'survivors':
+      // 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1 eliminations
+      // 4th: 5% (survived R1–R4 eliminations)
+      // 3rd: 10%
+      // 2nd: 25%
+      // 1st: 60%
+      // 5-8th: 0
+      switch (placement) {
+        case 1: return Math.floor(pool * 0.60);
+        case 2: return Math.floor(pool * 0.25);
+        case 3: return Math.floor(pool * 0.10);
+        case 4: return Math.floor(pool * 0.05);
+        default: return 0;
+      }
+
+    case 'standard':
+    default:
+      // 50 / 30 / 20 to top 3; 4-8 lose their entry.
+      switch (placement) {
+        case 1: return Math.floor(pool * 0.50);
+        case 2: return Math.floor(pool * 0.30);
+        case 3: return Math.floor(pool * 0.20);
+        default: return 0;
+      }
   }
 }
+
+/** Payout structure as percentages, used by the lobby UI to show players
+ *  what they're playing for before the match starts. */
+export const PAYOUT_BREAKDOWNS: Record<PayoutMode, { placement: string; pct: number }[]> = {
+  standard: [
+    { placement: '1st', pct: 50 },
+    { placement: '2nd', pct: 30 },
+    { placement: '3rd', pct: 20 },
+  ],
+  winner_takes_all: [
+    { placement: '1st', pct: 100 },
+  ],
+  survivors: [
+    { placement: '1st', pct: 60 },
+    { placement: '2nd', pct: 25 },
+    { placement: '3rd', pct: 10 },
+    { placement: '4th', pct: 5 },
+  ],
+};
+
+export const PAYOUT_MODE_META: Record<PayoutMode, { label: string; tagline: string }> = {
+  standard:         { label: 'Standard',          tagline: 'Top 3 split the pot. 4–8 lose their entry.' },
+  winner_takes_all: { label: 'Winner Takes All',  tagline: 'Champion gets everything. Max risk, max reward.' },
+  survivors:        { label: 'Survivors',         tagline: 'Top 4 paid. Champion still takes the lion\'s share.' },
+};

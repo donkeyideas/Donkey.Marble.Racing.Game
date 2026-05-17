@@ -537,7 +537,7 @@ export const useGameStore = create<GameState>()(
           timestamp: Date.now(),
         });
       }
-      while (newCoinHistory.length > 50) newCoinHistory.shift();
+      while (newCoinHistory.length > 200) newCoinHistory.shift();
     }
 
     // Atomic payout: add coins in same state update as result
@@ -655,7 +655,7 @@ export const useGameStore = create<GameState>()(
       description: `Purchased ${label} ($${price})`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({ passTrack: track, coinHistory: newCoinHistory });
     return { success: true };
@@ -1087,7 +1087,7 @@ export const useGameStore = create<GameState>()(
       description: `Entered ${event.name}`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({
       coins: newBalance,
@@ -1133,7 +1133,7 @@ export const useGameStore = create<GameState>()(
             description: `${event.name} - ${placement === 0 ? '1st' : placement === 1 ? '2nd' : '3rd'} place`,
             timestamp: Date.now(),
           }];
-          while (newCoinHistory.length > 50) newCoinHistory.shift();
+          while (newCoinHistory.length > 200) newCoinHistory.shift();
           set({ coins: coins + payout, coinHistory: newCoinHistory });
 
           // Fire server-authoritative payout; reconcile balance on response.
@@ -1180,7 +1180,7 @@ export const useGameStore = create<GameState>()(
             description: `${event.name} series winner!`,
             timestamp: Date.now(),
           }];
-          while (newCoinHistory.length > 50) newCoinHistory.shift();
+          while (newCoinHistory.length > 200) newCoinHistory.shift();
           set({ coins: coins + payout, coinHistory: newCoinHistory });
 
           // Server-authoritative series-winner payout: placement 1 (1st).
@@ -1291,7 +1291,7 @@ export const useGameStore = create<GameState>()(
       description: `Entered tournament: ${tournamentId}`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({
       coins: newBalance,
@@ -1362,7 +1362,7 @@ export const useGameStore = create<GameState>()(
         description: isChampionRound ? `Tournament Champion prize` : `Tournament round ${roundIdx + 1} survived`,
         timestamp: Date.now(),
       });
-      while (newCoinHistory.length > 50) newCoinHistory.shift();
+      while (newCoinHistory.length > 200) newCoinHistory.shift();
 
       // Fire server-authoritative payout in background; reconcile balance
       // from server response when it returns.
@@ -1443,7 +1443,7 @@ export const useGameStore = create<GameState>()(
         : `Purchased ${pack.coins.toLocaleString()} coins (${pack.price})`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({
       coins: get().coins + grantedCoins,
@@ -1598,7 +1598,7 @@ export const useGameStore = create<GameState>()(
       description: `Challenge: ${challenge.description}`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({
       coins: coins + challenge.reward,
@@ -1635,7 +1635,7 @@ export const useGameStore = create<GameState>()(
                  : `Bet on ${selectedMarble?.name}`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
 
     set({
       coins: coins - betAmount,
@@ -1687,7 +1687,7 @@ export const useGameStore = create<GameState>()(
       description: `Day ${streak} streak bonus`,
       timestamp: Date.now(),
     }];
-    while (newCoinHistory.length > 50) newCoinHistory.shift();
+    while (newCoinHistory.length > 200) newCoinHistory.shift();
     set({
       coins: res.balance,
       dailyStreak: streak,

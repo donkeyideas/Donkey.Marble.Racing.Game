@@ -444,6 +444,9 @@ interface FrameState {
   pos: { data: MarbleData; x: number; y: number; finished: boolean; finishTime: number }[];
   elapsed: number;
   camY: number;
+}
+
+interface CanvasState {
   wm: { x: number; y: number; angle: number; width: number }[];
   pendulums: PendulumState[];
   ballPitBalls: BallPitBallState[];
@@ -451,6 +454,7 @@ interface FrameState {
   trampolines: TrampolineState[];
   speedBursts: SpeedBurstState[];
   doomsdayBar: { y: number; active: boolean } | null;
+  marblePos: { x: number; y: number }[];
 }
 
 /** Static (one-time) config for the Skia renderer — captured once per race so
@@ -507,9 +511,16 @@ export default function RaceScreen() {
   const scratchSbRef = useRef<number[]>([]);
 
   const [frame, setFrame] = useState<FrameState>({
-    pos: [], elapsed: 0, camY: 0, wm: [],
-    pendulums: [], ballPitBalls: [], cradles: [], trampolines: [], speedBursts: [],
-    doomsdayBar: null,
+    pos: [], elapsed: 0, camY: 0,
+  });
+  // Split the canvas state from the HUD state so windmills / doomsday bar /
+  // pendulums / cradles update at full 60Hz while the heavier HUD
+  // (leaderboard, timer) re-renders at ~10Hz. Previously everything shared a
+  // single throttled state which made moving obstacles look like a clock's
+  // second-hand.
+  const [canvas, setCanvas] = useState<CanvasState>({
+    wm: [], pendulums: [], ballPitBalls: [], cradles: [], trampolines: [],
+    speedBursts: [], doomsdayBar: null, marblePos: [],
   });
   const [countdown, setCountdown] = useState(3);
   const [raceOver, setRaceOver] = useState(false);
@@ -911,8 +922,22 @@ export default function RaceScreen() {
         raceShared.doomsdayBarActive.value = 0;
       }
 
-      // HUD/canvas update rate. Marble positions still go through SharedValues
-      // for 60fps marble rendering; everything else uses React state at this rate.
+      // Canvas state — written EVERY frame so moving obstacles animate
+      // smoothly. The setState fires a re-render but the heavy HUD pieces
+      // pull from a separate state slice (`frame`) that's throttled below,
+      // so the cost stays bounded.
+      setCanvas({
+        wm: st.windmills,
+        pendulums: st.pendulums,
+        ballPitBalls: st.ballPitBalls,
+        cradles: st.cradles,
+        trampolines: st.trampolines,
+        speedBursts: st.speedBursts,
+        doomsdayBar: st.doomsdayBar,
+        marblePos: st.marbles.map(m => ({ x: m.x, y: m.y })),
+      });
+
+      // HUD update rate — leaderboard + timer + commentary only need ~10Hz.
       const hudInterval = 100;
       if (st.isFinished || t - lastRenderRef.current >= hudInterval) {
         lastRenderRef.current = t;
@@ -921,13 +946,6 @@ export default function RaceScreen() {
           pos: marblePos,
           elapsed: st.elapsed,
           camY: camRef.current,
-          wm: st.windmills,
-          pendulums: st.pendulums,
-          ballPitBalls: st.ballPitBalls,
-          cradles: st.cradles,
-          trampolines: st.trampolines,
-          speedBursts: st.speedBursts,
-          doomsdayBar: st.doomsdayBar,
         });
       }
       if (st.isFinished && !doneRef.current) { handleEnd(); }
@@ -937,19 +955,21 @@ export default function RaceScreen() {
     return () => { cancelAnimationFrame(rafRef.current); eng.destroy(); };
   }, [handleEnd, trackConfig]);
 
-  const { pos, elapsed, camY, wm, pendulums, ballPitBalls, cradles } = frame;
+  const { pos, elapsed, camY } = frame;
+  const { wm, pendulums, ballPitBalls, cradles } = canvas;
   const vBuf = SH / SCALE * 0.7;
   const vMin = camY - vBuf, vMax = camY + SH / SCALE + vBuf;
   const vis = (y: number) => y > vMin && y < vMax;
-  // Memoize the leaderboard top-5 by `pos` reference — HUD ticks at ~10Hz and the
-  // sort previously ran on every parent re-render (including renders triggered by
-  // unrelated state). New array reference only when frame.pos actually changes.
+  // In-race leaderboard — all 8 marbles, sorted by progress (deeper Y = better
+  // rank, finished marbles always above unfinished, finished ordered by their
+  // finish time). Memoized so we only re-sort when `pos` actually changes;
+  // unrelated re-renders skip the work.
   const sorted = useMemo(() => [...pos].sort((a, b) => {
     if (a.finished && !b.finished) return -1;
     if (!a.finished && b.finished) return 1;
     if (a.finished && b.finished) return (a.finishTime || 0) - (b.finishTime || 0);
     return b.y - a.y;
-  }).slice(0, 5), [pos]);
+  }), [pos]);
   const courseName = COURSES.find(c => c.id === selectedCourseId)?.name || 'RACE';
 
   const bgSprite = useMemo(() => getBgSprite(trackConfig.bgImage), [trackConfig]);
@@ -991,8 +1011,8 @@ export default function RaceScreen() {
             pendulums={pendulums}
             ballPitBalls={ballPitBalls}
             cradles={cradles}
-            speedBursts={frame.speedBursts}
-            doomsdayBar={frame.doomsdayBar}
+            speedBursts={canvas.speedBursts}
+            doomsdayBar={canvas.doomsdayBar}
             countdown={countdown}
           />
           {/* Slot numbers — rendered as plain RN Text overlay so they're visible
@@ -1210,7 +1230,7 @@ export default function RaceScreen() {
           {/* Speed Burst Pads */}
           {tv.speedBurstVis.map((sb, i) => {
             if (!vis(sb.ey)) return null;
-            const isActive = frame.speedBursts[i]?.active || false;
+            const isActive = canvas.speedBursts[i]?.active || false;
             const arrow = sb.direction === 'left' ? '\u25C0' : sb.direction === 'down' ? '\u25BC' : '\u25B6';
             return USE_SPRITE_RENDERING ? (
               <View key={`sb${i}`} style={{
@@ -1288,11 +1308,11 @@ export default function RaceScreen() {
           ))}
 
           {/* Doomsday Bar */}
-          {frame.doomsdayBar && frame.doomsdayBar.active && (
+          {canvas.doomsdayBar && canvas.doomsdayBar.active && (
             <View style={{
               position: 'absolute',
               left: 0,
-              top: ex(frame.doomsdayBar.y) - ex(10),
+              top: ex(canvas.doomsdayBar.y) - ex(10),
               width: SW,
               height: ex(20),
               zIndex: 15,
@@ -1352,7 +1372,7 @@ export default function RaceScreen() {
         <View style={st.hudTimer}>
           <Text style={st.seasonTag}>{courseName.toUpperCase()}</Text>
           <Text style={st.timer}>{(elapsed / 1000).toFixed(1)}s</Text>
-          {frame.doomsdayBar && (
+          {canvas.doomsdayBar && (
             <Text style={{ fontFamily: Fonts.bodyBold, fontSize: 10, color: '#ff3333', letterSpacing: 1, marginTop: 2 }}>
               DOOMSDAY ACTIVE
             </Text>
@@ -1427,8 +1447,9 @@ const st = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
   },
   hudStandings: {
-    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 10,
-    paddingVertical: 6, paddingHorizontal: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10,
+    paddingVertical: 5, paddingHorizontal: 8,
+    minWidth: 110,
   },
   hudTimer: {
     backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 10,
@@ -1438,12 +1459,12 @@ const st = StyleSheet.create({
     fontFamily: Fonts.bodyBold, fontSize: 9, color: Colors.yellow,
     letterSpacing: 1, marginBottom: 2,
   },
-  posRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3, paddingVertical: 2, paddingHorizontal: 4, borderRadius: 6 },
+  posRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 1, paddingVertical: 1, paddingHorizontal: 3, borderRadius: 5 },
   posRowPick: { backgroundColor: 'rgba(255,194,32,0.3)' },
-  posNum: { fontFamily: Fonts.bodySemiBold, fontSize: 11, color: 'rgba(255,255,255,0.6)', width: 14 },
+  posNum: { fontFamily: Fonts.bodyBold, fontSize: 10, color: 'rgba(255,255,255,0.7)', width: 12 },
   posNumPick: { color: Colors.yellow },
-  posDot: { width: 12, height: 12, borderRadius: 6 },
-  posName: { fontFamily: Fonts.bodySemiBold, fontSize: 11, color: '#fff' },
+  posDot: { width: 11, height: 11, borderRadius: 5.5 },
+  posName: { fontFamily: Fonts.bodySemiBold, fontSize: 10, color: '#fff' },
   posNamePick: { fontFamily: Fonts.bodyBold, color: Colors.yellow },
   pickTag: { fontFamily: Fonts.bodyBold, fontSize: 8, color: Colors.yellow, marginLeft: 4 },
   timer: { fontFamily: Fonts.bodyBold, fontSize: 18, color: '#fff', textAlign: 'right' },

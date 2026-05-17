@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,113 @@ function getFavoriteMarble(marbleStats: Record<string, { wins: number; losses: n
   if (!bestId) return null;
   const marble = MARBLES.find((m) => m.id === bestId);
   return marble ? { marble, stats: marbleStats[bestId] } : null;
+}
+
+// ── Coin / Race history with pagination ────────────────────────────────────
+interface CoinTx {
+  type: 'bet' | 'payout' | 'daily_bonus' | 'purchase';
+  amount: number;
+  description: string;
+  timestamp: number;
+}
+
+const PAGE_SIZE = 10;
+
+function formatHistoryTime(ts: number): string {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (sameDay) return `Today ${time}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+function typeLabel(type: CoinTx['type']): { label: string; color: string } {
+  switch (type) {
+    case 'payout':       return { label: 'WIN',     color: '#2ecc71' };
+    case 'bet':          return { label: 'ENTRY',   color: '#e74c3c' };
+    case 'daily_bonus':  return { label: 'BONUS',   color: '#ffc220' };
+    case 'purchase':     return { label: 'STORE',   color: '#3498db' };
+  }
+}
+
+function CoinHistorySection({ coinHistory }: { coinHistory: CoinTx[] }) {
+  const [page, setPage] = useState(0);
+  // Show newest first. The store appends to the end, so reverse for display.
+  const ordered = useMemo(() => [...coinHistory].reverse(), [coinHistory]);
+  const totalPages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * PAGE_SIZE;
+  const pageItems = ordered.slice(start, start + PAGE_SIZE);
+
+  if (ordered.length === 0) {
+    return (
+      <>
+        <Text style={styles.sectionHeader}>COIN HISTORY</Text>
+        <View style={styles.historyEmpty}>
+          <Text style={styles.historyEmptyText}>
+            No coin transactions yet. Race, claim daily bonuses, or visit the store to populate this list.
+          </Text>
+        </View>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Text style={styles.sectionHeader}>
+        COIN HISTORY <Text style={styles.historyCount}>· {ordered.length}</Text>
+      </Text>
+      <View style={styles.historyCard}>
+        {pageItems.map((tx, i) => {
+          const t = typeLabel(tx.type);
+          const isPositive = tx.amount > 0;
+          return (
+            <View
+              key={`${tx.timestamp}-${i}`}
+              style={[styles.historyRow, i < pageItems.length - 1 && styles.historyRowBorder]}
+            >
+              <View style={[styles.historyChip, { backgroundColor: t.color + '22' }]}>
+                <Text style={[styles.historyChipText, { color: t.color }]}>{t.label}</Text>
+              </View>
+              <View style={styles.historyMid}>
+                <Text style={styles.historyDesc} numberOfLines={1}>{tx.description}</Text>
+                <Text style={styles.historyTime}>{formatHistoryTime(tx.timestamp)}</Text>
+              </View>
+              <Text style={[styles.historyAmount, { color: isPositive ? '#2ecc71' : '#e74c3c' }]}>
+                {isPositive ? '+' : ''}{tx.amount.toLocaleString()}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {totalPages > 1 && (
+        <View style={styles.paginationRow}>
+          <Pressable
+            onPress={() => setPage(Math.max(0, safePage - 1))}
+            disabled={safePage === 0}
+            style={[styles.pageBtn, safePage === 0 && styles.pageBtnDisabled]}
+          >
+            <Text style={styles.pageBtnText}>{'‹ Prev'}</Text>
+          </Pressable>
+          <Text style={styles.pageIndicator}>
+            Page {safePage + 1} of {totalPages}
+          </Text>
+          <Pressable
+            onPress={() => setPage(Math.min(totalPages - 1, safePage + 1))}
+            disabled={safePage === totalPages - 1}
+            style={[styles.pageBtn, safePage === totalPages - 1 && styles.pageBtnDisabled]}
+          >
+            <Text style={styles.pageBtnText}>{'Next ›'}</Text>
+          </Pressable>
+        </View>
+      )}
+    </>
+  );
 }
 
 export default function ProfileScreen() {
@@ -245,6 +352,9 @@ export default function ProfileScreen() {
               <Text style={styles.statLabel}>TOURNEY $</Text>
             </View>
           </View>
+
+          {/* ===== COIN HISTORY ===== */}
+          <CoinHistorySection coinHistory={coinHistory} />
 
           {/* ===== MARBLE INTEL ===== */}
           {bestRateMarble && bestWinRateCount >= 3 && bestWinRateId !== mostBetId && (
@@ -474,6 +584,111 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.body,
     fontSize: 11,
     color: Colors.whiteAlpha40,
+  },
+
+  /* ===== COIN HISTORY ===== */
+  historyCount: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha40,
+  },
+  historyCard: {
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 2,
+    borderColor: Colors.whiteAlpha10,
+    borderRadius: 16,
+    paddingVertical: 4,
+    marginBottom: 12,
+  },
+  historyEmpty: {
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 2,
+    borderColor: Colors.whiteAlpha10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  historyEmptyText: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha50,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+  historyRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  historyChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  historyChipText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  historyMid: {
+    flex: 1,
+    minWidth: 0,
+  },
+  historyDesc: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: Colors.white,
+  },
+  historyTime: {
+    fontFamily: Fonts.body,
+    fontSize: 10,
+    color: Colors.whiteAlpha40,
+    marginTop: 2,
+  },
+  historyAmount: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    minWidth: 60,
+    textAlign: 'right',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  pageBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  pageBtnDisabled: {
+    opacity: 0.35,
+  },
+  pageBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+  pageIndicator: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    letterSpacing: 0.5,
   },
 
   /* ===== ACTIONS ===== */

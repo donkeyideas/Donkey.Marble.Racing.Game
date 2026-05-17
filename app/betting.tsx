@@ -459,7 +459,10 @@ export default function BettingScreen() {
 
       {/* Bottom bar */}
       <View style={styles.bottomBar}>
-        {/* Your pick line with payout tiers */}
+        {/* "YOUR PICK: X" line is redundant in franchise mode (the marble is
+            already locked and labeled at the top of the screen), so we skip
+            it and jump straight to the wager. Bettor mode still shows it. */}
+        {!isFranchiseLocked && (
         <Text style={styles.pickLine}>
           {betType === 'win' ? 'YOUR PICK: ' : betType === 'exacta' ? 'EXACTA: ' : 'TRIFECTA: '}
           <Text style={styles.pickName}>
@@ -473,7 +476,8 @@ export default function BettingScreen() {
             <Text style={styles.pickOdds}> — {selectedOdds.toFixed(1)}x</Text>
           ) : null}
         </Text>
-        {betType === 'win' && selectedMarble && (
+        )}
+        {!isFranchiseLocked && betType === 'win' && selectedMarble && (
           <Text style={styles.payoutTiers}>
             1st: +{potential} · 2nd: +{Math.round(betAmount * 0.5)} · 3rd: +{Math.round(betAmount * 0.25)}
           </Text>

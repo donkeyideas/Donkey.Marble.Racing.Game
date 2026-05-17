@@ -68,6 +68,10 @@ export default function LobbyScreen() {
   // manually drilling into Settings → Support. Banner + Settings badge.
   const [supportUnread, setSupportUnread] = useState(0);
   const [supportSubjects, setSupportSubjects] = useState<string[]>([]);
+  // Local dismiss flag — tracks the unread-count snapshot the user dismissed.
+  // The banner stays hidden until a NEW poll brings in MORE unread tickets
+  // than the snapshot, so a fresh admin reply still surfaces.
+  const [dismissedAtCount, setDismissedAtCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     const run = () => {
@@ -81,6 +85,7 @@ export default function LobbyScreen() {
     const id = setInterval(run, 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
+  const showSupportBanner = supportUnread > dismissedAtCount;
 
   useEffect(() => {
     const optimistic = useGameStore.getState().checkDailyStreak();
@@ -181,24 +186,35 @@ export default function LobbyScreen() {
           )}
 
           {/* ===== SUPPORT REPLY BANNER ===== */}
-          {supportUnread > 0 && (
-            <Pressable
-              style={styles.supportBanner}
-              onPress={() => router.push('/support')}
-            >
-              <View style={styles.supportBannerBadge}>
-                <Text style={styles.supportBannerBadgeText}>{supportUnread}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.supportBannerTitle}>
-                  {supportUnread === 1 ? 'Support replied to your ticket' : `Support replied to ${supportUnread} tickets`}
-                </Text>
-                <Text style={styles.supportBannerBody} numberOfLines={1}>
-                  {supportSubjects[0] ? `Re: ${supportSubjects[0]}` : 'Tap to view'}
-                </Text>
-              </View>
-              <Text style={styles.supportBannerArrow}>{'›'}</Text>
-            </Pressable>
+          {showSupportBanner && (
+            <View style={styles.supportBanner}>
+              <Pressable
+                style={styles.supportBannerMain}
+                onPress={() => {
+                  setDismissedAtCount(supportUnread); // tapping = same as dismiss
+                  router.push('/support');
+                }}
+              >
+                <View style={styles.supportBannerBadge}>
+                  <Text style={styles.supportBannerBadgeText}>{supportUnread}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.supportBannerTitle}>
+                    {supportUnread === 1 ? 'Support replied to your ticket' : `Support replied to ${supportUnread} tickets`}
+                  </Text>
+                  <Text style={styles.supportBannerBody} numberOfLines={1}>
+                    {supportSubjects[0] ? `Re: ${supportSubjects[0]}` : 'Tap to view'}
+                  </Text>
+                </View>
+              </Pressable>
+              <Pressable
+                hitSlop={10}
+                style={styles.supportBannerClose}
+                onPress={() => setDismissedAtCount(supportUnread)}
+              >
+                <Text style={styles.supportBannerCloseText}>×</Text>
+              </Pressable>
+            </View>
           )}
 
           {/* ===== ACTIVE PROMO BANNER ===== */}
@@ -507,12 +523,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(46,204,113,0.12)',
     borderRadius: BorderRadius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingLeft: 12,
+    paddingRight: 4,
+    paddingVertical: 4,
     marginBottom: 10,
-    gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(46,204,113,0.35)',
+  },
+  supportBannerMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 10,
+  },
+  supportBannerClose: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+  },
+  supportBannerCloseText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 22,
+    color: 'rgba(46,204,113,0.7)',
+    lineHeight: 24,
   },
   supportBannerBadge: {
     width: 28,
@@ -537,11 +573,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 1,
-  },
-  supportBannerArrow: {
-    fontSize: 22,
-    color: '#2ecc71',
-    marginRight: 4,
   },
   promoBanner: {
     backgroundColor: 'rgba(46,204,113,0.15)',
