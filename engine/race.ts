@@ -585,7 +585,21 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       doomsdayBarActive = true;
     }
 
-    // Move doomsday bar BEFORE physics step so collisions resolve in the same frame
+    // Move doomsday bar + apply downward sweep force to all unfinished marbles.
+    //
+    // Previously the bar relied on collision alone to push marbles down. That
+    // failed in two ways:
+    //   1. The bar is `isStatic` and moves via setPosition. When it teleports
+    //      into a marble's position, Matter resolves by the *shortest*
+    //      separation vector — which often points UP. The marble ended up
+    //      ABOVE the bar and never got swept.
+    //   2. Per-step displacement (~2-3 px) is less than the marble radius, so
+    //      collision resolution is jittery / "clunky" feeling.
+    //
+    // Now: the bar is still visible (and still collides), but the actual
+    // sweep mechanism is a velocity floor applied to every unfinished marble
+    // whose Y is at or above the bar's leading edge. Marbles cannot escape
+    // upward because we directly write Y velocity each frame.
     if (doomsdayBarActive && doomsdayBar) {
       const progress = Math.min(1, (elapsed - doomsdayBarStartTime) / Math.max(doomsdayBarDuration, 1));
       const newY = doomsdayBarStartY + progress * (doomsdayBarEndY - doomsdayBarStartY);
@@ -594,8 +608,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         doomsdayBar = null;
         doomsdayBarActive = false;
       } else {
-        // Bar is isStatic so setVelocity is a no-op — only setPosition moves it.
         Matter.Body.setPosition(doomsdayBar, { x: W / 2, y: newY });
+
+        // No force here — the collision push from the static bar handles
+        // moving marbles down. The escape-upward failure mode is handled in
+        // a post-physics snap-back below.
       }
     }
 
@@ -616,6 +633,31 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         Matter.Engine.update(engine, FIXED_DT);
       }
       physicsAccumulator -= FRAME_DT;
+    }
+
+    // Post-physics: if the doomsday bar pushed a marble UPWARD (collision
+    // resolution chooses the shortest separation, which is "up" when the
+    // bar's leading edge clips a marble), snap that marble back below the bar
+    // and zero any upward velocity. This is what fixes the user-reported
+    // "marbles jumping over the bar" failure.
+    if (doomsdayBarActive && doomsdayBar) {
+      const barLeadingEdge = doomsdayBar.position.y - DOOMSDAY_BAR_HEIGHT / 2;
+      const MARBLE_R_LOCAL = 14;
+      for (const { body, data } of marbleBodies) {
+        if (finishTimes[data.id]) continue;
+        const topOfMarble = body.position.y - MARBLE_R_LOCAL;
+        if (topOfMarble < barLeadingEdge) {
+          // Snap marble so its top edge sits at the bar's leading edge, then
+          // kill any upward velocity. They keep horizontal velocity.
+          Matter.Body.setPosition(body, {
+            x: body.position.x,
+            y: barLeadingEdge + MARBLE_R_LOCAL + 1,
+          });
+          if (body.velocity.y < 0) {
+            Matter.Body.setVelocity(body, { x: body.velocity.x, y: 0 });
+          }
+        }
+      }
     }
 
     // Post-step marble processing

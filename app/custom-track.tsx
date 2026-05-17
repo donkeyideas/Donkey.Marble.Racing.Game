@@ -31,9 +31,21 @@ export default function CustomTrackScreen() {
   const handleGenerate = () => {
     const seed = parseInt(seedText, 10);
     if (isNaN(seed) || seed < 1) {
-      setModalMsg({ title: 'Invalid Seed', body: 'Enter a positive number' });
+      setModalMsg({ title: 'Invalid Seed', body: 'Enter a positive number, or tap RANDOM to roll one.' });
       return;
     }
+    try {
+      const track = generateTrack(seed);
+      setPreview({ seed, track });
+      setSaveName(`Custom #${seed}`);
+    } catch {
+      setModalMsg({ title: 'Error', body: 'Could not generate track from this seed' });
+    }
+  };
+
+  const handleRandomSeed = () => {
+    const seed = 1 + Math.floor(Math.random() * 99999);
+    setSeedText(String(seed));
     try {
       const track = generateTrack(seed);
       setPreview({ seed, track });
@@ -75,7 +87,7 @@ export default function CustomTrackScreen() {
   const isSaved = preview ? customTracks.some(t => t.seed === preview.seed) : false;
 
   return (
-    <LinearGradient colors={['#e67e22', '#d35400']} style={styles.gradient}>
+    <LinearGradient colors={['#1abc9c', '#16a085']} style={styles.gradient}>
       <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.header}>
           <BackButton onPress={() => router.back()} />
@@ -84,6 +96,20 @@ export default function CustomTrackScreen() {
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          {/* How it works */}
+          <View style={styles.introCard}>
+            <Text style={styles.introTitle}>HOW IT WORKS</Text>
+            <Text style={styles.introBody}>
+              Every number is its own unique track. Enter any seed (1–99,999),
+              tap GENERATE to preview the layout, then RACE it or SAVE it to
+              your favorites. Find a wild one? Share the seed with friends and
+              you'll both get the exact same track.
+            </Text>
+            <Pressable style={styles.randomBtn} onPress={handleRandomSeed}>
+              <Text style={styles.randomBtnText}>ROLL A RANDOM SEED</Text>
+            </Pressable>
+          </View>
+
           {/* Seed input */}
           <View style={styles.inputRow}>
             <TextInput
@@ -202,6 +228,27 @@ const styles = StyleSheet.create({
   title: { fontFamily: Fonts.display, fontSize: 22, color: Colors.white, letterSpacing: 2 },
   scroll: { flex: 1, marginTop: Spacing.md },
   scrollContent: { paddingHorizontal: Spacing.md, paddingBottom: 40 },
+
+  introCard: {
+    padding: 14, marginBottom: Spacing.md,
+    backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: BorderRadius.md,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  introTitle: {
+    fontFamily: Fonts.display, fontSize: 13, color: Colors.yellow,
+    letterSpacing: 1.5, marginBottom: 6,
+  },
+  introBody: {
+    fontFamily: Fonts.body, fontSize: 12, color: Colors.whiteAlpha60,
+    lineHeight: 17, marginBottom: 12,
+  },
+  randomBtn: {
+    height: 42, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.yellow, borderRadius: BorderRadius.md,
+  },
+  randomBtnText: {
+    fontFamily: Fonts.display, fontSize: 13, color: Colors.ink, letterSpacing: 1.2,
+  },
 
   inputRow: { flexDirection: 'row', marginBottom: Spacing.md, gap: 10 },
   input: {
