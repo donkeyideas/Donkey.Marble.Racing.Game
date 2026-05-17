@@ -21,6 +21,30 @@ try {
 }
 
 const LAST_SEEN_KEY = 'dmr-support-last-seen-v1';
+const BANNER_DISMISSED_AT_KEY = 'dmr-support-banner-dismissed-count-v1';
+
+/**
+ * Persist the unread-count snapshot the user dismissed in the lobby banner,
+ * so the banner doesn't reappear after an app restart for the same backlog.
+ * Stored separately from the per-ticket last-seen map because the banner is
+ * a count-based UX hint, not tied to any single ticket.
+ */
+export async function readBannerDismissedCount(): Promise<number> {
+  try {
+    const v = await AsyncStorage.getItem(BANNER_DISMISSED_AT_KEY);
+    return v ? parseInt(v, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function writeBannerDismissedCount(count: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(BANNER_DISMISSED_AT_KEY, String(count));
+  } catch {
+    // best-effort
+  }
+}
 
 interface SupportPollResult {
   /** Total tickets with unread admin reply. */

@@ -985,8 +985,13 @@ export const useGameStore = create<GameState>()(
         else if (placement === 2) { playoffPayout = 2500; playoffDesc = 'Playoff Runner-Up'; }
         else if (placement === 3) { playoffPayout = 1000; playoffDesc = 'Playoff Top 3'; }
       } else {
-        // Bettor mode: flat 500 coin bonus for completing the full season
-        playoffPayout = 500;
+        // Bettor mode: flat 1,500 coin bonus for completing the full season.
+        // Bumped from 500 — bettor mode players were essentially shut out of
+        // any season-end reward because they don't have a single marble to
+        // place in the top 3. 1,500 sits between franchise's 2nd-place (2,500)
+        // and 3rd-place (1,000) rewards so it feels like a legitimate finish
+        // bonus rather than a participation trophy.
+        playoffPayout = 1500;
         playoffDesc = 'Season Complete';
       }
 

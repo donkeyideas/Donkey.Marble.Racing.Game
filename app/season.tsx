@@ -91,11 +91,11 @@ export default function SeasonScreen() {
               <View style={{ flex: 1 }} />
             </View>
             <LinearGradient colors={[Colors.yellow, Colors.yellowDeep]} style={styles.seasonBadge}>
-              <Text style={styles.seasonBadgeText}>NEW SEASON</Text>
+              <Text style={styles.seasonBadgeText}>NEW SEASON · FREE TO PLAY</Text>
             </LinearGradient>
             <Text style={styles.startTitle}>CHOOSE YOUR MODE</Text>
             <Text style={styles.startDesc}>
-              Race through a {WEEKS_PER_SEASON}-week season. Top 6 marbles advance to the playoffs!
+              Race through a {WEEKS_PER_SEASON}-week season. Top 6 marbles advance to the playoffs. No entry fee — you only spend coins on individual bets each race.
             </Text>
 
             {/* Mode picker cards */}

@@ -413,31 +413,45 @@ export default function BettingScreen() {
         </View>
       )}
 
-      {/* Marble grid */}
+      {/* Marble grid — hidden in franchise mode (the marble is already
+          locked for the season, so a full grid of un-pickable marbles is
+          just visual noise). Franchise mode shows ONLY the locked card,
+          centered, so the screen focuses on the wager amount. */}
       <ScrollView
         style={styles.gridScroll}
         contentContainerStyle={styles.gridContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.grid}>
-          {DISPLAY_MARBLES.map((marble, index) => {
-            const isLocked = isFranchiseLocked && marble.id !== franchiseMarble!.id;
-            return (
-              <View key={marble.id} style={[isLocked && styles.lockedCard]}>
-                <FlipCard
-                  marble={marble}
-                  isSelected={betType === 'win' ? selectedMarble?.id === marble.id : exactaPicks.some(p => p.id === marble.id)}
-                  badge={isLocked ? undefined : getBadge(index, marble)}
-                  odds={odds[marble.id]}
-                  winRate={getWinRate(marble.id)}
-                  form={getForm(marble.id)}
-                  seasonStats={getSeasonStats(marble.id)}
-                  onSelect={() => { if (!isLocked) handleMarbleSelect(marble); }}
-                />
-              </View>
-            );
-          })}
-        </View>
+        {isFranchiseLocked && franchiseMarble ? (
+          <View style={styles.franchiseSoloWrap}>
+            <FlipCard
+              marble={franchiseMarble}
+              isSelected={true}
+              badge="picked"
+              odds={odds[franchiseMarble.id]}
+              winRate={getWinRate(franchiseMarble.id)}
+              form={getForm(franchiseMarble.id)}
+              seasonStats={getSeasonStats(franchiseMarble.id)}
+              onSelect={() => {}}
+            />
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {DISPLAY_MARBLES.map((marble, index) => (
+              <FlipCard
+                key={marble.id}
+                marble={marble}
+                isSelected={betType === 'win' ? selectedMarble?.id === marble.id : exactaPicks.some(p => p.id === marble.id)}
+                badge={getBadge(index, marble)}
+                odds={odds[marble.id]}
+                winRate={getWinRate(marble.id)}
+                form={getForm(marble.id)}
+                seasonStats={getSeasonStats(marble.id)}
+                onSelect={() => handleMarbleSelect(marble)}
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Recent Results strip — hidden in franchise mode since the marble is
@@ -617,6 +631,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: CARD_GAP,
+  },
+  franchiseSoloWrap: {
+    alignItems: 'center',
+    paddingVertical: 20,
   },
 
   // Card

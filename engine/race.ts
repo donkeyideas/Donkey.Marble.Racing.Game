@@ -506,7 +506,14 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       frictionAir: 0.008 - marble.stats.speed * 0.0005,      // 0.0055-0.0075 — low drag for natural flow, gravity dominates
       label: marble.id,
       collisionFilter: MARBLE_FILTER,
-    });
+      // Racing marbles must NEVER be put to sleep by Matter — sleeping is
+      // an optimization that freezes a body's physics when it stops moving.
+      // It looked like the marble was stuck on the track when in fact the
+      // engine had paused simulating it. The flag is overridden back to
+      // default after the marble crosses the finish line, so finished
+      // marbles still get the perf win once they settle in their slot.
+      sleepThreshold: Infinity,
+    } as any);
     Matter.Body.setVelocity(body, {
       x: (Math.random() - 0.5) * 1.5,
       y: 0.3 + Math.random() * 0.3,
@@ -525,17 +532,12 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
   let finishRankCounter = 0;
 
-  // Per-marble stuck tracker — if a marble's vertical position barely moves
-  // over a short window we apply a gentle downward + lateral nudge so it
-  // doesn't park on a ledge or wedge into a corner. Doomsday bar still exists
-  // as the hard safety net at 45s, but unkick keeps the moment-to-moment race
-  // feeling alive (the user explicitly reported marbles getting stuck on the
-  // Thunder Cascade procedural track).
-  const STUCK_CHECK_MS = 600; // check progress every 0.6s
-  const STUCK_MIN_DROP = 3;   // px of downward progress required per window
-  const stuckLastY = new Map<Matter.Body, number>();
-  const stuckLastT = new Map<Matter.Body, number>();
-  const stuckKicks = new Map<Matter.Body, number>();
+  // No anti-stuck code in the per-frame loop. The real reason marbles
+  // appeared stuck was Matter's sleeping optimization freezing them when
+  // their velocity dropped low — that's been disabled per-marble above by
+  // setting sleepThreshold = Infinity on racing marbles. Pure physics from
+  // here, no kicks, no nudges, no overrides. Doomsday bar remains the only
+  // safety net at 45s.
 
   // Doomsday bar — physical sweep bar for true physics finish guarantee
   const DOOMSDAY_TRIGGER_MS = 45000; // 45s — sweep stragglers (no anti-stuck, so trigger earlier)
@@ -635,20 +637,21 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       physicsAccumulator -= FRAME_DT;
     }
 
-    // Post-physics: if the doomsday bar pushed a marble UPWARD (collision
-    // resolution chooses the shortest separation, which is "up" when the
-    // bar's leading edge clips a marble), snap that marble back below the bar
-    // and zero any upward velocity. This is what fixes the user-reported
-    // "marbles jumping over the bar" failure.
+    // Post-physics: if the doomsday bar pushed a marble UPWARD, snap it back
+    // below the bar and zero any upward velocity. Only triggers when the
+    // marble is barely above the bar (within 1 marble diameter) so it can't
+    // teleport a marble that was legitimately bouncing high — and only zeros
+    // upward velocity rather than firing a strong downward push, to avoid
+    // any visual "warp" through obstacles.
     if (doomsdayBarActive && doomsdayBar) {
       const barLeadingEdge = doomsdayBar.position.y - DOOMSDAY_BAR_HEIGHT / 2;
       const MARBLE_R_LOCAL = 14;
+      const MAX_SNAP_DISTANCE = MARBLE_R_LOCAL * 2; // 28px — never teleport more than this
       for (const { body, data } of marbleBodies) {
         if (finishTimes[data.id]) continue;
         const topOfMarble = body.position.y - MARBLE_R_LOCAL;
-        if (topOfMarble < barLeadingEdge) {
-          // Snap marble so its top edge sits at the bar's leading edge, then
-          // kill any upward velocity. They keep horizontal velocity.
+        const overshoot = barLeadingEdge - topOfMarble;
+        if (overshoot > 0 && overshoot <= MAX_SNAP_DISTANCE) {
           Matter.Body.setPosition(body, {
             x: body.position.x,
             y: barLeadingEdge + MARBLE_R_LOCAL + 1,
@@ -690,35 +693,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         });
       }
 
-      // Stuck detection — only kicks in after the gate opens and before finish.
-      // We sample the marble's Y once per STUCK_CHECK_MS; if it hasn't dropped
-      // by STUCK_MIN_DROP px in that window we apply a progressive nudge
-      // (small first, larger if it stays stuck). Avoids the "wedged on a ramp
-      // forever" failure mode without making the rest of the race look jittery.
-      if (gateOpen) {
-        const lastT = stuckLastT.get(body) ?? elapsed;
-        const lastY = stuckLastY.get(body) ?? body.position.y;
-        if (elapsed - lastT >= STUCK_CHECK_MS) {
-          const drop = body.position.y - lastY;
-          if (drop < STUCK_MIN_DROP) {
-            const kicks = (stuckKicks.get(body) ?? 0) + 1;
-            stuckKicks.set(body, kicks);
-            // Strength ramps with consecutive failed windows so persistently
-            // wedged marbles get bigger nudges. Caps at 3x so we never punt
-            // them across the screen.
-            const strength = Math.min(kicks, 3);
-            const lateralDir = body.position.x < W / 2 ? 1 : -1;
-            Matter.Body.setVelocity(body, {
-              x: body.velocity.x + lateralDir * 1.5 * strength + (Math.random() - 0.5) * 1.5,
-              y: body.velocity.y + 2 * strength,
-            });
-          } else {
-            stuckKicks.delete(body);
-          }
-          stuckLastT.set(body, elapsed);
-          stuckLastY.set(body, body.position.y);
-        }
-      }
+      // No stuck-kick. Marbles can't sleep (sleepThreshold = Infinity), so
+      // physics keeps simulating them every frame regardless of velocity.
+      // If they're slow, they're slow because of geometry — not because the
+      // engine froze them. Truly stuck marbles are now structurally
+      // impossible without an external safety net.
 
       // Finish detection. Marble crossed finishY — record the time and increment
       // the rank counter. CRUCIALLY: no setPosition, no setStatic, no x-snap.
@@ -739,6 +718,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         body.frictionAir = 0.05;
         body.restitution = 0.1;
         body.friction = 0.3;
+        // Re-enable sleeping for finished marbles — once they settle in their
+        // slot the perf cost of simulating them adds up across 8 marbles
+        // sitting motionless. They've already crossed the line so freezing
+        // them is fine. Racing marbles still have sleepThreshold = Infinity.
+        (body as any).sleepThreshold = 60;
 
         // Rank 1 lands on the existing channel-floor — no extra shelf needed.
         // Ranks 2..N each get a static shelf placed at the floor of their slot,

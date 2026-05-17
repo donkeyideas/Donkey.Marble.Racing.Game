@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
-import { pollSupportReplies } from '../lib/supportNotifier';
+import { pollSupportReplies, readBannerDismissedCount, writeBannerDismissedCount } from '../lib/supportNotifier';
 
 function ModeCard({
   title,
@@ -68,10 +68,18 @@ export default function LobbyScreen() {
   // manually drilling into Settings → Support. Banner + Settings badge.
   const [supportUnread, setSupportUnread] = useState(0);
   const [supportSubjects, setSupportSubjects] = useState<string[]>([]);
-  // Local dismiss flag — tracks the unread-count snapshot the user dismissed.
-  // The banner stays hidden until a NEW poll brings in MORE unread tickets
-  // than the snapshot, so a fresh admin reply still surfaces.
-  const [dismissedAtCount, setDismissedAtCount] = useState(0);
+  // Dismiss snapshot persisted in AsyncStorage so a dismissed banner stays
+  // dismissed across app restarts. The banner reappears only if a NEW poll
+  // brings in MORE unread tickets than the saved snapshot — i.e. a fresh
+  // admin reply landed after the last dismiss.
+  const [dismissedAtCount, setDismissedAtCount] = useState<number | null>(null);
+  useEffect(() => {
+    readBannerDismissedCount().then((v) => setDismissedAtCount(v));
+  }, []);
+  const dismiss = useCallback(() => {
+    setDismissedAtCount(supportUnread);
+    writeBannerDismissedCount(supportUnread).catch(() => {});
+  }, [supportUnread]);
   useEffect(() => {
     let cancelled = false;
     const run = () => {
@@ -85,7 +93,7 @@ export default function LobbyScreen() {
     const id = setInterval(run, 60_000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
-  const showSupportBanner = supportUnread > dismissedAtCount;
+  const showSupportBanner = dismissedAtCount !== null && supportUnread > dismissedAtCount;
 
   useEffect(() => {
     const optimistic = useGameStore.getState().checkDailyStreak();
@@ -191,7 +199,7 @@ export default function LobbyScreen() {
               <Pressable
                 style={styles.supportBannerMain}
                 onPress={() => {
-                  setDismissedAtCount(supportUnread); // tapping = same as dismiss
+                  dismiss(); // tapping = same as dismiss (persisted)
                   router.push('/support');
                 }}
               >
@@ -210,7 +218,7 @@ export default function LobbyScreen() {
               <Pressable
                 hitSlop={10}
                 style={styles.supportBannerClose}
-                onPress={() => setDismissedAtCount(supportUnread)}
+                onPress={dismiss}
               >
                 <Text style={styles.supportBannerCloseText}>×</Text>
               </Pressable>

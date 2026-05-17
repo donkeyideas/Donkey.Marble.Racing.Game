@@ -1,5 +1,8 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View, Text, ScrollView, StyleSheet,
+  Animated as RNAnimated, Easing, Dimensions,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +15,138 @@ import { useGameStore } from '../state/gameStore';
 
 function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
+}
+
+// ── Confetti for champion screen ───────────────────────────────────────────
+const { width: SCREEN_W } = Dimensions.get('window');
+const CONFETTI_COLORS = ['#ffc220', '#2ecc71', '#e74c3c', '#3498db', '#9b59b6', '#ff9a1a', '#1abc9c'];
+const CONFETTI_COUNT = 32;
+
+function ConfettiBurst() {
+  const pieces = useRef(
+    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
+      tx: new RNAnimated.Value(0),
+      ty: new RNAnimated.Value(-20),
+      rot: new RNAnimated.Value(0),
+      opacity: new RNAnimated.Value(0),
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      startX: Math.random() * SCREEN_W,
+      driftX: (Math.random() - 0.5) * 140,
+      fallY: 500 + Math.random() * 400,
+      delay: Math.random() * 500,
+      spin: (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 2),
+      size: 6 + Math.random() * 7,
+    })),
+  ).current;
+  useEffect(() => {
+    pieces.forEach((p) => {
+      RNAnimated.parallel([
+        RNAnimated.timing(p.opacity, { toValue: 1, duration: 200, delay: p.delay, useNativeDriver: true }),
+        RNAnimated.timing(p.tx, { toValue: p.driftX, duration: 2400, delay: p.delay, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
+        RNAnimated.timing(p.ty, { toValue: p.fallY, duration: 2400, delay: p.delay, useNativeDriver: true, easing: Easing.in(Easing.quad) }),
+        RNAnimated.timing(p.rot, { toValue: p.spin, duration: 2400, delay: p.delay, useNativeDriver: true }),
+        RNAnimated.sequence([
+          RNAnimated.delay(p.delay + 1800),
+          RNAnimated.timing(p.opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ]),
+      ]).start();
+    });
+  }, []);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {pieces.map((p, i) => (
+        <RNAnimated.View
+          key={i}
+          style={{
+            position: 'absolute', left: p.startX, top: 0,
+            width: p.size, height: p.size * 0.6, backgroundColor: p.color,
+            opacity: p.opacity,
+            transform: [
+              { translateX: p.tx },
+              { translateY: p.ty },
+              { rotate: p.rot.interpolate({ inputRange: [-3, 3], outputRange: ['-540deg', '540deg'] }) },
+            ],
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+// Champion banner: spring-in scale + pulsing label + glow + coin count-up
+function ChampionFanfare({ children, payout }: { children: React.ReactNode; payout: number }) {
+  const scale = useRef(new RNAnimated.Value(0)).current;
+  const pulse = useRef(new RNAnimated.Value(1)).current;
+  const glow = useRef(new RNAnimated.Value(0)).current;
+  const [displayCoins, setDisplayCoins] = useState(0);
+  useEffect(() => {
+    RNAnimated.spring(scale, { toValue: 1, tension: 60, friction: 6, useNativeDriver: true }).start();
+    RNAnimated.loop(RNAnimated.sequence([
+      RNAnimated.timing(pulse, { toValue: 1.05, duration: 800, useNativeDriver: true }),
+      RNAnimated.timing(pulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+    ])).start();
+    RNAnimated.loop(RNAnimated.sequence([
+      RNAnimated.timing(glow, { toValue: 1, duration: 1100, useNativeDriver: true }),
+      RNAnimated.timing(glow, { toValue: 0, duration: 1100, useNativeDriver: true }),
+    ])).start();
+    if (payout > 0) {
+      const start = Date.now();
+      const duration = 1400;
+      const tick = () => {
+        const t = Math.min(1, (Date.now() - start) / duration);
+        setDisplayCoins(Math.floor(t * payout));
+        if (t < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+  }, [payout]);
+  return (
+    <RNAnimated.View style={{ transform: [{ scale: RNAnimated.multiply(scale, pulse) }] }}>
+      <RNAnimated.View
+        pointerEvents="none"
+        style={{
+          ...StyleSheet.absoluteFillObject,
+          borderRadius: 20,
+          backgroundColor: '#ffc220',
+          opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.18] }),
+        }}
+      />
+      {children}
+      {payout > 0 && (
+        <Text style={{
+          fontFamily: Fonts.display, fontSize: 22, color: '#2ecc71',
+          textAlign: 'center', marginTop: 8,
+        }}>
+          +{displayCoins.toLocaleString()} coins
+        </Text>
+      )}
+    </RNAnimated.View>
+  );
+}
+
+// Loss banner: red flash + fade-in, no shake (this is a recap screen, not
+// a "you just lost" surprise — softer than the tournament-elim animation).
+function LossFanfare({ children }: { children: React.ReactNode }) {
+  const flash = useRef(new RNAnimated.Value(0)).current;
+  const fade = useRef(new RNAnimated.Value(0)).current;
+  useEffect(() => {
+    RNAnimated.sequence([
+      RNAnimated.timing(flash, { toValue: 0.5, duration: 150, useNativeDriver: true }),
+      RNAnimated.timing(flash, { toValue: 0, duration: 700, useNativeDriver: true }),
+    ]).start();
+    RNAnimated.timing(fade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+  }, []);
+  return (
+    <>
+      <RNAnimated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: '#e74c3c', opacity: flash, zIndex: 100 }]}
+      />
+      <RNAnimated.View style={{ opacity: fade }}>
+        {children}
+      </RNAnimated.View>
+    </>
+  );
 }
 
 export default function ChampionshipScreen() {
@@ -88,15 +223,38 @@ export default function ChampionshipScreen() {
           ) : isComplete && championId ? (
             // ── Champion crowned ──
             <>
-              <View style={styles.championBanner}>
-                <Text style={styles.championLabel}>
-                  {playerIsChampion ? 'YOUR MARBLE IS THE CHAMPION!' : 'CHAMPION'}
-                </Text>
-                <MarbleDot marble={getMarble(championId)} size={72} />
-                <Text style={styles.championName}>{getMarble(championId).name}</Text>
-                <Text style={styles.championRecord}>
-                  Survived {playoffs.rounds.length} rounds
-                </Text>
+              {playerIsChampion && <ConfettiBurst />}
+              {(() => {
+                // Compute placement + payout for the fanfare count-up.
+                // Bettor mode always pays a completion bonus = win fanfare.
+                // Franchise mode: top-3 wins, otherwise loss fanfare.
+                const allEliminated = [...(playoffs?.eliminatedIds ?? [])];
+                const placement = playerIsChampion
+                  ? 1
+                  : (isFranchise && playerMarbleId && allEliminated.includes(playerMarbleId))
+                    ? allEliminated.length - allEliminated.indexOf(playerMarbleId) + 1
+                    : 0;
+                const isWin = !isFranchise || (placement >= 1 && placement <= 3);
+                const payout = !isFranchise
+                  ? 1500
+                  : placement === 1 ? 5000 : placement === 2 ? 2500 : placement === 3 ? 1000 : 0;
+                const Banner = (
+                  <View style={styles.championBanner}>
+                    <Text style={styles.championLabel}>
+                      {playerIsChampion ? 'YOUR MARBLE IS THE CHAMPION!' : 'CHAMPION'}
+                    </Text>
+                    <MarbleDot marble={getMarble(championId)} size={72} />
+                    <Text style={styles.championName}>{getMarble(championId).name}</Text>
+                    <Text style={styles.championRecord}>
+                      Survived {playoffs.rounds.length} rounds
+                    </Text>
+                  </View>
+                );
+                return isWin
+                  ? <ChampionFanfare payout={payout}>{Banner}</ChampionFanfare>
+                  : <LossFanfare>{Banner}</LossFanfare>;
+              })()}
+              <View style={styles.detailsCard}>
                 {isFranchise && playerMarbleId && !playerIsChampion && (
                   <Text style={styles.franchiseSummary}>
                     Your marble {getMarble(playerMarbleId).name} finished Season {season?.seasonNumber} as #{playerRank}
@@ -108,16 +266,26 @@ export default function ChampionshipScreen() {
                   </Text>
                 )}
 
-                {/* Playoff reward display */}
+                {/* Playoff reward display. Placement formula matches
+                    state/gameStore.ts → seedPlayoffs() so the label and the
+                    actual payout agree. */}
                 {isFranchise && playerMarbleId && (() => {
                   const allEliminated = [...(playoffs?.eliminatedIds ?? [])];
                   const placement = playerIsChampion
                     ? 1
                     : allEliminated.length > 0 && allEliminated.includes(playerMarbleId)
-                      ? allEliminated.length - allEliminated.indexOf(playerMarbleId)
+                      ? allEliminated.length - allEliminated.indexOf(playerMarbleId) + 1
                       : 0;
                   const reward = placement === 1 ? 5000 : placement === 2 ? 2500 : placement === 3 ? 1000 : 0;
-                  if (reward <= 0) return null;
+                  if (reward <= 0) {
+                    return (
+                      <View style={styles.rewardBadgeMuted}>
+                        <Text style={styles.rewardTextMuted}>
+                          Finished #{placement || '—'} · No coin reward this season
+                        </Text>
+                      </View>
+                    );
+                  }
                   return (
                     <View style={styles.rewardBadge}>
                       <Text style={styles.rewardText}>
@@ -128,7 +296,7 @@ export default function ChampionshipScreen() {
                 })()}
                 {!isFranchise && (
                   <View style={styles.rewardBadge}>
-                    <Text style={styles.rewardText}>+500 coins (Season Complete)</Text>
+                    <Text style={styles.rewardText}>+1,500 coins (Season Complete)</Text>
                   </View>
                 )}
               </View>
@@ -338,11 +506,32 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
     marginTop: 12,
+    alignSelf: 'center',
   },
   rewardText: {
     fontFamily: Fonts.bodyBold,
     fontSize: 13,
     color: Colors.green,
+  },
+  rewardBadgeMuted: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    alignSelf: 'center',
+  },
+  rewardTextMuted: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: Colors.whiteAlpha50,
+  },
+  detailsCard: {
+    marginTop: 12,
+    marginBottom: 16,
+    alignItems: 'center',
   },
 
   /* Games card */

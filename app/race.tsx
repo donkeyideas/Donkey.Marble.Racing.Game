@@ -33,7 +33,15 @@ interface SegVis { left: number; top: number; width: number; deg: number; ey: nu
 
 function computeTrackVisuals(track: TrackConfig) {
   const segs: SegVis[] = [];
+  // Smooth path representation of each ramp in SCREEN space. The renderer
+  // strokes these as continuous Skia paths so tight S-curves (Grand Prix
+  // tracks have 120+ segments) don't show as a string of jagged rotated
+  // rectangles. The per-segment `segs` array is still kept for hand-crafted
+  // tracks with short discrete ramps where rectangles look fine.
+  const rampPaths: { x: number; y: number }[][] = [];
   track.ramps.forEach(ramp => {
+    const screenPts = ramp.points.map(p => ({ x: ex(p.x), y: ex(p.y) }));
+    rampPaths.push(screenPts);
     for (let j = 0; j < ramp.points.length - 1; j++) {
       const a = ramp.points[j], b = ramp.points[j + 1];
       const sx1 = ex(a.x), sy1 = ex(a.y), sx2 = ex(b.x), sy2 = ex(b.y);
@@ -135,7 +143,7 @@ function computeTrackVisuals(track: TrackConfig) {
   }));
 
   return {
-    segs, obsVis, pegFunnels, springVis,
+    segs, rampPaths, obsVis, pegFunnels, springVis,
     finishSY, ffLeft, ffRight,
     mfLeft, mfRight, miniFunnelSH,
     chanSX, chanEX,
@@ -441,12 +449,19 @@ const StaticTrackElements = React.memo(function StaticTrackElements({
 });
 
 interface FrameState {
+  // Marble positions used by the LEADERBOARD sort — throttled because the
+  // 10Hz update rate is plenty for ranking and avoids per-frame React work
+  // on the heaviest part of the render tree.
   pos: { data: MarbleData; x: number; y: number; finished: boolean; finishTime: number }[];
   elapsed: number;
   camY: number;
 }
 
 interface CanvasState {
+  // Marble positions used by the canvas — 60Hz updates so the marbles
+  // animate smoothly. Previously `pos` was on the throttled frame state,
+  // which made marbles appear to teleport every 100ms ("warping").
+  marbles: { data: MarbleData; x: number; y: number; finished: boolean; finishTime: number }[];
   wm: { x: number; y: number; angle: number; width: number }[];
   pendulums: PendulumState[];
   ballPitBalls: BallPitBallState[];
@@ -454,7 +469,6 @@ interface CanvasState {
   trampolines: TrampolineState[];
   speedBursts: SpeedBurstState[];
   doomsdayBar: { y: number; active: boolean } | null;
-  marblePos: { x: number; y: number }[];
 }
 
 /** Static (one-time) config for the Skia renderer — captured once per race so
@@ -519,8 +533,8 @@ export default function RaceScreen() {
   // single throttled state which made moving obstacles look like a clock's
   // second-hand.
   const [canvas, setCanvas] = useState<CanvasState>({
-    wm: [], pendulums: [], ballPitBalls: [], cradles: [], trampolines: [],
-    speedBursts: [], doomsdayBar: null, marblePos: [],
+    marbles: [], wm: [], pendulums: [], ballPitBalls: [], cradles: [], trampolines: [],
+    speedBursts: [], doomsdayBar: null,
   });
   const [countdown, setCountdown] = useState(3);
   const [raceOver, setRaceOver] = useState(false);
@@ -922,11 +936,15 @@ export default function RaceScreen() {
         raceShared.doomsdayBarActive.value = 0;
       }
 
-      // Canvas state — written EVERY frame so moving obstacles animate
-      // smoothly. The setState fires a re-render but the heavy HUD pieces
-      // pull from a separate state slice (`frame`) that's throttled below,
-      // so the cost stays bounded.
+      // Canvas state — written EVERY frame so moving obstacles AND marbles
+      // animate smoothly. The setState fires a re-render but the heavy HUD
+      // pieces pull from a separate state slice (`frame`) that's throttled
+      // below, so the cost stays bounded.
+      const marblePos = st.marbles.map(m => ({
+        data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime,
+      }));
       setCanvas({
+        marbles: marblePos,
         wm: st.windmills,
         pendulums: st.pendulums,
         ballPitBalls: st.ballPitBalls,
@@ -934,14 +952,12 @@ export default function RaceScreen() {
         trampolines: st.trampolines,
         speedBursts: st.speedBursts,
         doomsdayBar: st.doomsdayBar,
-        marblePos: st.marbles.map(m => ({ x: m.x, y: m.y })),
       });
 
       // HUD update rate — leaderboard + timer + commentary only need ~10Hz.
       const hudInterval = 100;
       if (st.isFinished || t - lastRenderRef.current >= hudInterval) {
         lastRenderRef.current = t;
-        const marblePos = st.marbles.map(m => ({ data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime }));
         setFrame({
           pos: marblePos,
           elapsed: st.elapsed,
@@ -1004,7 +1020,7 @@ export default function RaceScreen() {
             cameraShared={raceShared.cameraY}
             shakeX={0}
             shakeY={0}
-            marbles={pos}
+            marbles={canvas.marbles}
             marbleData={marbleDataRef.current}
             marblePositions={raceShared.marblePositions}
             windmills={wm}

@@ -42,7 +42,7 @@ import {
   AI_BACKFILL_DELAY_MS,
 } from '../lib/multiplayer';
 
-type Phase = 'pick_payout' | 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished';
+type Phase = 'pick_payout' | 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished' | 'submitting';
 
 export default function MultiplayerLobbyScreen() {
   const router = useRouter();
@@ -55,9 +55,18 @@ export default function MultiplayerLobbyScreen() {
   const setMpLobbyId = useGameStore((s) => s.setMpLobbyId);
   const setMpResult = useGameStore((s) => s.setMpResult);
 
-  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  // If the user is mid-tournament and just came back from a race, the store
+  // still holds their lobbyId. In that case we resume the existing lobby
+  // instead of showing the pick-payout screen and charging a new entry fee.
+  const existingMpLobbyId = useGameStore.getState().mpLobbyId;
+  const isResuming = !!existingMpLobbyId;
+
+  const [lobbyId, setLobbyId] = useState<string | null>(existingMpLobbyId);
   const [lobby, setLobby] = useState<LobbyData | null>(null);
-  const [phase, setPhase] = useState<Phase>('pick_payout');
+  // 'submitting' on resume — keep the user from seeing a 'RACE NOW' flash
+  // while we send their round result to the server. The lobby-subscription
+  // effect below will flip phase to 'round_result' once the server advances.
+  const [phase, setPhase] = useState<Phase>(isResuming ? 'submitting' : 'pick_payout');
   const [payoutMode, setPayoutMode] = useState<PayoutMode>('standard');
   const [selectedMarble, setSelectedMarble] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(Math.ceil(AI_BACKFILL_DELAY_MS / 1000));
@@ -76,12 +85,27 @@ export default function MultiplayerLobbyScreen() {
   const tierConfig = MP_TIERS[tier];
 
   // ---------------------------------------------------------------------------
-  // Wipe stale lastResult on mount
+  // Mount-time lastResult handling
+  //
+  // Two cases:
+  //   1) Fresh entry (isResuming = false): user came in from main lobby. Clear
+  //      any leftover lastResult from a prior quick race so it can't be picked
+  //      up as a multiplayer round result.
+  //   2) Resuming (isResuming = true): user just finished a multiplayer round
+  //      race, hit BACK TO LOBBY on the results screen, and we landed here.
+  //      lastResult holds the round's finish order — we MUST keep it so the
+  //      "submit round result" effect below can fire. expectingResultRef is
+  //      flipped on so the gate doesn't reject it.
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    // Stale race result from a prior quick race would auto-submit the moment
-    // the lobby flips to 'racing', skipping the actual race. Clear it now.
-    useGameStore.setState({ lastResult: null });
+    if (isResuming) {
+      const lr = useGameStore.getState().lastResult;
+      if (lr && lr.positions.length > 0) {
+        expectingResultRef.current = true;
+      }
+    } else {
+      useGameStore.setState({ lastResult: null });
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -157,14 +181,39 @@ export default function MultiplayerLobbyScreen() {
   useEffect(() => {
     if (!lobbyId) return;
 
+    // Safety net for a stale mpLobbyId (e.g. user closed the app mid-tournament
+    // and the lobby has since expired on Firebase). If Firebase returns null
+    // within ~3 seconds, clear the stored lobbyId and drop the user on the
+    // pick-payout screen instead of leaving them stranded on a loading state.
+    const staleGuard = setTimeout(() => {
+      if (!lobby && isResuming) {
+        useGameStore.getState().setMpLobbyId(null);
+        useGameStore.setState({ lastResult: null });
+        expectingResultRef.current = false;
+        setLobbyId(null);
+        setPhase('pick_payout');
+      }
+    }, 3000);
+
     const unsub = subscribeLobby(lobbyId, (data) => {
       setLobby(data);
       if (data) {
-        setPhase(data.status === 'waiting' ? 'waiting' : data.status);
+        clearTimeout(staleGuard);
+        // Hold the 'submitting' phase while we're still expecting to send a
+        // round result back. Once submitRoundResult fires, server flips
+        // status to 'round_result' / 'finished' and we sync to that.
+        if (expectingResultRef.current && data.status === 'racing') {
+          setPhase('submitting');
+        } else {
+          setPhase(data.status === 'waiting' ? 'waiting' : data.status);
+        }
       }
     });
 
-    return () => unsub();
+    return () => {
+      clearTimeout(staleGuard);
+      unsub();
+    };
   }, [lobbyId]);
 
   // ---------------------------------------------------------------------------
@@ -387,7 +436,7 @@ export default function MultiplayerLobbyScreen() {
           {(phase === 'matching' || phase === 'waiting' || phase === 'drafting') && (
             <View style={styles.howItWorksCard}>
               <Text style={styles.howItWorksTitle}>HOW IT WORKS</Text>
-              <Text style={styles.howItWorksStep}>1. Lobby fills with 8 players (bots fill empty slots after 60s).</Text>
+              <Text style={styles.howItWorksStep}>1. Lobby fills with 8 players. Empty slots are filled after 60s.</Text>
               <Text style={styles.howItWorksStep}>2. Snake draft: each player picks one marble.</Text>
               <Text style={styles.howItWorksStep}>3. All 8 marbles race together. Last place is eliminated each round.</Text>
               <Text style={styles.howItWorksStep}>4. Survive 7 rounds to win the prize pool.</Text>
@@ -443,6 +492,18 @@ export default function MultiplayerLobbyScreen() {
             </>
           )}
 
+          {/* PHASE: Submitting result (only seen briefly after returning
+              from a race finish). Holds the user on a clear loading state so
+              they don't accidentally tap RACE NOW before the server has
+              processed the round result. */}
+          {phase === 'submitting' && (
+            <View style={styles.centerCard}>
+              <ActivityIndicator size="large" color={Colors.yellow} />
+              <Text style={styles.statusTitle}>SUBMITTING RESULT</Text>
+              <Text style={styles.centerText}>Recording your finish for this round…</Text>
+            </View>
+          )}
+
           {/* PHASE: Matching */}
           {phase === 'matching' && (
             <View style={styles.centerCard}>
@@ -465,7 +526,7 @@ export default function MultiplayerLobbyScreen() {
                 </Text>
                 <View style={styles.countdownRow}>
                   <Text style={styles.countdownText}>
-                    AI fills empty slots in {countdown}s
+                    Empty slots filled in {countdown}s
                   </Text>
                 </View>
               </View>

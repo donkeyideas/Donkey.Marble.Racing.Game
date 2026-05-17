@@ -9,6 +9,10 @@ import { drawThemeBackground } from './themeBackgrounds';
 /** Matches computeTrackVisuals() output from race.tsx */
 export interface TrackVisuals {
   segs: { left: number; top: number; width: number; deg: number; ey: number }[];
+  /** Smooth path representation of each ramp in screen space. The renderer
+   *  prefers strokes over per-segment rectangles for tracks with curvy
+   *  geometry (Grand Prix), where rectangle seams looked jagged. */
+  rampPaths?: { x: number; y: number }[][];
   obsVis: { cx: number; cy: number; size: number; type: string; ey: number }[];
   pegFunnels: {
     left: { x: number; y: number; w: number; deg: number };
@@ -102,18 +106,47 @@ export function createStaticTrackPicture(
   const tc = themeColors || { ramp: '#8B5E3C', bumper: '#e74c3c', peg: '#7f8c8d', spring: '#2ecc71', funnel: '#5a3a1a' };
 
   // === RAMP SEGMENTS ===
+  // Two paths:
+  //   1) Curvy ramps (>= 30 points, indicates an S-curve / Grand Prix track):
+  //      stroke a smooth continuous Skia path through the points. No
+  //      rectangle seams, no jagged stair-step look on tight curves.
+  //   2) Straight / hand-crafted ramps (few points, sprite assets available):
+  //      keep the per-segment rotated rect approach so sprite-tile art still
+  //      lines up with each segment.
   const rampPaint = makePaint(tc.ramp);
   const wallColorPaint = tv.wallColor ? makePaint(tv.wallColor) : null;
+  const useSmoothPath = !!tv.rampPaths && tv.rampPaths.some(p => p.length >= 30);
 
-  tv.segs.forEach(s => {
-    if (wallColorPaint) {
-      drawRotatedRect(canvas, s.left - 6, s.top - 2, s.width + 12, RAMP_H + 6, s.deg, wallColorPaint);
-    } else if (useSprites && sprites.ramp) {
-      drawRotatedImage(canvas, sprites.ramp, s.left - 6, s.top - 1, s.width + 12, RAMP_H + 2, s.deg, defaultPaint);
-    } else {
-      drawRotatedRect(canvas, s.left - 6, s.top - 1, s.width + 12, RAMP_H + 2, s.deg, rampPaint);
-    }
-  });
+  if (useSmoothPath && !useSprites) {
+    // Stroke each ramp's polyline. Thickness matches RAMP_H + a couple px
+    // so the stroke visually reads the same as the per-segment rectangles
+    // it replaces, but without joint artifacts.
+    const strokePaint = wallColorPaint
+      ? makePaint(tv.wallColor!, 'stroke')
+      : makePaint(tc.ramp, 'stroke');
+    strokePaint.setStrokeWidth(RAMP_H + 4);
+    // Skia uses an integer enum for stroke join: 0=miter, 1=round, 2=bevel.
+    if ((strokePaint as any).setStrokeJoin) (strokePaint as any).setStrokeJoin(1);
+    if ((strokePaint as any).setStrokeCap)  (strokePaint as any).setStrokeCap(1);
+
+    tv.rampPaths!.forEach(pts => {
+      if (pts.length < 2) return;
+      const path = Skia.Path.Make();
+      path.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
+      canvas.drawPath(path, strokePaint);
+    });
+  } else {
+    tv.segs.forEach(s => {
+      if (wallColorPaint) {
+        drawRotatedRect(canvas, s.left - 6, s.top - 2, s.width + 12, RAMP_H + 6, s.deg, wallColorPaint);
+      } else if (useSprites && sprites.ramp) {
+        drawRotatedImage(canvas, sprites.ramp, s.left - 6, s.top - 1, s.width + 12, RAMP_H + 2, s.deg, defaultPaint);
+      } else {
+        drawRotatedRect(canvas, s.left - 6, s.top - 1, s.width + 12, RAMP_H + 2, s.deg, rampPaint);
+      }
+    });
+  }
 
   // === PEG ZONE FUNNELS ===
   const funnelPaint = makePaint(tc.funnel);
