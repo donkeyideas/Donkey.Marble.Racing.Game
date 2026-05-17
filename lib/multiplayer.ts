@@ -29,9 +29,7 @@ import {
   remove,
   onValue,
   query,
-  orderByChild,
-  equalTo,
-  limitToFirst,
+  limitToLast,
   DataSnapshot,
 } from 'firebase/database';
 import { getDb } from './firebase';
@@ -213,17 +211,20 @@ export async function joinLobby(
 export async function findOpenLobbies(
   tier: 'daily' | 'weekly' | 'champion',
 ): Promise<{ lobbyId: string; lobby: LobbyData }[]> {
-  const q = query(
-    activeLobbiesRef(),
-    orderByChild('status'),
-    equalTo('waiting'),
-    limitToFirst(10),
-  );
+  // Originally this used `orderByChild('status').equalTo('waiting')` which is
+  // server-side efficient — but Firebase Realtime Database refuses such a query
+  // unless `.indexOn: ["status"]` is configured in the security rules. To stay
+  // self-contained (no Firebase Console changes needed), we fetch the most
+  // recent N lobbies and filter client-side. Push keys are time-ordered, so
+  // limitToLast gives newest lobbies first. Plenty efficient for early-stage
+  // multiplayer with <100 active lobbies.
+  const q = query(activeLobbiesRef(), limitToLast(50));
   const snap = await get(q);
 
   const results: { lobbyId: string; lobby: LobbyData }[] = [];
   snap.forEach((childSnap: DataSnapshot) => {
     const lobby = childSnap.val() as LobbyData;
+    if (!lobby) return undefined;
     if (
       lobby.tier === tier &&
       lobby.status === 'waiting' &&
@@ -232,7 +233,7 @@ export async function findOpenLobbies(
     ) {
       results.push({ lobbyId: childSnap.key!, lobby });
     }
-    return undefined; // forEach: false continues, undefined treated as continue
+    return undefined;
   });
 
   return results;

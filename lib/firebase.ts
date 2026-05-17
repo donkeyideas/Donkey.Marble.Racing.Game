@@ -18,12 +18,24 @@ import { getDatabase as getWebDatabase, Database } from 'firebase/database';
 import { getAuth as getWebAuth, initializeAuth, Auth } from 'firebase/auth';
 import { getAnalytics as getWebAnalytics, isSupported as isAnalyticsSupported, Analytics } from 'firebase/analytics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// getReactNativePersistence isn't always re-exported from 'firebase/auth' in TS
-// typings even though it ships in the runtime. Pull it through `as any` so we
-// can still set proper RN-backed persistence. Without this, the auth session
-// is memory-only and the user is signed out on every cold start.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { getReactNativePersistence } = require('firebase/auth') as any;
+// IMPORTANT: must import from '@firebase/auth' (the lower-level package), NOT
+// 'firebase/auth' (the umbrella). The umbrella's package.json has no
+// "react-native" field, so Metro resolves it to the Node bundle which omits
+// getReactNativePersistence. The underlying @firebase/auth DOES have a
+// "react-native" entry pointing at dist/rn/index.js, which exports the
+// function we need.
+//
+// Wrapped in require + try-style fallback so the file still loads in non-RN
+// environments (the headless test runs in Node and won't have a working
+// rn-entry resolution).
+let getReactNativePersistence: ((s: any) => any) | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const auth = require('@firebase/auth');
+  getReactNativePersistence = auth?.getReactNativePersistence ?? null;
+} catch {
+  getReactNativePersistence = null;
+}
 
 // Values copied from GoogleService-Info.plist (iOS) — same project, same DB/auth.
 const FIREBASE_CONFIG = {
@@ -58,13 +70,18 @@ export function getDb(): Database {
 export function getFbAuth(): Auth {
   if (_auth) return _auth;
   try {
-    // initializeAuth with RN persistence: AsyncStorage-backed so the user
-    // stays signed in across cold starts. Without this, Firebase Auth in RN
-    // defaults to in-memory persistence and silently signs them out on
-    // every app launch — which is why multiplayer kept failing after sign-in.
-    _auth = initializeAuth(app(), {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
+    if (getReactNativePersistence) {
+      // RN-backed persistence — the user stays signed in across cold starts.
+      // Without this, Firebase Auth in RN defaults to in-memory persistence
+      // and silently signs them out on every app launch.
+      _auth = initializeAuth(app(), {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    } else {
+      // Node (or any env without the RN-entry resolution) — let Firebase pick
+      // a default. This branch shouldn't run on a real device.
+      _auth = initializeAuth(app());
+    }
   } catch {
     // initializeAuth throws if auth was already created for this app — that's
     // fine, fall back to retrieving the existing instance.
