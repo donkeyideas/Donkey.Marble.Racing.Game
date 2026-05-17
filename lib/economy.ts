@@ -23,6 +23,8 @@ export type EconomyAction =
   | 'playoff_payout'
   | 'national_entry'
   | 'national_payout'
+  | 'mp_entry'
+  | 'mp_payout'
   | 'custom_track_entry';
 
 export interface EconomyResponse {

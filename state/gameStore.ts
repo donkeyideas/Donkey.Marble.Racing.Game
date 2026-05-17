@@ -1261,8 +1261,11 @@ export const useGameStore = create<GameState>()(
   setMpSurvivingMarbleIds: (ids) => set({ mpSurvivingMarbleIds: ids }),
   setMpLobbyId: (lobbyId) => set({ mpLobbyId: lobbyId }),
   setMpResult: (placement, payout) => {
-    const { coins, coinHistory } = get();
+    const { coins, coinHistory, mpLobbyId } = get();
     if (payout > 0) {
+      // Optimistic local credit so the FINISHED screen shows the new
+      // balance immediately. The server payout below reconciles to the
+      // authoritative balance if it returns ok.
       set({
         mpPlacement: placement,
         mpPayout: payout,
@@ -1271,6 +1274,22 @@ export const useGameStore = create<GameState>()(
           { type: 'payout' as const, amount: payout, description: `MP Tournament ${placement === 1 ? 'Champion' : `#${placement}`}`, timestamp: Date.now() },
           ...coinHistory,
         ].slice(0, 200),
+      });
+
+      // Fire server-authoritative payout. Same pattern as tournament /
+      // playoff / national: send the action, snap to res.balance on
+      // success, leave the optimistic credit in place on failure. This
+      // is what makes the MP win survive cross-device account access —
+      // without it, an MP win lived only on the device that earned it.
+      applyEconomyAction({
+        action: 'mp_payout',
+        payload: { lobbyId: mpLobbyId, placement, amount: payout },
+      }).then((res) => {
+        if (res.ok) {
+          useGameStore.setState({ coins: res.balance });
+        } else if (__DEV__) {
+          console.warn('[mp_payout]', res.message);
+        }
       });
     } else {
       set({ mpPlacement: placement, mpPayout: payout });
