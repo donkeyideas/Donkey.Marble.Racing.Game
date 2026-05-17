@@ -259,7 +259,7 @@ function getModeDest(mode: GameMode): { primary: string; primaryLabel: string; s
       return { primary: '/multiplayer-lobby', primaryLabel: 'BACK TO LOBBY', secondary: '/lobby', secondaryLabel: 'MAIN MENU' };
     case 'bet':
     default:
-      return { primary: '/lobby', primaryLabel: 'NEXT RACE' };
+      return { primary: '/lobby', primaryLabel: 'NEXT RACE', secondary: '/lobby', secondaryLabel: 'BACK TO LOBBY' };
   }
 }
 
@@ -545,6 +545,27 @@ function LossScreen() {
 
   const tournaments = useGameStore((s) => s.tournaments);
 
+  // Loss fanfare — red screen flash + title shake on mount so a loss feels
+  // like a loss, not just text. Triggered for every losing race regardless
+  // of mode (quick race, season, tournament, etc).
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const titleShake = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(flashOpacity, { toValue: 0.55, duration: 140, useNativeDriver: true }),
+      Animated.timing(flashOpacity, { toValue: 0, duration: 800, useNativeDriver: true }),
+    ]).start();
+    Animated.sequence([
+      Animated.timing(titleShake, { toValue: -1, duration: 55, useNativeDriver: true }),
+      Animated.timing(titleShake, { toValue: 1, duration: 55, useNativeDriver: true }),
+      Animated.timing(titleShake, { toValue: -0.7, duration: 55, useNativeDriver: true }),
+      Animated.timing(titleShake, { toValue: 0.7, duration: 55, useNativeDriver: true }),
+      Animated.timing(titleShake, { toValue: -0.4, duration: 55, useNativeDriver: true }),
+      Animated.timing(titleShake, { toValue: 0, duration: 55, useNativeDriver: true }),
+    ]).start();
+  }, []);
+  const shakeX = titleShake.interpolate({ inputRange: [-1, 1], outputRange: [-8, 8] });
+
   const dest = getModeDest(activeMode);
   const isQuickRace = activeMode.type === 'quick_race';
   const isTournament = activeMode.type === 'tournament';
@@ -590,13 +611,19 @@ function LossScreen() {
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96', '#0a1a3a']} style={styles.fill}>
+      {/* Red impact flash — fires on mount, fades out over ~0.8s */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: '#e74c3c', opacity: flashOpacity, zIndex: 100 }]}
+      />
       <ScrollView
         style={styles.fill}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Title — show placement context */}
-        <Text style={styles.lossTitle}>
+        {/* Title — show placement context. Shakes briefly on mount to sell
+            the impact of losing. */}
+        <Animated.Text style={[styles.lossTitle, { transform: [{ translateX: shakeX }] }]}>
           {isTournament
             ? 'ELIMINATED!'
             : isQuickRace
@@ -604,7 +631,7 @@ function LossScreen() {
               : isFranchise
                 ? `FINISHED #${lastResult.playerPlacement}`
                 : 'BETTER LUCK!'}
-        </Text>
+        </Animated.Text>
         <Text style={styles.lossPlacement}>
           {isTournament
             ? tournamentTotalEarned > 0

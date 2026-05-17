@@ -736,6 +736,15 @@ export default function RaceScreen() {
           }};
         });
       }
+    } else if (activeMode.type === 'multiplayer_tournament') {
+      // Race only the marbles whose players are still alive in the bracket.
+      // Eliminated marbles do not come back — fixes the user-reported
+      // "all 8 balls added back in round 5" bug where MP was previously
+      // racing the full roster every round.
+      const survivingIds = useGameStore.getState().mpSurvivingMarbleIds;
+      if (survivingIds && survivingIds.length > 0) {
+        raceMarbles = MARBLES.filter(m => survivingIds.includes(m.id));
+      }
     }
 
     // Apply equipped skins to marble colors

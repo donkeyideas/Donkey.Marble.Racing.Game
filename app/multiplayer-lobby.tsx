@@ -286,6 +286,16 @@ export default function MultiplayerLobbyScreen() {
     const myMarble = lobby.players?.[uid]?.marbleId;
     if (!courseId || !myMarble) return;
 
+    // Compute which marbles are still alive in the bracket. Eliminated
+    // marbles MUST NOT race this round — previously the race screen
+    // ignored the multiplayer mode entirely and raced all 8 marbles every
+    // round, which is what produced the "all balls added back in round 5"
+    // bug. Active players (not eliminated, marble drafted) → marble IDs.
+    const survivingMarbleIds = Object.values(lobby.players || {})
+      .filter((p) => !p.eliminated && p.marbleId)
+      .map((p) => p.marbleId!)
+      .filter((id): id is string => !!id);
+
     const store = useGameStore.getState();
     store.selectCourse(courseId);
     store.setActiveMode({
@@ -293,6 +303,7 @@ export default function MultiplayerLobbyScreen() {
       lobbyId,
       round: lobby.currentRound,
     });
+    store.setMpSurvivingMarbleIds(survivingMarbleIds);
 
     const marble = MARBLES.find((m) => m.id === myMarble);
     if (marble) store.selectMarble(marble);

@@ -8,6 +8,7 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
+import { showModal } from '../components/GameModal';
 import { useGameStore } from '../state/gameStore';
 import { ALL_COURSES as COURSES } from '../data/courses';
 
@@ -318,14 +319,52 @@ export default function PlayoffsScreen() {
 
           {/* Action buttons */}
           <View style={{ height: 20 }} />
-          {playoffs?.status === 'active' && (
-            <Animated.View style={{ opacity: buttonOpacity, transform: [{ translateY: buttonSlide }] }}>
-              <PrimaryButton
-                label={`RACE \u00B7 ROUND ${playoffs.currentRound + 1}`}
-                onPress={handleRace}
-              />
-            </Animated.View>
-          )}
+          {playoffs?.status === 'active' && (() => {
+            const playerEliminated = isFranchise
+              && playerMarbleId
+              && playoffs.eliminatedIds.includes(playerMarbleId);
+            return (
+              <Animated.View style={{ opacity: buttonOpacity, transform: [{ translateY: buttonSlide }] }}>
+                <PrimaryButton
+                  label={`RACE \u00B7 ROUND ${playoffs.currentRound + 1}`}
+                  onPress={handleRace}
+                />
+                {/* Skip option \u2014 only offered when the player's marble is
+                    already out of the bracket. Watching the rest of the
+                    playoffs is still the default; this just gives an exit
+                    so an eliminated player isn't forced to sit through
+                    multiple races they have no stake in. The simulator
+                    uses the same handlePlayoffResult path so payouts and
+                    Hall of Fame work correctly. */}
+                {playerEliminated && (
+                  <>
+                    <View style={{ height: 8 }} />
+                    <PrimaryButton
+                      label="SKIP TO RESULTS"
+                      variant="ghost"
+                      onPress={() => {
+                        showModal({
+                          title: 'Skip remaining rounds?',
+                          message: 'Your marble is eliminated. The remaining rounds will be auto-simulated and you\u2019ll be taken straight to the championship screen.',
+                          buttons: [
+                            { label: 'Cancel', variant: 'ghost' },
+                            {
+                              label: 'Skip',
+                              variant: 'yellow',
+                              onPress: () => {
+                                useGameStore.getState().simulateRemainingPlayoffs();
+                                router.replace('/championship');
+                              },
+                            },
+                          ],
+                        });
+                      }}
+                    />
+                  </>
+                )}
+              </Animated.View>
+            );
+          })()}
 
           {playoffs?.status === 'complete' && (
             <>

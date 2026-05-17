@@ -128,11 +128,17 @@ export default function LobbyScreen() {
           passXp: s.passXp,
         },
         (serverState) => {
-          // Server is authoritative for these. Pass tier mapping
-          // (server `passTier` <-> client `passTrack`) is deferred until the
-          // IAP path is server-authoritative too.
+          // Periodic sync no longer overwrites coins. Reason: most
+          // coin-altering actions (race payouts, playoff payouts, etc.)
+          // are fire-and-forget on the server side, so there's a brief
+          // window where the server hasn't credited yet. If the lobby
+          // sync hit during that window it would snap the player's
+          // balance DOWN, looking exactly like the game "charged them"
+          // to start a new season / etc. Coins are still kept in sync
+          // via the explicit applyEconomyAction response path — that's
+          // the authoritative source. We pull only the counters that
+          // are pure server-side state (race totals, streak).
           useGameStore.setState({
-            coins: serverState.coins,
             totalRaces: serverState.totalRaces,
             totalWins: serverState.totalWins,
             dailyStreak: serverState.dailyStreak,

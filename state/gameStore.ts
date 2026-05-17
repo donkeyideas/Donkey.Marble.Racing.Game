@@ -282,6 +282,12 @@ interface GameState {
   handleSeasonResult: (raceId: string, positions: string[]) => void;
   seedPlayoffs: () => void;
   handlePlayoffResult: (positions: string[]) => void;
+  /** Skip the rest of the playoffs and auto-resolve a champion. Used when
+   *  the player's marble has been eliminated and they don't want to watch
+   *  every remaining round. Picks a random finish order each round and
+   *  re-uses handlePlayoffResult so eliminations, lives, and the final
+   *  payout all follow the normal rules. */
+  simulateRemainingPlayoffs: () => void;
   // Marble Progression
   trainMarble: (stat: keyof SeasonMarbleStats) => { success: boolean; gain: number; cost: number };
   restMarble: (marbleId: string) => void;
@@ -301,6 +307,11 @@ interface GameState {
   mpLobbyId: string | null;
   mpPlacement: number | null;   // Final placement (1-8)
   mpPayout: number;
+  /** Marble IDs of players still alive in the current MP round. Set by
+   *  multiplayer-lobby when starting a round so the race engine only races
+   *  the survivors — eliminated marbles must NOT come back. */
+  mpSurvivingMarbleIds: string[];
+  setMpSurvivingMarbleIds: (ids: string[]) => void;
   setMpLobbyId: (lobbyId: string | null) => void;
   setMpResult: (placement: number, payout: number) => void;
 
@@ -1034,6 +1045,25 @@ export const useGameStore = create<GameState>()(
     set({ season: { ...season, playoffs } });
   },
 
+  simulateRemainingPlayoffs: () => {
+    // Safety cap so a degenerate state can't infinite-loop here. 16 rounds
+    // is more than enough for any reasonable playoff size.
+    for (let i = 0; i < 16; i++) {
+      const { season } = get();
+      const playoffs = season?.playoffs;
+      if (!playoffs || playoffs.status === 'complete') return;
+
+      const remaining = playoffs.seeds.filter(id => !playoffs.eliminatedIds.includes(id));
+      if (remaining.length <= 1) return;
+
+      // Random finish order among remaining marbles. handlePlayoffResult
+      // honors the "lives" system and may save the last-place marble if
+      // it still has a life, so we don't need to special-case anything.
+      const order = [...remaining].sort(() => Math.random() - 0.5);
+      get().handlePlayoffResult(order);
+    }
+  },
+
   // ── National Races ──
   nationalRaces: {} as Record<string, NationalEventState>,
 
@@ -1227,6 +1257,8 @@ export const useGameStore = create<GameState>()(
   mpLobbyId: null,
   mpPlacement: null,
   mpPayout: 0,
+  mpSurvivingMarbleIds: [],
+  setMpSurvivingMarbleIds: (ids) => set({ mpSurvivingMarbleIds: ids }),
   setMpLobbyId: (lobbyId) => set({ mpLobbyId: lobbyId }),
   setMpResult: (placement, payout) => {
     const { coins, coinHistory } = get();

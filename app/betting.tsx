@@ -413,29 +413,16 @@ export default function BettingScreen() {
         </View>
       )}
 
-      {/* Marble grid — hidden in franchise mode (the marble is already
-          locked for the season, so a full grid of un-pickable marbles is
-          just visual noise). Franchise mode shows ONLY the locked card,
-          centered, so the screen focuses on the wager amount. */}
-      <ScrollView
-        style={styles.gridScroll}
-        contentContainerStyle={styles.gridContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {isFranchiseLocked && franchiseMarble ? (
-          <View style={styles.franchiseSoloWrap}>
-            <FlipCard
-              marble={franchiseMarble}
-              isSelected={true}
-              badge="picked"
-              odds={odds[franchiseMarble.id]}
-              winRate={getWinRate(franchiseMarble.id)}
-              form={getForm(franchiseMarble.id)}
-              seasonStats={getSeasonStats(franchiseMarble.id)}
-              onSelect={() => {}}
-            />
-          </View>
-        ) : (
+      {/* Marble grid — hidden entirely in franchise mode. The marble is
+          already locked for the season, so the betting screen should focus
+          ONLY on the wager amount. The franchise banner at the top of the
+          screen already tells the user which marble they're racing as. */}
+      {!isFranchiseLocked ? (
+        <ScrollView
+          style={styles.gridScroll}
+          contentContainerStyle={styles.gridContent}
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.grid}>
             {DISPLAY_MARBLES.map((marble, index) => (
               <FlipCard
@@ -451,8 +438,12 @@ export default function BettingScreen() {
               />
             ))}
           </View>
-        )}
-      </ScrollView>
+        </ScrollView>
+      ) : (
+        // Franchise mode — empty flex spacer so the wager bar still sticks
+        // to the bottom of the screen without the marble grid above it.
+        <View style={styles.gridScroll} />
+      )}
 
       {/* Recent Results strip — hidden in franchise mode since the marble is
           already locked for the season; nothing to pick, so the strip just

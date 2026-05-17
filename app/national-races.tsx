@@ -173,7 +173,11 @@ export default function NationalRacesScreen() {
           {/* Events */}
           <Text style={styles.sectionTitle}>TODAY'S EVENTS</Text>
 
-          {NATIONAL_EVENTS.map((event) => {
+          {/* Sort events by daily start hour (ET) so the schedule reads
+              chronologically top-to-bottom — 12pm event first, then 6pm,
+              8pm, 10pm. Stable copy of the array to avoid mutating the
+              imported constant. */}
+          {[...NATIONAL_EVENTS].sort((a, b) => a.startHourET - b.startHourET).map((event) => {
             const state = nationalRaces?.[event.id];
             const isEntered = state?.entered ?? false;
             const canAfford = coins >= event.entryFee;
