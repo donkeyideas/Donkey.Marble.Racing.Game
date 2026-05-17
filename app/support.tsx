@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, Spacing, BorderRadius } from '../theme';
 import BackButton from '../components/BackButton';
 import { api, getToken, SupportTicketSummary, SupportTicketDetail } from '../lib/api';
+import { markTicketSeen } from '../lib/supportNotifier';
 import { FAQ_ITEMS } from '../data/faq';
 
 const CATEGORIES = [
@@ -119,6 +120,12 @@ export default function SupportScreen() {
       const res = await api.support.getTicket(ticketId);
       setChatTicket(res.ticket);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 100);
+      // Persist the latest admin message timestamp so the lobby poll stops
+      // re-firing the "support replied" banner / notification for this ticket.
+      const lastAdminMsg = [...res.ticket.messages]
+        .reverse()
+        .find((m) => m.authorType === 'admin');
+      if (lastAdminMsg) markTicketSeen(ticketId, lastAdminMsg.createdAt);
     } catch (e: any) {
       setError(e.message || 'Failed to load ticket');
       setView('main');

@@ -20,6 +20,7 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
+import { pollSupportReplies } from '../lib/supportNotifier';
 
 function ModeCard({
   title,
@@ -62,6 +63,24 @@ export default function LobbyScreen() {
   // Daily streak reward
   const [dailyReward, setDailyReward] = useState<{ reward: number; streak: number } | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  // Support replies — polled so the user sees admin responses without
+  // manually drilling into Settings → Support. Banner + Settings badge.
+  const [supportUnread, setSupportUnread] = useState(0);
+  const [supportSubjects, setSupportSubjects] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const run = () => {
+      pollSupportReplies().then((res) => {
+        if (cancelled) return;
+        setSupportUnread(res.unreadCount);
+        setSupportSubjects(res.unreadSubjects);
+      });
+    };
+    run();
+    const id = setInterval(run, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   useEffect(() => {
     const optimistic = useGameStore.getState().checkDailyStreak();
@@ -159,6 +178,27 @@ export default function LobbyScreen() {
                 <Text style={styles.announcementBody}>{getAnnouncements()[0].body}</Text>
               </View>
             </View>
+          )}
+
+          {/* ===== SUPPORT REPLY BANNER ===== */}
+          {supportUnread > 0 && (
+            <Pressable
+              style={styles.supportBanner}
+              onPress={() => router.push('/support')}
+            >
+              <View style={styles.supportBannerBadge}>
+                <Text style={styles.supportBannerBadgeText}>{supportUnread}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.supportBannerTitle}>
+                  {supportUnread === 1 ? 'Support replied to your ticket' : `Support replied to ${supportUnread} tickets`}
+                </Text>
+                <Text style={styles.supportBannerBody} numberOfLines={1}>
+                  {supportSubjects[0] ? `Re: ${supportSubjects[0]}` : 'Tap to view'}
+                </Text>
+              </View>
+              <Text style={styles.supportBannerArrow}>{'›'}</Text>
+            </Pressable>
           )}
 
           {/* ===== ACTIVE PROMO BANNER ===== */}
@@ -308,6 +348,11 @@ export default function LobbyScreen() {
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
               onPress={() => router.push('/settings')}
             >
+              {supportUnread > 0 && (
+                <View style={styles.navCardBadge}>
+                  <Text style={styles.navCardBadgeText}>{supportUnread}</Text>
+                </View>
+              )}
               <Text style={styles.navLabel}>SETTINGS</Text>
               <Text style={styles.navSub}>Legal</Text>
             </Pressable>
@@ -457,6 +502,47 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: 'rgba(255,255,255,0.7)',
   },
+  supportBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(46,204,113,0.12)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.35)',
+  },
+  supportBannerBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2ecc71',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  supportBannerBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+  },
+  supportBannerTitle: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 13,
+    color: '#2ecc71',
+  },
+  supportBannerBody: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 1,
+  },
+  supportBannerArrow: {
+    fontSize: 22,
+    color: '#2ecc71',
+    marginRight: 4,
+  },
   promoBanner: {
     backgroundColor: 'rgba(46,204,113,0.15)',
     borderRadius: BorderRadius.md,
@@ -535,6 +621,24 @@ const styles = StyleSheet.create({
   },
   navCardPressed: {
     opacity: 0.7,
+  },
+  navCardBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#2ecc71',
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  navCardBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.white,
   },
   navLabel: {
     fontFamily: Fonts.display,
