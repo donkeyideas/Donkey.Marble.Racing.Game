@@ -413,10 +413,9 @@ export default function BettingScreen() {
         </View>
       )}
 
-      {/* Marble grid — hidden entirely in franchise mode. The marble is
-          already locked for the season, so the betting screen should focus
-          ONLY on the wager amount. The franchise banner at the top of the
-          screen already tells the user which marble they're racing as. */}
+      {/* Franchise mode: 2×2 grid of big bet-amount cards filling the
+          middle of the screen. Selected card highlights with a gold border.
+          Bettor mode: the regular marble grid. */}
       {!isFranchiseLocked ? (
         <ScrollView
           style={styles.gridScroll}
@@ -440,9 +439,37 @@ export default function BettingScreen() {
           </View>
         </ScrollView>
       ) : (
-        // Franchise mode — empty flex spacer so the wager bar still sticks
-        // to the bottom of the screen without the marble grid above it.
-        <View style={styles.gridScroll} />
+        <View style={styles.franchiseBetGrid}>
+          {getConfig().betAmounts.map((amount) => {
+            const active = betAmount === amount;
+            // Potential win = amount × selectedOdds (the franchise marble's
+            // current odds). Falls back to 5x if no odds yet (shouldn't
+            // happen since franchise auto-selects the marble on mount).
+            const odds = selectedOdds || 5;
+            const win = Math.round(amount * odds);
+            return (
+              <Pressable
+                key={amount}
+                onPress={() => setBetAmount(amount)}
+                style={({ pressed }) => [
+                  styles.franchiseBetCard,
+                  active && styles.franchiseBetCardActive,
+                  pressed && { opacity: 0.9 },
+                ]}
+              >
+                <Text style={[styles.franchiseBetAmount, active && styles.franchiseBetAmountActive]}>
+                  {amount}
+                </Text>
+                <Text style={styles.franchiseBetLabel}>BET</Text>
+                <View style={styles.franchiseBetDivider} />
+                <Text style={[styles.franchiseBetWinAmount, active && styles.franchiseBetWinAmountActive]}>
+                  {win.toLocaleString()}
+                </Text>
+                <Text style={styles.franchiseBetLabel}>WIN</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       )}
 
       {/* Recent Results strip — hidden in franchise mode since the marble is
@@ -493,23 +520,27 @@ export default function BettingScreen() {
           </Text>
         )}
 
-        {/* Bet amount buttons */}
-        <View style={styles.betRow}>
-          {getConfig().betAmounts.map((amount) => {
-            const active = betAmount === amount;
-            return (
-              <Pressable
-                key={amount}
-                onPress={() => setBetAmount(amount)}
-                style={[styles.betBtn, active && styles.betBtnActive]}
-              >
-                <Text style={[styles.betBtnText, active && styles.betBtnTextActive]}>
-                  {amount}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Small bet-chip row — hidden in franchise mode because the big
+            franchise bet cards above already cover this. Bettor / quick
+            bet flows still get the chip row. */}
+        {!isFranchiseLocked && (
+          <View style={styles.betRow}>
+            {getConfig().betAmounts.map((amount) => {
+              const active = betAmount === amount;
+              return (
+                <Pressable
+                  key={amount}
+                  onPress={() => setBetAmount(amount)}
+                  style={[styles.betBtn, active && styles.betBtnActive]}
+                >
+                  <Text style={[styles.betBtnText, active && styles.betBtnTextActive]}>
+                    {amount}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         {/* Lock in CTA */}
         <Pressable
@@ -626,6 +657,68 @@ const styles = StyleSheet.create({
   franchiseSoloWrap: {
     alignItems: 'center',
     paddingVertical: 20,
+  },
+  // Franchise mode: 2x2 grid of big bet-amount cards filling the screen.
+  franchiseBetGrid: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  franchiseBetCard: {
+    width: '48%',
+    aspectRatio: 1,
+    marginBottom: 12,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  franchiseBetCardActive: {
+    backgroundColor: 'rgba(255,194,32,0.15)',
+    borderColor: Colors.yellow,
+    shadowColor: Colors.yellow,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  franchiseBetAmount: {
+    fontFamily: Fonts.display,
+    fontSize: 44,
+    color: Colors.white,
+    lineHeight: 50,
+  },
+  franchiseBetAmountActive: {
+    color: Colors.yellow,
+  },
+  franchiseBetLabel: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: Colors.whiteAlpha40,
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
+  franchiseBetDivider: {
+    width: 40,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginVertical: 10,
+  },
+  franchiseBetWinAmount: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: '#2ecc71',
+    lineHeight: 26,
+  },
+  franchiseBetWinAmountActive: {
+    color: '#2ecc71',
   },
 
   // Card
