@@ -58,6 +58,12 @@ export default function MultiplayerLobbyScreen() {
   const [matchingText, setMatchingText] = useState('Searching for opponents...');
   const backfillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Per-round submit guard. Without this, the racing-phase useEffect can
+  // fire repeatedly off lobby snapshots and re-submit the same finish order.
+  // Also lets us tell "fresh result from THIS round" apart from "stale result
+  // from a previous quick-race that's still in the store".
+  const submittedRoundRef = useRef<number>(-1);
+  const expectingResultRef = useRef<boolean>(false);
 
   const uid = firebaseUid || 'local-player';
   const displayName = firebaseDisplayName || useGameStore.getState().playerName || 'Player';
@@ -68,6 +74,11 @@ export default function MultiplayerLobbyScreen() {
   // ---------------------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
+
+    // Wipe any stale `lastResult` from a previous quick race so the
+    // racing-phase auto-submit doesn't pick up old finish data and skip
+    // straight to round results without actually racing.
+    useGameStore.setState({ lastResult: null });
 
     async function match() {
       try {
@@ -234,23 +245,43 @@ export default function MultiplayerLobbyScreen() {
     if (marble) store.selectMarble(marble);
     store.setBetAmount(0);
 
+    // Arm the result-submit gate and wipe any stale lastResult so the
+    // racing-phase useEffect only fires for THIS round's finish.
+    useGameStore.setState({ lastResult: null });
+    expectingResultRef.current = true;
+
     router.push('/race');
   }, [lobby, lobbyId, uid]);
 
   // ---------------------------------------------------------------------------
-  // Handle race finish — host submits result
+  // Handle race finish — host submits result.
+  //
+  // Only fires when:
+  //   1. The host pressed RACE NOW for THIS round (expectingResultRef = true)
+  //   2. We haven't already submitted this round (submittedRoundRef tracks it)
+  //   3. lastResult is actually present
+  //
+  // Previously this fired on every 'racing' status snapshot, which meant a
+  // stale lastResult from a prior quick race would auto-submit before the
+  // player ever saw the race screen — user reported "picks marble, goes
+  // straight to results, no game".
   // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!lobby || !lobbyId) return;
     if (lobby.status !== 'racing' || lobby.hostUid !== uid) return;
+    if (!expectingResultRef.current) return;
+    if (submittedRoundRef.current === lobby.currentRound) return;
 
-    // Check if we returned from a race (lastResult exists)
     const lastResult = useGameStore.getState().lastResult;
     if (lastResult && lastResult.positions.length > 0) {
+      submittedRoundRef.current = lobby.currentRound;
+      expectingResultRef.current = false;
       const finishOrder = lastResult.positions.map((p) => p.marble.id);
       submitRoundResult(lobbyId, uid, finishOrder);
+      // Clear so the next round can't accidentally re-use this finish order.
+      useGameStore.setState({ lastResult: null });
     }
-  }, [lobby?.status]);
+  }, [lobby?.status, lobby?.currentRound]);
 
   // ---------------------------------------------------------------------------
   // Handle tournament finished

@@ -987,6 +987,8 @@ export default function RaceScreen() {
             marbles={pos}
             marbleData={marbleDataRef.current}
             marblePositions={raceShared.marblePositions}
+            staticConfig={staticConfigRef.current ?? undefined}
+            raceShared={raceShared}
             windmills={wm}
             pendulums={pendulums}
             ballPitBalls={ballPitBalls}

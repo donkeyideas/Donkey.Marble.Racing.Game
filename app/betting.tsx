@@ -440,8 +440,10 @@ export default function BettingScreen() {
         </View>
       </ScrollView>
 
-      {/* Recent Results strip */}
-      {recentWinners.length > 0 && (
+      {/* Recent Results strip — hidden in franchise mode since the marble is
+          already locked for the season; nothing to pick, so the strip just
+          wastes vertical space. */}
+      {!isFranchiseLocked && recentWinners.length > 0 && (
         <View style={styles.recentSection}>
           <Text style={styles.recentTitle}>RECENT WINNERS</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentScroll}>

@@ -139,45 +139,20 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   ]);
 
   // === RAMPS ===
-  // Straight runs use rectangles; curved runs (where adjacent segment angles
-  // diverge by more than ~3°) use overlapping circles. Circles have no joints,
-  // so marbles roll through curves without catching on segment seams.
   const RAMP_THICKNESS = 14;
-  const RAMP_R = RAMP_THICKNESS / 2;
-  const ANGLE_THRESHOLD = 0.05; // ~3°
   track.ramps.forEach(ramp => {
-    const pts = ramp.points;
-    for (let j = 0; j < pts.length - 1; j++) {
-      const a = pts[j], b = pts[j + 1];
+    for (let j = 0; j < ramp.points.length - 1; j++) {
+      const a = ramp.points[j], b = ramp.points[j + 1];
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dy, dx);
-
-      const prevA = j > 0 ? Math.atan2(a.y - pts[j - 1].y, a.x - pts[j - 1].x) : angle;
-      const nextA = j < pts.length - 2 ? Math.atan2(pts[j + 2].y - b.y, pts[j + 2].x - b.x) : angle;
-      const isCurve = Math.abs(angle - prevA) > ANGLE_THRESHOLD ||
-                      Math.abs(nextA - angle) > ANGLE_THRESHOLD;
-
-      if (isCurve) {
-        const stepLen = RAMP_R * 0.8; // 60% overlap kills all seams
-        const count = Math.max(2, Math.ceil(len / stepLen));
-        for (let k = 0; k <= count; k++) {
-          const t = k / count;
-          Matter.Composite.add(world, Matter.Bodies.circle(
-            a.x + dx * t, a.y + dy * t, RAMP_R,
-            { isStatic: true, friction: 0.005, restitution: 0.3, label: 'ramp' },
-          ));
-        }
-      } else {
-        Matter.Composite.add(world,
-          Matter.Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, RAMP_THICKNESS, {
-            isStatic: true, angle,
-            friction: 0.005, restitution: 0.3,
-            chamfer: { radius: 4 },
-            label: 'ramp',
-          }),
-        );
-      }
+      Matter.Composite.add(world,
+        Matter.Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, RAMP_THICKNESS, {
+          isStatic: true, angle: Math.atan2(dy, dx),
+          friction: 0.005, restitution: 0.3, // near-zero rolling friction (avalanche demo pattern)
+          chamfer: { radius: 4 },
+          label: 'ramp',
+        }),
+      );
     }
   });
 
@@ -550,7 +525,17 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
   let finishRankCounter = 0;
 
-  // No anti-stuck hacks — physics must flow naturally. Doomsday bar is the only safety net.
+  // Per-marble stuck tracker — if a marble's vertical position barely moves
+  // over a short window we apply a gentle downward + lateral nudge so it
+  // doesn't park on a ledge or wedge into a corner. Doomsday bar still exists
+  // as the hard safety net at 45s, but unkick keeps the moment-to-moment race
+  // feeling alive (the user explicitly reported marbles getting stuck on the
+  // Thunder Cascade procedural track).
+  const STUCK_CHECK_MS = 600; // check progress every 0.6s
+  const STUCK_MIN_DROP = 3;   // px of downward progress required per window
+  const stuckLastY = new Map<Matter.Body, number>();
+  const stuckLastT = new Map<Matter.Body, number>();
+  const stuckKicks = new Map<Matter.Body, number>();
 
   // Doomsday bar — physical sweep bar for true physics finish guarantee
   const DOOMSDAY_TRIGGER_MS = 45000; // 45s — sweep stragglers (no anti-stuck, so trigger earlier)
@@ -614,20 +599,19 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       }
     }
 
-    // Windmills rotate every render frame proportional to frame time so they
-    // stay visually smooth on 120Hz displays. Previously rotation lived inside
-    // the physics accumulator gate, which on 120Hz devices made the blade hold
-    // still for one frame then jump 2x — visible jitter.
-    const wmScale = _dt / FRAME_DT;
-    wmBodies.forEach(wm => {
-      Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed * wmScale);
-    });
-
     // Time accumulator — run physics at fixed 60fps regardless of screen refresh rate
-    // On 120Hz screens, only every other frame advances physics (prevents 2x speed bug)
+    // On 120Hz screens, only every other frame advances physics (prevents 2x speed bug).
+    //
+    // Windmill rotation lives INSIDE this gate so it stays in lockstep with
+    // physics — a previous attempt to rotate every render frame (for 120Hz
+    // smoothness) caused the scrambler windmill to push marbles unpredictably
+    // at race start. The visible smoothness comes from the SharedValue render
+    // path consuming the angle every frame, not from rotating more often.
     physicsAccumulator += _dt;
     while (physicsAccumulator >= FRAME_DT) {
-      // Substeps for precision
+      wmBodies.forEach(wm => {
+        Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed);
+      });
       for (let s = 0; s < SUBSTEPS; s++) {
         Matter.Engine.update(engine, FIXED_DT);
       }
@@ -662,6 +646,36 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
           x: (Math.random() - 0.5) * 0.0003 * body.mass,
           y: 0,
         });
+      }
+
+      // Stuck detection — only kicks in after the gate opens and before finish.
+      // We sample the marble's Y once per STUCK_CHECK_MS; if it hasn't dropped
+      // by STUCK_MIN_DROP px in that window we apply a progressive nudge
+      // (small first, larger if it stays stuck). Avoids the "wedged on a ramp
+      // forever" failure mode without making the rest of the race look jittery.
+      if (gateOpen) {
+        const lastT = stuckLastT.get(body) ?? elapsed;
+        const lastY = stuckLastY.get(body) ?? body.position.y;
+        if (elapsed - lastT >= STUCK_CHECK_MS) {
+          const drop = body.position.y - lastY;
+          if (drop < STUCK_MIN_DROP) {
+            const kicks = (stuckKicks.get(body) ?? 0) + 1;
+            stuckKicks.set(body, kicks);
+            // Strength ramps with consecutive failed windows so persistently
+            // wedged marbles get bigger nudges. Caps at 3x so we never punt
+            // them across the screen.
+            const strength = Math.min(kicks, 3);
+            const lateralDir = body.position.x < W / 2 ? 1 : -1;
+            Matter.Body.setVelocity(body, {
+              x: body.velocity.x + lateralDir * 1.5 * strength + (Math.random() - 0.5) * 1.5,
+              y: body.velocity.y + 2 * strength,
+            });
+          } else {
+            stuckKicks.delete(body);
+          }
+          stuckLastT.set(body, elapsed);
+          stuckLastY.set(body, body.position.y);
+        }
       }
 
       // Finish detection. Marble crossed finishY — record the time and increment

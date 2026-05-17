@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +32,41 @@ function getMarbleById(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
 }
 
+interface CourseRowProps {
+  course: typeof COURSES[number];
+  onPress: (id: string) => void;
+}
+
+// React.memo so cards already mounted aren't re-rendered when activeFilter
+// changes or the parent re-renders for any other reason. With 96 courses,
+// this is the difference between buttery scroll and stutter.
+const CourseRow = React.memo(function CourseRow({ course, onPress }: CourseRowProps) {
+  const favoredMarble = getMarbleById(course.favoredMarbleId);
+  return (
+    <Pressable onPress={() => onPress(course.id)} style={styles.card}>
+      <LinearGradient colors={course.gradientColors} style={styles.cardThumbnail}>
+        <Text style={styles.cardThumbnailText}>{course.name.toUpperCase()}</Text>
+      </LinearGradient>
+      <View style={styles.cardBody}>
+        <View style={styles.cardInfoRow}>
+          <View style={styles.cardInfoLeft}>
+            <Text style={styles.cardName}>{course.name}</Text>
+            <Text style={styles.cardDescription}>{course.description}</Text>
+            <View style={styles.favorsRow}>
+              <Text style={styles.favorsLabel}>Favors: </Text>
+              <MarbleDot marble={favoredMarble} size={16} />
+              <Text style={styles.favorsMarbleName}>{favoredMarble.name}</Text>
+            </View>
+          </View>
+          <View style={styles.playPill}>
+            <Text style={styles.playPillText}>PLAY</Text>
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
 export default function CoursesScreen() {
   const router = useRouter();
   const selectCourse = useGameStore(s => s.selectCourse);
@@ -46,18 +81,82 @@ export default function CoursesScreen() {
 
   const setActiveMode = useGameStore(s => s.setActiveMode);
 
-  const handlePlay = (courseId: string) => {
+  const handlePlay = useCallback((courseId: string) => {
     selectCourse(courseId);
     setActiveMode({ type: 'quick_race' });
     useGameStore.getState().resetBet();
     router.push('/race');
-  };
+  }, [selectCourse, setActiveMode, router]);
 
-  const handleRandom = () => {
+  const handleRandom = useCallback(() => {
     const pool = filteredCourses.length > 0 ? filteredCourses : COURSES;
     const pick = pool[Math.floor(Math.random() * pool.length)];
     handlePlay(pick.id);
-  };
+  }, [filteredCourses, handlePlay]);
+
+  const ListHeader = useMemo(() => (
+    <>
+      <View style={styles.headerRow}>
+        <BackButton onPress={() => router.back()} />
+        <Text style={styles.title}>COURSES</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        {FILTER_TABS.map((tab) => {
+          const isActive = activeFilter === tab.value;
+          const themeColor =
+            tab.value === 'all' ? Colors.white
+            : tab.value === 'grand-prix' ? '#e74c3c'
+            : THEME_COLORS[tab.value];
+
+          return (
+            <Pressable
+              key={tab.value}
+              onPress={() => setActiveFilter(tab.value)}
+              style={[
+                styles.filterTab,
+                isActive
+                  ? styles.filterTabActive
+                  : {
+                      backgroundColor: themeColor + '1F',
+                      borderColor: themeColor + '33',
+                    },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterTabText,
+                  isActive
+                    ? styles.filterTabTextActive
+                    : { color: themeColor },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <Pressable onPress={handleRandom} style={styles.randomCard}>
+        <Text style={styles.randomDice}>🎲</Text>
+        <View style={styles.randomInfo}>
+          <Text style={styles.randomTitle}>RANDOM COURSE</Text>
+          <Text style={styles.randomDesc}>
+            Pick a random {activeFilter !== 'all' ? activeFilter + ' ' : ''}course and race!
+          </Text>
+        </View>
+        <View style={styles.playPill}>
+          <Text style={styles.playPillText}>GO</Text>
+        </View>
+      </Pressable>
+    </>
+  ), [activeFilter, router, handleRandom]);
 
   return (
     <LinearGradient
@@ -65,116 +164,19 @@ export default function CoursesScreen() {
       style={styles.fill}
     >
       <SafeAreaView style={styles.fill}>
-        <ScrollView
+        <FlatList
           style={styles.fill}
           contentContainerStyle={styles.scrollContent}
+          data={filteredCourses}
+          keyExtractor={(c) => c.id}
+          renderItem={({ item }) => <CourseRow course={item} onPress={handlePlay} />}
+          ListHeaderComponent={ListHeader}
           showsVerticalScrollIndicator={false}
-        >
-          {/* ===== HEADER ROW ===== */}
-          <View style={styles.headerRow}>
-            <BackButton onPress={() => router.back()} />
-            <Text style={styles.title}>COURSES</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-
-          {/* ===== FILTER TABS ===== */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {FILTER_TABS.map((tab) => {
-              const isActive = activeFilter === tab.value;
-              const themeColor =
-                tab.value === 'all' ? Colors.white
-                : tab.value === 'grand-prix' ? '#e74c3c'
-                : THEME_COLORS[tab.value];
-
-              return (
-                <Pressable
-                  key={tab.value}
-                  onPress={() => setActiveFilter(tab.value)}
-                  style={[
-                    styles.filterTab,
-                    isActive
-                      ? styles.filterTabActive
-                      : {
-                          backgroundColor: themeColor + '1F',
-                          borderColor: themeColor + '33',
-                        },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterTabText,
-                      isActive
-                        ? styles.filterTabTextActive
-                        : { color: themeColor },
-                    ]}
-                  >
-                    {tab.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          {/* ===== RANDOM CARD ===== */}
-          <Pressable onPress={handleRandom} style={styles.randomCard}>
-            <Text style={styles.randomDice}>🎲</Text>
-            <View style={styles.randomInfo}>
-              <Text style={styles.randomTitle}>RANDOM COURSE</Text>
-              <Text style={styles.randomDesc}>
-                Pick a random {activeFilter !== 'all' ? activeFilter + ' ' : ''}course and race!
-              </Text>
-            </View>
-            <View style={styles.playPill}>
-              <Text style={styles.playPillText}>GO</Text>
-            </View>
-          </Pressable>
-
-          {/* ===== COURSE CARDS ===== */}
-          {filteredCourses.map((course) => {
-            const favoredMarble = getMarbleById(course.favoredMarbleId);
-            const themeColor = THEME_COLORS[course.theme];
-
-            return (
-              <Pressable key={course.id} onPress={() => handlePlay(course.id)} style={styles.card}>
-                {/* Gradient thumbnail */}
-                <LinearGradient
-                  colors={course.gradientColors}
-                  style={styles.cardThumbnail}
-                >
-                  <Text style={styles.cardThumbnailText}>
-                    {course.name.toUpperCase()}
-                  </Text>
-                </LinearGradient>
-
-                {/* Course info */}
-                <View style={styles.cardBody}>
-                  <View style={styles.cardInfoRow}>
-                    <View style={styles.cardInfoLeft}>
-                      <Text style={styles.cardName}>{course.name}</Text>
-                      <Text style={styles.cardDescription}>
-                        {course.description}
-                      </Text>
-                      <View style={styles.favorsRow}>
-                        <Text style={styles.favorsLabel}>Favors: </Text>
-                        <MarbleDot marble={favoredMarble} size={16} />
-                        <Text style={styles.favorsMarbleName}>
-                          {favoredMarble.name}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.playPill}>
-                      <Text style={styles.playPillText}>PLAY</Text>
-                    </View>
-                  </View>
-                </View>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews
+        />
       </SafeAreaView>
     </LinearGradient>
   );
