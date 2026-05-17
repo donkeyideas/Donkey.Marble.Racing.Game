@@ -496,6 +496,15 @@ export default function RaceScreen() {
     windmills: [], pendulums: [], cradles: [], ballPitRadii: [],
     trampolines: [], speedBursts: [],
   });
+  // Pooled scratch buffers for per-frame physics→SharedValue writes. Reused
+  // across frames instead of allocating a fresh array each tick — reduces
+  // GC pressure that was causing mid-race frame drops.
+  const scratchPosRef = useRef<number[]>([]);
+  const scratchWmRef = useRef<number[]>([]);
+  const scratchPenRef = useRef<number[]>([]);
+  const scratchCrRef = useRef<number[]>([]);
+  const scratchBpRef = useRef<number[]>([]);
+  const scratchSbRef = useRef<number[]>([]);
 
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0, wm: [],
@@ -859,45 +868,40 @@ export default function RaceScreen() {
 
       // === PERFORMANCE: write every animated value to SharedValues every frame.
       // Skia consumes these on the UI thread — no React re-render needed.
-      // The React state below only carries leaderboard + timer at ~5Hz.
+      //
+      // Object-pooled buffers (allocated once in refs below). We mutate in
+      // place, then assign a NEW slice to .value so Reanimated detects the
+      // change. Pre-Object-pool we were `[].push()`ing ~7 fresh arrays/frame
+      // = ~420 allocations/sec, which generated visible GC pauses mid-race.
+      const flatPos = scratchPosRef.current;
+      flatPos.length = 0;
+      for (let i = 0; i < st.marbles.length; i++) flatPos.push(st.marbles[i].x, st.marbles[i].y);
+      raceShared.marblePositions.value = flatPos.slice();
 
-      // Marbles
-      const flatPos: number[] = [];
-      for (let i = 0; i < st.marbles.length; i++) {
-        flatPos.push(st.marbles[i].x, st.marbles[i].y);
-      }
-      raceShared.marblePositions.value = flatPos;
-
-      // Windmills — only the angle changes per frame
-      const wmAngles: number[] = [];
+      const wmAngles = scratchWmRef.current;
+      wmAngles.length = 0;
       for (let i = 0; i < st.windmills.length; i++) wmAngles.push(st.windmills[i].angle);
-      raceShared.windmillAngles.value = wmAngles;
+      raceShared.windmillAngles.value = wmAngles.slice();
 
-      // Pendulums — only bob position changes
-      const penBobs: number[] = [];
-      for (let i = 0; i < st.pendulums.length; i++) {
-        penBobs.push(st.pendulums[i].bobX, st.pendulums[i].bobY);
-      }
-      raceShared.pendulumBobs.value = penBobs;
+      const penBobs = scratchPenRef.current;
+      penBobs.length = 0;
+      for (let i = 0; i < st.pendulums.length; i++) penBobs.push(st.pendulums[i].bobX, st.pendulums[i].bobY);
+      raceShared.pendulumBobs.value = penBobs.slice();
 
-      // Cradles
-      const crBobs: number[] = [];
-      for (let i = 0; i < st.cradles.length; i++) {
-        crBobs.push(st.cradles[i].bobX, st.cradles[i].bobY);
-      }
-      raceShared.cradleBobs.value = crBobs;
+      const crBobs = scratchCrRef.current;
+      crBobs.length = 0;
+      for (let i = 0; i < st.cradles.length; i++) crBobs.push(st.cradles[i].bobX, st.cradles[i].bobY);
+      raceShared.cradleBobs.value = crBobs.slice();
 
-      // Ball pit balls
-      const bpPos: number[] = [];
-      for (let i = 0; i < st.ballPitBalls.length; i++) {
-        bpPos.push(st.ballPitBalls[i].x, st.ballPitBalls[i].y);
-      }
-      raceShared.ballPitPositions.value = bpPos;
+      const bpPos = scratchBpRef.current;
+      bpPos.length = 0;
+      for (let i = 0; i < st.ballPitBalls.length; i++) bpPos.push(st.ballPitBalls[i].x, st.ballPitBalls[i].y);
+      raceShared.ballPitPositions.value = bpPos.slice();
 
-      // Speed bursts (just per-pad active flag)
-      const sbActive: number[] = [];
+      const sbActive = scratchSbRef.current;
+      sbActive.length = 0;
       for (let i = 0; i < st.speedBursts.length; i++) sbActive.push(st.speedBursts[i].active ? 1 : 0);
-      raceShared.speedBurstActive.value = sbActive;
+      raceShared.speedBurstActive.value = sbActive.slice();
 
       // Doomsday bar
       if (st.doomsdayBar) {

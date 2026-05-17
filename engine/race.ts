@@ -63,8 +63,13 @@ export const TRACK_DATA = DEFAULT_TRACK;
 // === Physics Constants (from Matter.js demos) ===
 
 // Fixed-timestep substeps for precision (from substep demo)
-const SUBSTEPS = 3;
-const FIXED_DT = (1000 / 60) / SUBSTEPS; // ~5.56ms per substep
+// 2 substeps × 60Hz = 120 physics ticks/sec. We previously ran 3 substeps for
+// extra stability, but with enableSleeping ON resting marbles cost nothing and
+// the velocity/position iteration counts (10/8 on engine create, up from
+// default 6/4) make 2 substeps perfectly stable. Net result: 33% less physics
+// work per frame, which is most of the mid-race FPS savings.
+const SUBSTEPS = 2;
+const FIXED_DT = (1000 / 60) / SUBSTEPS; // ~8.33ms per substep
 
 // Collision categories — simplified, no more DECOR hack
 const CAT_WALL     = 0x0001; // Static: walls, ramps, funnels, pegs, bumpers
@@ -103,6 +108,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     gravity: track.gravity,
     positionIterations: 10, // up from default 6 — better stability
     velocityIterations: 8,  // up from default 4
+    // CRITICAL FOR FPS: bodies that come to rest stop being simulated.
+    // Massive win at end-of-race when 5+ marbles have settled into the
+    // finish channel — they used to cost 3 substeps × full constraint
+    // solving each, despite being motionless.
+    enableSleeping: true,
   } as any);
   const world = engine.world;
   const W = track.engineWidth;
