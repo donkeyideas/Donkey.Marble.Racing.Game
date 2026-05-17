@@ -78,6 +78,10 @@ export interface LobbyData {
    *  historical lobbies in the DB. New lobbies set this to 0 at creation. */
   prizePool: number;
   payoutMode: PayoutMode;
+  /** 6-character invite code for private lobbies. undefined = public. */
+  code?: string;
+  /** Private lobbies are excluded from quickMatch/findOpenLobbies/browser. */
+  isPrivate?: boolean;
   players: Record<string, LobbyPlayer>;
   rounds: LobbyRound[];
   currentRound: number;
@@ -195,6 +199,104 @@ export async function createLobby(
 }
 
 // ---------------------------------------------------------------------------
+// Create Private Lobby — generates a 6-char code, excludes from quickMatch
+// ---------------------------------------------------------------------------
+
+export async function createPrivateLobby(
+  uid: string,
+  displayName: string,
+  tier: 'daily' | 'weekly' | 'champion',
+  payoutMode: PayoutMode = 'standard',
+): Promise<{ lobbyId: string; code: string }> {
+  const newRef = push(activeLobbiesRef());
+  const lobbyId = newRef.key!;
+  const tierConfig = MP_TIERS[tier];
+
+  const seed = Date.now();
+  const shuffled = [...ALL_COURSES].sort(() => Math.random() - 0.5);
+  const courses = shuffled.slice(0, 7).map((c) => c.id);
+  const code = generateLobbyCode();
+
+  const lobby: LobbyData = {
+    hostUid: uid,
+    status: 'waiting',
+    tier,
+    entryFee: tierConfig.entryFee,
+    prizePool: 0,
+    payoutMode,
+    code,
+    isPrivate: true,
+    players: {
+      [uid]: {
+        uid,
+        displayName,
+        isHost: true,
+        isBot: false,
+        marbleId: null,
+        eliminated: false,
+        eliminatedRound: null,
+        joinedAt: Date.now(),
+      },
+    },
+    rounds: [],
+    currentRound: 0,
+    draftOrder: [],
+    draftTurn: 0,
+    availableMarbles: MARBLES.map((m) => m.id),
+    courseSeed: seed,
+    courses,
+    createdAt: Date.now(),
+    startedAt: null,
+    maxPlayers: MAX_PLAYERS,
+  };
+
+  await set(newRef, lobby);
+  return { lobbyId, code };
+}
+
+// ---------------------------------------------------------------------------
+// Join by Code — look up a private lobby by its invite code
+// ---------------------------------------------------------------------------
+
+export async function joinByCode(
+  code: string,
+  uid: string,
+  displayName: string,
+): Promise<{ ok: true; lobbyId: string } | { ok: false; reason: string }> {
+  const normalized = code.trim().toUpperCase();
+  if (normalized.length !== 6) {
+    return { ok: false, reason: 'Codes are 6 characters.' };
+  }
+  // Scan recent lobbies for one matching the code. We don't pay for a
+  // separate indexed query — the recent-N window is plenty for this.
+  const q = query(activeLobbiesRef(), limitToLast(100));
+  const snap = await get(q);
+  let matchId: string | null = null;
+  let matchLobby: LobbyData | null = null;
+  snap.forEach((childSnap: DataSnapshot) => {
+    const lobby = childSnap.val() as LobbyData;
+    if (!lobby) return undefined;
+    if (lobby.code === normalized && Date.now() - lobby.createdAt < LOBBY_EXPIRY_MS) {
+      matchId = childSnap.key!;
+      matchLobby = lobby;
+    }
+    return undefined;
+  });
+  if (!matchId || !matchLobby) {
+    return { ok: false, reason: 'No lobby found with that code, or it has expired.' };
+  }
+  if ((matchLobby as LobbyData).status !== 'waiting') {
+    return { ok: false, reason: 'That lobby has already started.' };
+  }
+  if (Object.keys((matchLobby as LobbyData).players || {}).length >= MAX_PLAYERS) {
+    return { ok: false, reason: 'That lobby is full.' };
+  }
+  const joined = await joinLobby(matchId, uid, displayName);
+  if (!joined) return { ok: false, reason: 'Couldn’t join (maybe it just filled).' };
+  return { ok: true, lobbyId: matchId };
+}
+
+// ---------------------------------------------------------------------------
 // Join Lobby
 // ---------------------------------------------------------------------------
 
@@ -254,6 +356,7 @@ export async function findOpenLobbies(
     if (
       lobby.tier === tier &&
       lobby.status === 'waiting' &&
+      !lobby.isPrivate &&  // private lobbies are code-only, never auto-matched
       Object.keys(lobby.players || {}).length < MAX_PLAYERS &&
       Date.now() - lobby.createdAt < LOBBY_EXPIRY_MS
     ) {
@@ -263,6 +366,73 @@ export async function findOpenLobbies(
   });
 
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Find All Open Public Lobbies — for the manual lobby browser
+// ---------------------------------------------------------------------------
+
+export async function findAllOpenPublicLobbies(): Promise<{ lobbyId: string; lobby: LobbyData }[]> {
+  const q = query(activeLobbiesRef(), limitToLast(50));
+  const snap = await get(q);
+  const results: { lobbyId: string; lobby: LobbyData }[] = [];
+  snap.forEach((childSnap: DataSnapshot) => {
+    const lobby = childSnap.val() as LobbyData;
+    if (!lobby) return undefined;
+    if (
+      lobby.status === 'waiting' &&
+      !lobby.isPrivate &&
+      Object.keys(lobby.players || {}).length < MAX_PLAYERS &&
+      Date.now() - lobby.createdAt < LOBBY_EXPIRY_MS
+    ) {
+      results.push({ lobbyId: childSnap.key!, lobby });
+    }
+    return undefined;
+  });
+  // Newest first
+  results.sort((a, b) => b.lobby.createdAt - a.lobby.createdAt);
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Queue Counts — how many players are currently queued in each tier+mode
+// ---------------------------------------------------------------------------
+
+export type QueueKey = `${'daily' | 'weekly' | 'champion'}-${PayoutMode}`;
+export type QueueCounts = Record<QueueKey, number>;
+
+export function emptyQueueCounts(): QueueCounts {
+  const tiers: ('daily' | 'weekly' | 'champion')[] = ['daily', 'weekly', 'champion'];
+  const modes: PayoutMode[] = ['standard', 'winner_takes_all', 'survivors'];
+  const out = {} as QueueCounts;
+  for (const t of tiers) for (const m of modes) out[`${t}-${m}` as QueueKey] = 0;
+  return out;
+}
+
+export async function getQueueCounts(): Promise<QueueCounts> {
+  const lobbies = await findAllOpenPublicLobbies();
+  const counts = emptyQueueCounts();
+  for (const { lobby } of lobbies) {
+    const humans = Object.values(lobby.players || {}).filter(p => !p.isBot).length;
+    const mode = (lobby.payoutMode || 'standard') as PayoutMode;
+    const key = `${lobby.tier}-${mode}` as QueueKey;
+    if (key in counts) counts[key] += humans;
+  }
+  return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Lobby Codes — 6-char alphanumeric, no ambiguous chars (0/O, 1/I/L)
+// ---------------------------------------------------------------------------
+
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // skip 0,O,1,I,L
+
+export function generateLobbyCode(): string {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  }
+  return code;
 }
 
 // ---------------------------------------------------------------------------

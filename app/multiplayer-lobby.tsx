@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Share,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +31,12 @@ import {
   MP_RAKE,
   subscribeLobby,
   quickMatch,
+  createPrivateLobby,
+  joinByCode,
+  findAllOpenPublicLobbies,
+  getQueueCounts,
+  emptyQueueCounts,
+  QueueCounts,
   backfillWithBots,
   startDraft,
   draftPick,
@@ -41,6 +50,7 @@ import {
   MP_TIERS,
   AI_BACKFILL_DELAY_MS,
 } from '../lib/multiplayer';
+import { recordPlayedWith } from '../lib/mpFriends';
 
 type Phase = 'pick_payout' | 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished' | 'submitting';
 
@@ -63,6 +73,16 @@ export default function MultiplayerLobbyScreen() {
 
   const [lobbyId, setLobbyId] = useState<string | null>(existingMpLobbyId);
   const [lobby, setLobby] = useState<LobbyData | null>(null);
+
+  // Auxiliary state for the new matchmaking entry points: lobby codes,
+  // public browser, and live queue counts.
+  const [queueCounts, setQueueCounts] = useState<QueueCounts>(emptyQueueCounts());
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [browseLobbies, setBrowseLobbies] = useState<{ lobbyId: string; lobby: LobbyData }[]>([]);
+  const [codeOpen, setCodeOpen] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [createdCode, setCreatedCode] = useState<string | null>(null);
   // 'submitting' on resume — keep the user from seeing a 'RACE NOW' flash
   // while we send their round result to the server. The lobby-subscription
   // effect below will flip phase to 'round_result' once the server advances.
@@ -83,6 +103,21 @@ export default function MultiplayerLobbyScreen() {
   const uid = firebaseUid || 'local-player';
   const displayName = firebaseDisplayName || useGameStore.getState().playerName || 'Player';
   const tierConfig = MP_TIERS[tier];
+
+  // ---------------------------------------------------------------------------
+  // Live queue counts on the pick screen — refreshes every 8s so the tier
+  // cards can show "3 queued" badges. Stops once we leave pick_payout.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (phase !== 'pick_payout') return;
+    let cancelled = false;
+    const refresh = () => {
+      getQueueCounts().then(c => { if (!cancelled) setQueueCounts(c); }).catch(() => {});
+    };
+    refresh();
+    const id = setInterval(refresh, 8000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [phase]);
 
   // ---------------------------------------------------------------------------
   // Mount-time lastResult handling
@@ -108,13 +143,8 @@ export default function MultiplayerLobbyScreen() {
     }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Start matchmaking with the player's chosen payout mode
-  // ---------------------------------------------------------------------------
-  const beginMatchmaking = useCallback(async (mode: PayoutMode) => {
-    setPayoutMode(mode);
-    setPhase('matching');
-
+  // Common pre-entry check + fee charge used by all entry paths.
+  const chargeEntryFee = useCallback((): boolean => {
     const store = useGameStore.getState();
     if (store.coins < tierConfig.entryFee) {
       showModal({
@@ -125,10 +155,142 @@ export default function MultiplayerLobbyScreen() {
           { label: 'Back', variant: 'ghost', onPress: () => router.back() },
         ],
       });
+      return false;
+    }
+    store.removeCoins(tierConfig.entryFee);
+    return true;
+  }, [tierConfig.entryFee, router]);
+
+  // ---------------------------------------------------------------------------
+  // Create a PRIVATE lobby — generates a 6-char code that can be shared.
+  // The lobby is excluded from quickMatch / public browser, so only people
+  // who have the code can join.
+  // ---------------------------------------------------------------------------
+  const createPrivate = useCallback(async (mode: PayoutMode) => {
+    if (!chargeEntryFee()) return;
+    setPayoutMode(mode);
+    setPhase('matching');
+    try {
+      const { lobbyId: id, code } = await createPrivateLobby(uid, displayName, tier, mode);
+      setLobbyId(id);
+      setMpLobbyId(id);
+      setCreatedCode(code);
+      setPhase('waiting');
+    } catch (e: any) {
+      useGameStore.getState().addCoins(tierConfig.entryFee);
+      const msg = e?.message ?? 'Network error';
+      showModal({
+        title: 'Couldn’t Create Lobby',
+        message: `${msg}\n\nEntry refunded.`,
+        buttons: [{ label: 'OK', variant: 'yellow' }],
+      });
+      setPhase('pick_payout');
+    }
+  }, [chargeEntryFee, uid, displayName, tier, setMpLobbyId, tierConfig.entryFee]);
+
+  // ---------------------------------------------------------------------------
+  // Join a lobby by its 6-char code. Validates the code locally first (length,
+  // alphabet), then hands off to joinByCode which scans recent lobbies.
+  // ---------------------------------------------------------------------------
+  const submitCode = useCallback(async () => {
+    setCodeError(null);
+    if (!chargeEntryFee()) {
+      setCodeOpen(false);
+      return;
+    }
+    setPhase('matching');
+    setCodeOpen(false);
+    const res = await joinByCode(codeInput, uid, displayName);
+    if (!res.ok) {
+      // Refund + surface the reason
+      useGameStore.getState().addCoins(tierConfig.entryFee);
+      setCodeError(res.reason);
+      setCodeOpen(true);
       setPhase('pick_payout');
       return;
     }
-    store.removeCoins(tierConfig.entryFee);
+    setLobbyId(res.lobbyId);
+    setMpLobbyId(res.lobbyId);
+    setCodeInput('');
+    setPhase('waiting');
+  }, [chargeEntryFee, codeInput, uid, displayName, setMpLobbyId, tierConfig.entryFee]);
+
+  // ---------------------------------------------------------------------------
+  // Open the public lobby browser
+  // ---------------------------------------------------------------------------
+  const openBrowse = useCallback(async () => {
+    setBrowseOpen(true);
+    try {
+      const list = await findAllOpenPublicLobbies();
+      // Hide lobbies for tiers the player can't afford so they don't tap
+      // through to a refund flow.
+      const affordable = list.filter(l => l.lobby.entryFee <= coins);
+      setBrowseLobbies(affordable);
+    } catch {
+      setBrowseLobbies([]);
+    }
+  }, [coins]);
+
+  // Join the specific lobby the user picked from the browser.
+  const joinBrowseLobby = useCallback(async (target: { lobbyId: string; lobby: LobbyData }) => {
+    setBrowseOpen(false);
+    // Use that lobby's tier / mode for accounting, not the screen's current
+    // tier — the user may be browsing across tiers from a Daily Blitz entry.
+    const fee = target.lobby.entryFee;
+    const store = useGameStore.getState();
+    if (store.coins < fee) {
+      showModal({
+        title: 'Not Enough Coins',
+        message: `You need ${fee} coins for this lobby.`,
+        buttons: [{ label: 'OK', variant: 'yellow' }],
+      });
+      return;
+    }
+    store.removeCoins(fee);
+    setPhase('matching');
+    try {
+      const { joinLobby } = await import('../lib/multiplayer');
+      const joined = await joinLobby(target.lobbyId, uid, displayName);
+      if (!joined) {
+        store.addCoins(fee);
+        showModal({
+          title: 'Couldn’t Join',
+          message: 'That lobby just filled or started. Try another.',
+          buttons: [{ label: 'OK', variant: 'yellow' }],
+        });
+        setPhase('pick_payout');
+        return;
+      }
+      setLobbyId(target.lobbyId);
+      setMpLobbyId(target.lobbyId);
+      setPayoutMode((target.lobby.payoutMode || 'standard') as PayoutMode);
+      setPhase('waiting');
+    } catch (e: any) {
+      store.addCoins(fee);
+      setPhase('pick_payout');
+    }
+  }, [uid, displayName, setMpLobbyId]);
+
+  // Share the active lobby's invite code via the OS share sheet.
+  const shareCode = useCallback(async () => {
+    const code = createdCode || lobby?.code;
+    if (!code) return;
+    try {
+      await Share.share({
+        message: `Join my Donkey Marble Racing lobby — code: ${code}`,
+      });
+    } catch {
+      /* user cancelled */
+    }
+  }, [createdCode, lobby?.code]);
+
+  // ---------------------------------------------------------------------------
+  // Start matchmaking with the player's chosen payout mode
+  // ---------------------------------------------------------------------------
+  const beginMatchmaking = useCallback(async (mode: PayoutMode) => {
+    if (!chargeEntryFee()) return;
+    setPayoutMode(mode);
+    setPhase('matching');
 
     try {
       const id = await quickMatch(uid, displayName, tier, mode);
@@ -356,6 +518,16 @@ export default function MultiplayerLobbyScreen() {
     const placement = getPlayerPlacement(lobby, uid);
     const payout = calculateMPPayout(lobby, placement);
     setMpResult(placement, payout);
+
+    // Auto-record human opponents into the local friends list so they
+    // appear on the user's "recently played with" screen next time. No
+    // network — pure AsyncStorage on this device.
+    const opponents = Object.values(lobby.players || {}).map((p) => ({
+      uid: p.uid,
+      displayName: p.displayName,
+      isBot: !!p.isBot,
+    }));
+    recordPlayedWith(uid, opponents).catch(() => {});
   }, [lobby?.status]);
 
   // ---------------------------------------------------------------------------
@@ -471,6 +643,7 @@ export default function MultiplayerLobbyScreen() {
                 const breakdown = PAYOUT_BREAKDOWNS[mode];
                 const top = breakdown[0];
                 const topPayout = Math.floor(maxPool * top.pct / 100);
+                const queued = queueCounts[`${tier}-${mode}` as const] ?? 0;
                 return (
                   <Pressable
                     key={mode}
@@ -482,7 +655,15 @@ export default function MultiplayerLobbyScreen() {
                   >
                     <View style={styles.payoutModeHeader}>
                       <Text style={styles.payoutModeLabel}>{meta.label}</Text>
-                      <Text style={styles.payoutModeTopPrize}>up to {topPayout.toLocaleString()}</Text>
+                      <View style={styles.payoutModeRight}>
+                        {queued > 0 && (
+                          <View style={styles.queueBadge}>
+                            <View style={styles.queueDot} />
+                            <Text style={styles.queueBadgeText}>{queued} queued</Text>
+                          </View>
+                        )}
+                        <Text style={styles.payoutModeTopPrize}>up to {topPayout.toLocaleString()}</Text>
+                      </View>
                     </View>
                     <Text style={styles.payoutModeTagline}>{meta.tagline}</Text>
                     <View style={styles.payoutBreakdownRow}>
@@ -500,6 +681,40 @@ export default function MultiplayerLobbyScreen() {
               <Text style={styles.rakeFootnote}>
                 {Math.round(MP_RAKE * 100)}% of each pot is held back by the house. The rest is paid out.
               </Text>
+
+              {/* Alternate entry methods: enter a friend's code, browse
+                  open lobbies, or create a private coded lobby. */}
+              <Text style={[styles.payoutPickerTitle, { fontSize: 13, marginTop: 18, marginBottom: 8 }]}>
+                OR PLAY WITH FRIENDS
+              </Text>
+              <View style={styles.altEntryRow}>
+                <Pressable style={styles.altEntryBtn} onPress={() => { setCodeError(null); setCodeOpen(true); }}>
+                  <Text style={styles.altEntryEmoji}>#</Text>
+                  <Text style={styles.altEntryLabel}>ENTER CODE</Text>
+                </Pressable>
+                <Pressable style={styles.altEntryBtn} onPress={openBrowse}>
+                  <Text style={styles.altEntryEmoji}>~</Text>
+                  <Text style={styles.altEntryLabel}>BROWSE</Text>
+                </Pressable>
+              </View>
+              <Pressable
+                style={styles.privateBtn}
+                onPress={() => {
+                  showModal({
+                    title: 'Pick a payout mode',
+                    message: 'Your private lobby will use this payout mode. Friends who join with your code race under the same rules.',
+                    buttons: [
+                      { label: 'Standard', variant: 'yellow', onPress: () => createPrivate('standard') },
+                      { label: 'Winner Takes All', variant: 'yellow', onPress: () => createPrivate('winner_takes_all') },
+                      { label: 'Survivors', variant: 'yellow', onPress: () => createPrivate('survivors') },
+                      { label: 'Cancel', variant: 'ghost' },
+                    ],
+                  });
+                }}
+              >
+                <Text style={styles.privateBtnLabel}>CREATE PRIVATE LOBBY</Text>
+                <Text style={styles.privateBtnSub}>Get a 6-character code to share</Text>
+              </Pressable>
             </>
           )}
 
@@ -530,6 +745,21 @@ export default function MultiplayerLobbyScreen() {
           {/* PHASE: Waiting for players */}
           {phase === 'waiting' && (
             <>
+              {/* Invite-code card — only for private lobbies. Big readable
+                  code + native share sheet so the host can invite friends. */}
+              {(lobby?.isPrivate || createdCode) && (lobby?.code || createdCode) && (
+                <View style={styles.codeCard}>
+                  <Text style={styles.codeCardLabel}>INVITE CODE</Text>
+                  <Text style={styles.codeCardValue}>{(lobby?.code || createdCode)}</Text>
+                  <Pressable style={styles.codeShareBtn} onPress={shareCode}>
+                    <Text style={styles.codeShareBtnText}>SHARE CODE</Text>
+                  </Pressable>
+                  <Text style={styles.codeCardHint}>
+                    Friends tap ENTER CODE on the multiplayer screen and type this in.
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.centerCard}>
                 <Text style={styles.statusTitle}>WAITING FOR PLAYERS</Text>
                 <Text style={styles.statusSub}>
@@ -831,6 +1061,80 @@ export default function MultiplayerLobbyScreen() {
           })()}
         </ScrollView>
       </SafeAreaView>
+
+      {/* ──── ENTER CODE modal ──────────────────────────────────────────── */}
+      <Modal visible={codeOpen} transparent animationType="fade" onRequestClose={() => setCodeOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCodeOpen(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>ENTER LOBBY CODE</Text>
+            <Text style={styles.modalSub}>Type the 6-character code your friend shared.</Text>
+            <TextInput
+              style={styles.codeInput}
+              value={codeInput}
+              onChangeText={(t) => setCodeInput(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              placeholder="A1B2C3"
+              placeholderTextColor={Colors.whiteAlpha40}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={6}
+            />
+            {codeError && <Text style={styles.codeError}>{codeError}</Text>}
+            <View style={styles.modalBtnRow}>
+              <Pressable style={[styles.modalBtn, styles.modalBtnGhost]} onPress={() => { setCodeOpen(false); setCodeInput(''); setCodeError(null); }}>
+                <Text style={styles.modalBtnGhostText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalBtn, codeInput.length === 6 ? styles.modalBtnYellow : styles.modalBtnDisabled]}
+                onPress={() => { if (codeInput.length === 6) submitCode(); }}
+              >
+                <Text style={styles.modalBtnYellowText}>JOIN</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ──── BROWSE PUBLIC LOBBIES modal ────────────────────────────────── */}
+      <Modal visible={browseOpen} transparent animationType="fade" onRequestClose={() => setBrowseOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setBrowseOpen(false)}>
+          <Pressable style={[styles.modalCard, { maxHeight: '80%' }]} onPress={() => {}}>
+            <Text style={styles.modalTitle}>OPEN LOBBIES</Text>
+            <Text style={styles.modalSub}>
+              Public lobbies waiting for players. Tap to join.
+            </Text>
+            <ScrollView style={{ maxHeight: 400, marginTop: 12 }}>
+              {browseLobbies.length === 0 ? (
+                <Text style={styles.browseEmpty}>
+                  No open public lobbies right now. Try quick match or create a private lobby to start one.
+                </Text>
+              ) : (
+                browseLobbies.map((entry) => {
+                  const humans = Object.values(entry.lobby.players || {}).filter(p => !p.isBot).length;
+                  const total = Object.keys(entry.lobby.players || {}).length;
+                  const tierLabel = MP_TIERS[entry.lobby.tier]?.label || entry.lobby.tier;
+                  const modeLabel = PAYOUT_MODE_META[(entry.lobby.payoutMode || 'standard') as PayoutMode].label;
+                  return (
+                    <Pressable
+                      key={entry.lobbyId}
+                      onPress={() => joinBrowseLobby(entry)}
+                      style={({ pressed }) => [styles.browseRow, pressed && { opacity: 0.85 }]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.browseRowTier}>{tierLabel}</Text>
+                        <Text style={styles.browseRowMode}>{modeLabel} · Entry {entry.lobby.entryFee}</Text>
+                      </View>
+                      <Text style={styles.browseRowCount}>{humans}/{total}{total < 8 ? `/${8}` : ''}</Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+            <Pressable style={[styles.modalBtn, styles.modalBtnGhost, { marginTop: 12 }]} onPress={() => setBrowseOpen(false)}>
+              <Text style={styles.modalBtnGhostText}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -968,6 +1272,246 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 20,
+  },
+
+  // === Queue badge + alt entry ===
+  payoutModeRight: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  queueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(46,204,113,0.18)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  queueDot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: '#2ecc71',
+  },
+  queueBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: '#2ecc71',
+    letterSpacing: 0.5,
+  },
+  altEntryRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+  },
+  altEntryBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 4,
+  },
+  altEntryEmoji: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: Colors.yellow,
+  },
+  altEntryLabel: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    color: Colors.white,
+    letterSpacing: 1,
+  },
+  privateBtn: {
+    backgroundColor: 'rgba(155,89,182,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(155,89,182,0.5)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  privateBtnLabel: {
+    fontFamily: Fonts.display,
+    fontSize: 15,
+    color: '#c39bd3',
+    letterSpacing: 1,
+  },
+  privateBtnSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    marginTop: 3,
+  },
+
+  // === Code card (visible in waiting phase for private lobbies) ===
+  codeCard: {
+    backgroundColor: 'rgba(255,194,32,0.10)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,194,32,0.40)',
+    borderRadius: BorderRadius.lg,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  codeCardLabel: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 10,
+    color: Colors.yellow,
+    letterSpacing: 2,
+    marginBottom: 6,
+  },
+  codeCardValue: {
+    fontFamily: Fonts.display,
+    fontSize: 36,
+    color: Colors.white,
+    letterSpacing: 6,
+    marginBottom: 12,
+  },
+  codeShareBtn: {
+    backgroundColor: Colors.yellow,
+    borderRadius: BorderRadius.pill,
+    paddingHorizontal: 22,
+    paddingVertical: 8,
+  },
+  codeShareBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.ink,
+    letterSpacing: 1,
+  },
+  codeCardHint: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    marginTop: 10,
+    textAlign: 'center',
+    paddingHorizontal: 6,
+  },
+
+  // === Modals (code entry + browser) ===
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: '#0a1a3a',
+    borderWidth: 2,
+    borderColor: 'rgba(255,194,32,0.4)',
+    borderRadius: BorderRadius.lg,
+    padding: 20,
+  },
+  modalTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.yellow,
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  modalSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha60,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  codeInput: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,194,32,0.5)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 8,
+    fontFamily: Fonts.display,
+    fontSize: 26,
+    color: Colors.white,
+    letterSpacing: 6,
+    textAlign: 'center',
+  },
+  codeError: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    color: '#e74c3c',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalBtnGhost: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  modalBtnGhostText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+  modalBtnYellow: {
+    backgroundColor: Colors.yellow,
+  },
+  modalBtnDisabled: {
+    backgroundColor: 'rgba(255,194,32,0.25)',
+  },
+  modalBtnYellowText: {
+    fontFamily: Fonts.display,
+    fontSize: 14,
+    color: Colors.ink,
+    letterSpacing: 1,
+  },
+  browseEmpty: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha50,
+    textAlign: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 12,
+    lineHeight: 17,
+  },
+  browseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    gap: 12,
+  },
+  browseRowTier: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+  },
+  browseRowMode: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    marginTop: 2,
+  },
+  browseRowCount: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.yellow,
   },
 
   // === Live pool ticker ===
