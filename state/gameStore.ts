@@ -543,6 +543,11 @@ export const useGameStore = create<GameState>()(
 
     // --- Sync race to server (fire-and-forget); reconcile coins from server ---
     const course = COURSES.find(c => c.id === get().selectedCourseId);
+    // Quick Race has no betting UI and shouldn't move coins. Force 0/0 here
+    // so the global betAmount default (100) doesn't leak into the race record.
+    // Server also enforces this as defense-in-depth.
+    const syncBet = isQuickRace ? 0 : result.betAmount;
+    const syncPayout = isQuickRace ? 0 : result.payout;
     syncRaceResult(
       {
         courseId: get().selectedCourseId,
@@ -550,8 +555,8 @@ export const useGameStore = create<GameState>()(
         gameMode: activeMode.type,
         finishOrder: positionIds,
         playerPickId: result.playerPick?.id ?? null,
-        betAmount: result.betAmount,
-        payout: result.payout,
+        betAmount: syncBet,
+        payout: syncPayout,
         playerPlacement: result.playerPlacement,
         // Sync the strict 1st-place flag so server-side "wins" analytics aren't
         // inflated by tournament-round survivals.
