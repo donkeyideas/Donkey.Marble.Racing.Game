@@ -77,7 +77,7 @@ export default function SeasonScreen() {
     initSeason(
       nextSeasonNum,
       selectedMode,
-      selectedMode === 'franchise' ? selectedSeasonMarble!.id : null,
+      selectedMode === 'franchise' ? selectedSeasonMarble!.id : undefined,
     );
   };
 

@@ -27,7 +27,8 @@ export type EconomyAction =
   | 'mp_entry'
   | 'mp_payout'
   | 'custom_track_entry'
-  | 'season_starter_bonus';
+  | 'season_starter_bonus'
+  | 'client_balance_reconciliation';
 
 export interface EconomyResponse {
   success: true;

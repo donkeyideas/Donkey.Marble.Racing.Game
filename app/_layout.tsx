@@ -18,6 +18,7 @@ import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth'
 import { registerForPushNotifications, unregisterPushNotifications } from '../lib/pushRegistration';
 import { initSessionTracker, startSession, endSession } from '../lib/sessionTracker';
 import { flushEconomyQueue, clearEconomyQueue } from '../lib/syncQueue';
+import { reconcileLocalBalanceOnce } from '../lib/balanceReconcile';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 
@@ -64,6 +65,12 @@ export default function RootLayout() {
         // or offline — keeps the server's coin balance in lockstep with
         // the local optimistic balance.
         flushEconomyQueue().catch(() => {});
+        // One-time backfill for pre-fix drift: if local coins are ahead
+        // of the server's authoritative balance (from historical
+        // local-only challenge / season-starter grants), send the delta
+        // to the server. Gated by AsyncStorage flag so it only runs once
+        // per install. Server caps the credit.
+        reconcileLocalBalanceOnce().catch(() => {});
       } else {
         setFirebaseUser(null);
         unregisterPushNotifications().catch(() => {});

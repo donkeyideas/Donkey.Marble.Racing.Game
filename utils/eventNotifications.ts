@@ -5,12 +5,16 @@ import { NATIONAL_EVENTS } from '../data/nationalRaces';
 let Notifications: typeof import('expo-notifications') | null = null;
 try {
   Notifications = require('expo-notifications');
+  // SDK 53+ added shouldShowBanner / shouldShowList — older SDK ignores them.
+  // Cast keeps the type-check happy across SDK versions.
   Notifications!.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: false,
-    }),
+      shouldShowBanner: true,
+      shouldShowList: true,
+    } as any),
   });
 } catch {
   // expo-notifications not available (e.g. Expo Go SDK 53+)
