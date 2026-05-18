@@ -55,6 +55,28 @@ export interface SpeedBurstConfig {
   activationChance: number; // 0-1, typically 0.6
 }
 
+/**
+ * Swinging-door trap. A rectangular blade hinged at one end that swings
+ * back and forth in a sine wave. Marbles colliding with the closed door
+ * are blocked; when the door swings open they can pass. Placed in peg
+ * fields and other obstacle clusters where extra randomness is welcome.
+ */
+export interface SwingingDoorConfig {
+  /** Hinge point — the end of the door that stays fixed. */
+  hingeX: number;
+  hingeY: number;
+  /** Length of the door, in engine units. */
+  length: number;
+  /** Peak swing angle in radians from the rest position. */
+  arc: number;
+  /** Full back-and-forth cycle duration in ms. */
+  periodMs: number;
+  /** Rest angle of the door (0 = horizontal pointing right). */
+  baseAngle: number;
+  /** Phase offset in radians so multiple doors can swing independently. */
+  phase?: number;
+}
+
 
 
 export interface TrackConfig {
@@ -80,6 +102,7 @@ export interface TrackConfig {
   cradles?: CradleConfig[];
   trampolines?: TrampolineConfig[];
   speedBursts?: SpeedBurstConfig[];
+  swingingDoors?: SwingingDoorConfig[];
   wallColor?: string;  // Solid color for walls (no border/railway look)
 }
 

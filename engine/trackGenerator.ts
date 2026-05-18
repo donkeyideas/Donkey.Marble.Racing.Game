@@ -3,7 +3,7 @@
 
 import {
   TrackConfig, RampData, ObstacleInfo, WindmillConfig, FunnelData, SpringData,
-  PendulumConfig, BallPitConfig, CradleConfig, TrampolineConfig, SpeedBurstConfig,
+  PendulumConfig, BallPitConfig, CradleConfig, TrampolineConfig, SpeedBurstConfig, SwingingDoorConfig,
   ENGINE_WIDTH, ENTRY_MARGIN, EXIT_GAP,
   generateRampPoints, generateSprings, generatePegZone, generateFunnel,
   generateFinishZone, generateGapBumpers,
@@ -534,6 +534,54 @@ function placeSpeedBursts(
 }
 
 // ═══════════════════════════════════════════
+// Swinging-door trap placement
+// ═══════════════════════════════════════════
+
+/**
+ * Place 1-2 swinging-door traps on a procedurally-generated track. Each
+ * door is hinged at one of the side walls and swings into the play area,
+ * occluding marble paths through peg fields. Phase is offset between
+ * doors so they don't swing in unison.
+ */
+function placeSwingingDoors(
+  rampCYs: number[],
+  rampDrop: number,
+  rng: () => number,
+): SwingingDoorConfig[] {
+  const doors: SwingingDoorConfig[] = [];
+  // Skip the first and last ramp so the door is in the middle of the track
+  // where it does the most to disrupt flow.
+  const candidates = rampCYs.filter((_, i) => i > 0 && i < rampCYs.length - 1);
+  if (candidates.length === 0) return doors;
+
+  const shuffled = [...candidates].sort(() => rng() - 0.5);
+  const count = 1 + (rng() < 0.35 ? 1 : 0); // 1 or 2 doors
+
+  for (let i = 0; i < Math.min(count, shuffled.length); i++) {
+    const rampCY = shuffled[i];
+    // Position the door just below the peg zone that follows this ramp.
+    const y = Math.round(rampCY + rampDrop + 55 + rng() * 25);
+    // Alternate hinge side: even indices hinge on left wall, odd on right.
+    const hingeLeft = i % 2 === 0;
+    const hingeX = hingeLeft ? 30 : ENGINE_WIDTH - 30;
+    // Door points toward the center at rest. Length ~ half the playfield.
+    const length = 90 + Math.floor(rng() * 20);
+    const baseAngle = hingeLeft ? 0 : Math.PI; // 0 = right, π = left
+    // Swings between baseAngle - arc and baseAngle + arc.
+    const arc = Math.PI / 2.6 + rng() * (Math.PI / 8); // ~70-90°
+    // Period: 1.4 – 2.4 s feels visceral without being chaotic.
+    const periodMs = 1400 + Math.floor(rng() * 1000);
+    doors.push({
+      hingeX, hingeY: y,
+      length, arc, periodMs,
+      baseAngle,
+      phase: Math.floor(rng() * periodMs),
+    });
+  }
+  return doors;
+}
+
+// ═══════════════════════════════════════════
 // New obstacle placement (portals, gravity zones, water zones, magnets)
 // ═══════════════════════════════════════════
 
@@ -588,6 +636,11 @@ export function generateTrack(seed: number): TrackConfig {
   // 9. Optional speed bursts
   const speedBursts = bp.useSpeedBursts ? placeSpeedBursts(rampCYs, bp.rampDrop, rng) : undefined;
 
+  // 10. Swinging door traps — ~40% of procedural tracks get 1-2 doors. Tied
+  // to the seed RNG so the same seed always rolls the same doors.
+  const wantsDoors = rng() < 0.4;
+  const swingingDoors = wantsDoors ? placeSwingingDoors(rampCYs, bp.rampDrop, rng) : undefined;
+
   return {
     id: `gen-${seed}`,
     engineWidth: ENGINE_WIDTH,
@@ -604,5 +657,6 @@ export function generateTrack(seed: number): TrackConfig {
     bgImage: bp.bgImage,
     ...features,
     ...(speedBursts && speedBursts.length > 0 ? { speedBursts } : {}),
+    ...(swingingDoors && swingingDoors.length > 0 ? { swingingDoors } : {}),
   };
 }

@@ -474,6 +474,7 @@ interface CanvasState {
   cradles: PendulumState[];
   trampolines: TrampolineState[];
   speedBursts: SpeedBurstState[];
+  swingingDoors: { hingeX: number; hingeY: number; length: number; angle: number }[];
   doomsdayBar: { y: number; active: boolean } | null;
 }
 
@@ -540,7 +541,7 @@ export default function RaceScreen() {
   // second-hand.
   const [canvas, setCanvas] = useState<CanvasState>({
     marbles: [], wm: [], pendulums: [], ballPitBalls: [], cradles: [], trampolines: [],
-    speedBursts: [], doomsdayBar: null,
+    speedBursts: [], swingingDoors: [], doomsdayBar: null,
   });
   const [countdown, setCountdown] = useState(3);
   const [raceOver, setRaceOver] = useState(false);
@@ -966,6 +967,7 @@ export default function RaceScreen() {
         cradles: st.cradles,
         trampolines: st.trampolines,
         speedBursts: st.speedBursts,
+        swingingDoors: st.swingingDoors,
         doomsdayBar: st.doomsdayBar,
       });
 
@@ -1158,6 +1160,48 @@ export default function RaceScreen() {
                   width: ex(12), height: ex(12), borderRadius: ex(6),
                   backgroundColor: '#555', borderWidth: 2, borderColor: '#333', zIndex: 9,
                 }} />
+              </React.Fragment>
+            );
+          })}
+
+          {/* Swinging doors — hinged blades that rotate around their
+              endpoint. We compute the door's CENTER from the hinge +
+              length × angle (same math the physics body uses), then place
+              the View centered there and rotate around its own center.
+              That's equivalent to "rotate around the hinge endpoint". */}
+          {canvas.swingingDoors.map((d, i) => {
+            const cx = d.hingeX + (d.length / 2) * Math.cos(d.angle);
+            const cy = d.hingeY + (d.length / 2) * Math.sin(d.angle);
+            const len = ex(d.length);
+            const h = ex(6);
+            if (!vis(cy)) return null;
+            return (
+              <React.Fragment key={`sd${i}`}>
+                {/* Hinge cap (anchored, doesn't move) */}
+                <View style={{
+                  position: 'absolute',
+                  left: ex(d.hingeX) - ex(5),
+                  top: ex(d.hingeY) - ex(5),
+                  width: ex(10), height: ex(10), borderRadius: ex(5),
+                  backgroundColor: '#777', borderWidth: 2, borderColor: '#444',
+                  zIndex: 9,
+                }} />
+                {/* Door blade */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: ex(cx) - len / 2,
+                    top: ex(cy) - h / 2,
+                    width: len,
+                    height: h,
+                    backgroundColor: '#a0522d',
+                    borderRadius: 2,
+                    borderWidth: 1,
+                    borderColor: '#5a2f17',
+                    zIndex: 8,
+                    transform: [{ rotate: `${d.angle * 180 / Math.PI}deg` }],
+                  }}
+                />
               </React.Fragment>
             );
           })}

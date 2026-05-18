@@ -2,7 +2,7 @@ import Matter from 'matter-js';
 import { MarbleData, MARBLES } from '../theme';
 import {
   TrackConfig, RampData, ObstacleInfo, WindmillConfig, FunnelData, SpringData,
-  PendulumConfig, BallPitConfig, CradleConfig, TrampolineConfig, SpeedBurstConfig,
+  PendulumConfig, BallPitConfig, CradleConfig, TrampolineConfig, SpeedBurstConfig, SwingingDoorConfig,
   buildClassicZigzag,
 } from './tracks';
 
@@ -44,6 +44,7 @@ export interface RaceState {
   cradles: PendulumState[];
   trampolines: TrampolineState[];
   speedBursts: SpeedBurstState[];
+  swingingDoors: { hingeX: number; hingeY: number; length: number; angle: number }[];
   doomsdayBar: { y: number; active: boolean } | null;
 }
 
@@ -260,6 +261,28 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     });
     Matter.Composite.add(world, blade);
     wmBodies.push({ body: blade, ...wm });
+  });
+
+  // === SWINGING DOORS — hinged blade swinging on a sine wave ===
+  // Door's center sits half-length away from the hinge. Each step() we
+  // compute the current angle from elapsed + period + phase, then setAngle
+  // + setPosition so the door rotates around its hinge endpoint (not its
+  // own center, which is what a static body would default to).
+  interface SwingDoorBody { body: Matter.Body; config: SwingingDoorConfig }
+  const swingDoorBodies: SwingDoorBody[] = [];
+  (track.swingingDoors || []).forEach(d => {
+    // Body is positioned at its INITIAL center (at rest = baseAngle).
+    const cx = d.hingeX + (d.length / 2) * Math.cos(d.baseAngle);
+    const cy = d.hingeY + (d.length / 2) * Math.sin(d.baseAngle);
+    const body = Matter.Bodies.rectangle(cx, cy, d.length, 6, {
+      isStatic: true,
+      friction: 0.02,
+      restitution: 0.45,
+      angle: d.baseAngle,
+      label: 'swinging-door',
+    });
+    Matter.Composite.add(world, body);
+    swingDoorBodies.push({ body, config: d });
   });
 
   // === SPRINGS — sensor-based gentle redirect (no bouncing!) ===
@@ -631,6 +654,17 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       wmBodies.forEach(wm => {
         Matter.Body.setAngle(wm.body, wm.body.angle + wm.speed);
       });
+      // Swinging doors — sine-wave angle around their hinge. Body has to
+      // be both rotated AND repositioned because the rotation pivot is
+      // the hinge endpoint, not the body's own center.
+      swingDoorBodies.forEach(d => {
+        const t = (elapsed + (d.config.phase ?? 0)) / d.config.periodMs;
+        const angle = d.config.baseAngle + Math.sin(t * Math.PI * 2) * d.config.arc;
+        const cx = d.config.hingeX + (d.config.length / 2) * Math.cos(angle);
+        const cy = d.config.hingeY + (d.config.length / 2) * Math.sin(angle);
+        Matter.Body.setPosition(d.body, { x: cx, y: cy });
+        Matter.Body.setAngle(d.body, angle);
+      });
       for (let s = 0; s < SUBSTEPS; s++) {
         Matter.Engine.update(engine, FIXED_DT);
       }
@@ -812,6 +846,10 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         x: sb.config.x, y: sb.config.y, width: sb.config.width,
         direction: sb.config.direction,
         active: elapsed < sb.activeUntil,
+      })),
+      swingingDoors: swingDoorBodies.map(d => ({
+        hingeX: d.config.hingeX, hingeY: d.config.hingeY,
+        length: d.config.length, angle: d.body.angle,
       })),
       doomsdayBar: doomsdayBarActive && doomsdayBar
         ? { y: doomsdayBar.position.y, active: true }
