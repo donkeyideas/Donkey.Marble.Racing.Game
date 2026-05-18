@@ -82,6 +82,10 @@ export interface RaceCanvasProps {
   swingingDoors?: { hingeX: number; hingeY: number; length: number; angle: number }[];
   doomsdayBar: { y: number; active: boolean } | null;
   countdown: number;
+  /** When true, the canvas skips painting its native theme bg + overlay so
+   *  the React Native <Image> tile rendered behind the canvas (in race.tsx,
+   *  driven by remote-config trackBgImages) shows through unobstructed. */
+  hasCustomBg?: boolean;
 }
 
 function RaceCanvasInner(props: RaceCanvasProps) {
@@ -93,6 +97,7 @@ function RaceCanvasInner(props: RaceCanvasProps) {
     swingingDoors,
     doomsdayBar, countdown,
     staticConfig, raceShared,
+    hasCustomBg,
   } = props;
   // When the new static config + SharedValue path is supplied, the legacy
   // React-prop rendering is skipped entirely. This is the FPS-critical path.
@@ -136,7 +141,7 @@ function RaceCanvasInner(props: RaceCanvasProps) {
         <Group transform={camTransform}>
 
           {/* ===== BACKGROUND ===== */}
-          {isHillsTest ? (
+          {!hasCustomBg && (isHillsTest ? (
             // Hills parallax test for Classic Zigzag. 4 PNG layers from the
             // Background_Hills_v1.0 pack, drawn stacked: sky tile fills the
             // viewport vertically, near-foreground hill layers repeat at
@@ -214,10 +219,10 @@ function RaceCanvasInner(props: RaceCanvasProps) {
                 );
               })}
             </>
-          )}
+          ))}
 
           {/* ===== THEME OVERLAY ===== */}
-          {themeOverlay && (
+          {!hasCustomBg && themeOverlay && (
             <Rect x={0} y={0} width={SW} height={totalScreenH} color={themeOverlay} />
           )}
 
@@ -646,6 +651,7 @@ function raceCanvasPropsEqual(prev: RaceCanvasProps, next: RaceCanvasProps): boo
     && prev.marbleData === next.marbleData
     && prev.totalHeight === next.totalHeight
     && prev.engineW === next.engineW
+    && prev.hasCustomBg === next.hasCustomBg
   );
 }
 

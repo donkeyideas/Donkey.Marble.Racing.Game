@@ -1089,6 +1089,7 @@ export default function RaceScreen() {
             swingingDoors={canvas.swingingDoors}
             doomsdayBar={canvas.doomsdayBar}
             countdown={countdown}
+            hasCustomBg={!!customBgUrl}
           />
           {/* Slot numbers — rendered as plain RN Text overlay so they're visible
               regardless of Skia font loading. Scrolls with the camera. */}
