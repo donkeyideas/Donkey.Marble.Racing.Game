@@ -414,17 +414,7 @@ export default function LobbyScreen() {
             </Pressable>
           </View>
 
-          <View style={styles.navRow}>
-            <Pressable
-              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/friends')}
-            >
-              <Text style={styles.navLabel}>FRIENDS</Text>
-              <Text style={styles.navSub}>Recent players</Text>
-            </Pressable>
-            <View style={[styles.navCard, { opacity: 0 }]} />
-            <View style={[styles.navCard, { opacity: 0 }]} />
-          </View>
+
 
 
           {/* ===== FOOTER ===== */}

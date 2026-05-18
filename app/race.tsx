@@ -1054,6 +1054,7 @@ export default function RaceScreen() {
             ballPitBalls={ballPitBalls}
             cradles={cradles}
             speedBursts={canvas.speedBursts}
+            swingingDoors={canvas.swingingDoors}
             doomsdayBar={canvas.doomsdayBar}
             countdown={countdown}
           />

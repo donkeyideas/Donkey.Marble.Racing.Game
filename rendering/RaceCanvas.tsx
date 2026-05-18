@@ -79,6 +79,7 @@ export interface RaceCanvasProps {
   ballPitBalls: BallPitBallState[];
   cradles: PendulumState[];
   speedBursts: SpeedBurstState[];
+  swingingDoors?: { hingeX: number; hingeY: number; length: number; angle: number }[];
   doomsdayBar: { y: number; active: boolean } | null;
   countdown: number;
 }
@@ -89,6 +90,7 @@ function RaceCanvasInner(props: RaceCanvasProps) {
     cameraY, cameraShared, shakeX, shakeY,
     marbles, marbleData, marblePositions,
     windmills, pendulums, ballPitBalls, cradles, speedBursts,
+    swingingDoors,
     doomsdayBar, countdown,
     staticConfig, raceShared,
   } = props;
@@ -358,6 +360,37 @@ function RaceCanvasInner(props: RaceCanvasProps) {
                   width={sr * 0.5} height={sr * 0.35}
                   color="rgba(255,255,255,0.5)"
                 />
+              </React.Fragment>
+            );
+          })}
+
+          {/* ===== SWINGING DOORS — hinged blade rotating around endpoint.
+              Door center is computed from hinge + length × angle (same math
+              as physics). We render a thin wood-colored rect translated +
+              rotated, plus a hinge cap at the anchor. No SharedValue path
+              yet — uses props.swingingDoors which lives in the canvas
+              state slice, updated at 60Hz by app/race.tsx. */}
+          {(swingingDoors ?? []).map((d, i) => {
+            const cx = d.hingeX + (d.length / 2) * Math.cos(d.angle);
+            const cy = d.hingeY + (d.length / 2) * Math.sin(d.angle);
+            const cxS = ex(cx), cyS = ex(cy);
+            const len = ex(d.length);
+            const h = ex(6);
+            if (!vis(cy)) return null;
+            return (
+              <React.Fragment key={`sd${i}`}>
+                {/* Door blade — drawn as rotated rect via Group transform */}
+                <Group transform={[
+                  { translateX: cxS }, { translateY: cyS },
+                  { rotate: d.angle },
+                ]}>
+                  <Rect x={-len / 2} y={-h / 2} width={len} height={h} color="#a0522d" />
+                  <Rect x={-len / 2} y={-h / 2} width={len} height={1} color="#c46a2c" />
+                  <Rect x={-len / 2} y={h / 2 - 1} width={len} height={1} color="#5a2f17" />
+                </Group>
+                {/* Hinge cap (anchored, doesn't move) */}
+                <Circle cx={ex(d.hingeX)} cy={ex(d.hingeY)} r={ex(5)} color="#555" />
+                <Circle cx={ex(d.hingeX)} cy={ex(d.hingeY)} r={ex(2)} color="#aaa" />
               </React.Fragment>
             );
           })}

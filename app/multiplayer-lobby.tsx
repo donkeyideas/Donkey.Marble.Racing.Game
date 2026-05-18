@@ -715,6 +715,17 @@ export default function MultiplayerLobbyScreen() {
                 <Text style={styles.privateBtnLabel}>CREATE PRIVATE LOBBY</Text>
                 <Text style={styles.privateBtnSub}>Get a 6-character code to share</Text>
               </Pressable>
+
+              {/* Friends list shortcut — recently played-with humans live
+                  on a separate screen so the user can pin, remove, or
+                  jump back here to invite them via a private code. */}
+              <Pressable
+                style={styles.friendsBtn}
+                onPress={() => router.push('/friends')}
+              >
+                <Text style={styles.friendsBtnLabel}>FRIENDS LIST</Text>
+                <Text style={styles.friendsBtnSub}>Recent multiplayer opponents</Text>
+              </Pressable>
             </>
           )}
 
@@ -1340,6 +1351,27 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   privateBtnSub: {
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    marginTop: 3,
+  },
+  friendsBtn: {
+    backgroundColor: 'rgba(46,204,113,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(46,204,113,0.40)',
+    borderRadius: BorderRadius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  friendsBtnLabel: {
+    fontFamily: Fonts.display,
+    fontSize: 14,
+    color: '#2ecc71',
+    letterSpacing: 1.2,
+  },
+  friendsBtnSub: {
     fontFamily: Fonts.body,
     fontSize: 11,
     color: Colors.whiteAlpha50,
