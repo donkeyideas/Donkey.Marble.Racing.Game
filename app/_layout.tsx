@@ -50,6 +50,23 @@ export default function RootLayout() {
     // and then opens/closes sessions on AppState transitions; we still
     // start/end explicitly on sign-in / sign-out so anonymous time doesn't
     // get attributed to the player.
+    // Coin sync (queues + reconciliation) runs on EVERY app launch,
+    // independent of Firebase auth state. The mobile API token used by
+    // applyEconomyAction is a device-bound session token (set during
+    // splash via registerOrLogin), not the Firebase user — gating these
+    // behind a Firebase sign-in meant anonymous users never reconciled
+    // and their phone-vs-admin coin drift never closed. That was the
+    // root cause behind the persistent mismatch even after v3 shipped.
+    flushEconomyQueue().catch(() => {});
+    flushRaceSyncQueue()
+      .then((res) => {
+        if (res.drained > 0 && typeof res.balance === 'number') {
+          useGameStore.setState({ coins: res.balance });
+        }
+      })
+      .catch(() => {});
+    reconcileLocalBalanceOnce().catch(() => {});
+
     const unsubAuth = onAuthStateChanged((user) => {
       const { setFirebaseUser } = useGameStore.getState();
       if (user) {
@@ -62,15 +79,10 @@ export default function RootLayout() {
         registerForPushNotifications().catch(() => {});
         initSessionTracker(true);
         startSession();
-        // Drain any economy actions queued while the user was signed out
-        // or offline — keeps the server's coin balance in lockstep with
-        // the local optimistic balance.
+        // Re-flush opportunistically on Firebase sign-in (e.g., the user
+        // signed in mid-session after launch). The launch-time flushes
+        // above already handle the cold-start case.
         flushEconomyQueue().catch(() => {});
-        // Drain queued race syncs (failed /sync/race POSTs from earlier
-        // sessions). When the queue had pending items, the LAST race's
-        // server-returned balance is the authoritative post-drain coin
-        // count — snap local state to it so the phone matches the admin
-        // immediately after a reconciliation pass.
         flushRaceSyncQueue()
           .then((res) => {
             if (res.drained > 0 && typeof res.balance === 'number') {
@@ -78,11 +90,6 @@ export default function RootLayout() {
             }
           })
           .catch(() => {});
-        // Backfill for pre-fix drift: if local coins are ahead of the
-        // server's authoritative balance (historical local-only grants,
-        // OR lost race syncs from before the queue existed), send the
-        // delta. Version-gated so a new bump can trigger a fresh pass
-        // when needed; server caps the credit.
         reconcileLocalBalanceOnce().catch(() => {});
       } else {
         setFirebaseUser(null);

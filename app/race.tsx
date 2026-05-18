@@ -824,8 +824,17 @@ export default function RaceScreen() {
       if (st.doomsdayBar && st.doomsdayBar.active) {
         followY = st.doomsdayBar.y;
       }
+      // Once ANY marble has crossed the finish line, force the camera to
+      // maxCam (the very bottom of the track) so all 8 finish-slot labels
+      // and the marbles stacking into them are visible. Without this, the
+      // leader-at-35%-from-top heuristic leaves slot 1 / slot 2 below the
+      // screen on tracks where totalHeight has a tight buffer past the
+      // channel bottom — reported as "podium not showing on some tracks".
+      const anyFinished = st.marbles.some((m) => m.finished);
       const maxCam = totalH - SH / SCALE;
-      const target = Math.min(maxCam, Math.max(0, followY - SH * 0.35 / SCALE));
+      const target = anyFinished
+        ? maxCam
+        : Math.min(maxCam, Math.max(0, followY - SH * 0.35 / SCALE));
       // Frame-rate independent smoothing — gentle follow for natural feel
       const smoothing = 1 - Math.pow(0.001, dt / 1000);
       camRef.current += (target - camRef.current) * smoothing;
