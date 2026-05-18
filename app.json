@@ -19,7 +19,14 @@
       "buildNumber": "42",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification",
+          "fetch"
+        ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -32,6 +39,7 @@
       "versionCode": 17,
       "permissions": [
         "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
         "com.android.vending.BILLING"
       ],
       "blockedPermissions": [
