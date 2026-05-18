@@ -109,48 +109,64 @@ export default function StoreScreen() {
         purchase.purchaseToken ?? purchase.transactionReceipt ?? '';
       const storeProductId: string = purchase.productId;
 
+      /* Helper that ALWAYS finishes the transaction so Apple's unfinished-
+       * queue doesn't re-fire this on every cold start. The previous version
+       * of this listener returned without finishing on any server-verify
+       * failure, which is what stuck Premium Pass purchases in TestFlight
+       * and made them invisible to getAvailablePurchases().
+       *
+       * For non-consumables (passes): Restore Purchases re-attempts server
+       * verification — the entitlement stays in the user's history forever.
+       * For consumables (coins): if server rejects after Apple has charged,
+       * the user contacts support; safer than re-queuing on every launch. */
+      const finalize = async () => {
+        try {
+          await IAP!.finishTransaction({ purchase, isConsumable: !isPass });
+        } catch (err) {
+          if (__DEV__) console.warn('[IAP] finishTransaction threw:', err);
+        }
+        setPurchasing(null);
+      };
+
       if (!purchaseToken) {
         setErrorMsg('Purchase token missing — please contact support.');
         setTimeout(() => setErrorMsg(null), 3000);
-        setPurchasing(null);
+        await finalize();
         return;
       }
 
+      let granted = false;
+      let serverError: string | null = null;
       try {
         if (isPass) {
           const track = packId === 'season_pass' ? 'premium' : 'plus';
           const result = await purchaseSeasonPass(track, purchaseToken, storeProductId);
-          if (!result.success) {
-            if (result.error) {
-              setErrorMsg(result.error);
-              setTimeout(() => setErrorMsg(null), 4000);
-            }
-            setPurchasing(null);
-            return;
-          }
-          // Server verified the purchase. Now acknowledge with the store so
-          // the user is actually charged. Non-consumable for passes.
-          await IAP!.finishTransaction({ purchase, isConsumable: false });
-          setSuccessPack(packId);
-          setTimeout(() => setSuccessPack(null), 2000);
+          // "Already own this pass" / "Already on Plus tier" means the
+          // entitlement is already present — count it as success so the
+          // transaction finishes cleanly.
+          granted = result.success
+            || result.error === 'Already own this pass'
+            || result.error === 'Already on Plus tier';
+          if (!granted) serverError = result.error ?? null;
         } else {
           const result = await purchaseCoinPack(packId, purchaseToken, storeProductId);
-          if (!result.success) {
-            if (result.error) {
-              setErrorMsg(result.error);
-              setTimeout(() => setErrorMsg(null), 4000);
-            }
-            setPurchasing(null);
-            return;
-          }
-          await IAP!.finishTransaction({ purchase, isConsumable: true });
-          setSuccessPack(packId);
-          setTimeout(() => setSuccessPack(null), 2000);
+          granted = result.success;
+          if (!granted) serverError = result.error ?? null;
         }
-      } catch (err) {
-        console.warn('Failed to finish transaction:', err);
+      } catch (err: any) {
+        if (__DEV__) console.warn('[IAP] purchase handler threw:', err);
+        serverError = err?.message ?? 'Purchase handler error';
       }
-      setPurchasing(null);
+
+      if (granted) {
+        setSuccessPack(packId);
+        setTimeout(() => setSuccessPack(null), 2000);
+      } else if (serverError) {
+        setErrorMsg(serverError);
+        setTimeout(() => setErrorMsg(null), 4000);
+      }
+
+      await finalize();
     });
 
     purchaseErrorSub = IAP.purchaseErrorListener((error: PurchaseError) => {
