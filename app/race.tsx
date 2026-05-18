@@ -1008,15 +1008,17 @@ export default function RaceScreen() {
   }), [pos]);
   const courseName = COURSES.find(c => c.id === selectedCourseId)?.name || 'RACE';
 
-  // Admin-controlled background override. The remote-config server can
-  // remap a theme key to another (e.g. swap "grass" for "candy" during a
-  // seasonal event) without an app release. Falls back to the track's
-  // native bgImage if no override matches.
-  const overrides = getConfig().bgImageOverrides;
-  const effectiveBg = (overrides && overrides[trackConfig.bgImage]) || trackConfig.bgImage;
-  const bgSprite = useMemo(() => getBgSprite(effectiveBg), [effectiveBg]);
-  const themeSprites = useMemo(() => getThemeSprites(effectiveBg), [effectiveBg]);
-  const themeOverlay = THEME_OVERLAYS[effectiveBg] || null;
+  // Admin-controlled per-track background image. The remote-config server
+  // can attach a custom image URL to any specific course (e.g. a sponsored
+  // Pepsi backdrop on "Iron Run"). If the current course has an override,
+  // we render that URL instead of the bundled theme sprite. Theme sprites
+  // (the obstacles, walls etc.) keep using the track's native theme so
+  // physics-relevant art doesn't shift.
+  const trackBgImages = getConfig().trackBgImages;
+  const customBgUrl = (trackBgImages && trackBgImages[selectedCourseId]) || null;
+  const bgSprite = useMemo(() => getBgSprite(trackConfig.bgImage), [trackConfig.bgImage]);
+  const themeSprites = useMemo(() => getThemeSprites(trackConfig.bgImage), [trackConfig.bgImage]);
+  const themeOverlay = customBgUrl ? null : (THEME_OVERLAYS[trackConfig.bgImage] || null);
 
   // Tile background images to cover full track height
   const totalScreenH = ex(trackConfig.totalHeight);
@@ -1042,6 +1044,27 @@ export default function RaceScreen() {
 
   return (
     <View style={[st.container, { backgroundColor: containerBg }]}>
+
+      {/* Custom remote background — tiled behind the Skia canvas when the
+          admin has set a per-track image URL for the current course. The
+          Skia canvas renders with a transparent background so this image
+          shows through. Falls back to native theme sprite when no override
+          is set (the canvas just paints the normal scene). */}
+      {customBgUrl && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          {Array.from({ length: bgTileCount }).map((_, ti) => (
+            <Image
+              key={`custom-bg-${ti}`}
+              source={{ uri: customBgUrl }}
+              resizeMode="cover"
+              style={{
+                position: 'absolute', left: 0, top: ti * SH,
+                width: SW, height: SH + 1,
+              }}
+            />
+          ))}
+        </View>
+      )}
 
       {USE_SKIA_CANVAS ? (
         <Animated.View style={[st.clip, { transform: [{ translateX: shakeX }, { translateY: shakeY }] }]}>

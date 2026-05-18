@@ -21,16 +21,26 @@ export interface RemoteConfig {
   tournamentPrizes: { daily: number; weekly: number; champion: number };
   xpPerLevel: number;
   /**
-   * Admin-controlled background-theme overrides. Maps a track's stored
-   * `bgImage` value (e.g. "grass", "lava", "snow") to whatever theme key
-   * the admin wants to swap it for. Lets you A/B test scenery, run
-   * seasonal events ("everything snow during December"), or replace a
-   * specific theme without re-releasing the app.
+   * Per-track custom background images. Maps a course id (e.g.
+   * "gen-1043", "grand-prix-cyber") to an image URL hosted on a CDN /
+   * S3 bucket the admin controls. When a race loads, if there's a URL
+   * for the current course id, the race screen renders that image as
+   * the background tile INSTEAD of the bundled theme sprite.
    *
-   * Leave the map empty to use each track's native bg. If a track's
-   * bgImage isn't in the map, it renders normally.
+   * Use cases:
+   *   - Sponsored skins: "Pepsi presents Iron Run" with a Pepsi-branded
+   *     background only on that one course
+   *   - Seasonal: drop a snowy backdrop on every Daily-Blitz course in
+   *     December without releasing a new app build
+   *   - Event-specific: special background for the championship race
+   *
+   * Image requirements: portrait tile that repeats vertically. ~390×844
+   * matches the phone screen. PNG/JPG. Any HTTPS URL works.
+   *
+   * Empty map → every track uses its native bundled background. Course
+   * ids without an entry use their native bg.
    */
-  bgImageOverrides?: Record<string, string>;
+  trackBgImages?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: RemoteConfig = {
@@ -41,7 +51,7 @@ export const DEFAULT_CONFIG: RemoteConfig = {
   maxDailyCoins: 25000,
   tournamentPrizes: { daily: 4600, weekly: 23000, champion: 46000 },
   xpPerLevel: 1000,
-  bgImageOverrides: {},
+  trackBgImages: {},
 };
 
 let cached: RemoteConfig | null = null;
