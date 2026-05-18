@@ -1408,12 +1408,34 @@ export default function RaceScreen() {
         <View style={st.hudStandings}>
           {sorted.map((m, i) => {
             const isPick = selectedMarble?.id === m.data.id;
+            const finished = m.finished;
             return (
-              <View key={m.data.id} style={[st.posRow, isPick && st.posRowPick]}>
-                <Text style={[st.posNum, isPick && st.posNumPick]}>{i + 1}</Text>
-                <View style={[st.posDot, { backgroundColor: m.data.colorLight }]} />
-                <Text style={[st.posName, isPick && st.posNamePick]}>{m.data.name}</Text>
-                {isPick && <Text style={st.pickTag}>YOU</Text>}
+              <View
+                key={m.data.id}
+                style={[
+                  st.posRow,
+                  isPick && st.posRowPick,
+                  finished && st.posRowFinished,
+                ]}
+              >
+                <Text style={[st.posNum, isPick && st.posNumPick, finished && st.posNumFinished]}>
+                  {i + 1}
+                </Text>
+                <View style={[st.posDot, { backgroundColor: m.data.colorLight }, finished && { opacity: 0.5 }]} />
+                <Text style={[st.posName, isPick && st.posNamePick, finished && st.posNameFinished]}>
+                  {m.data.name}
+                </Text>
+                {/* When the marble crosses the finish line, show a small
+                    finish-time tag in green so the leaderboard makes it
+                    obvious who's done. Still racing marbles get the YOU
+                    tag (if applicable) or nothing. */}
+                {finished ? (
+                  <Text style={st.finishTag}>
+                    {m.finishTime ? `${(m.finishTime / 1000).toFixed(1)}s` : 'FIN'}
+                  </Text>
+                ) : isPick ? (
+                  <Text style={st.pickTag}>YOU</Text>
+                ) : null}
               </View>
             );
           })}
@@ -1516,6 +1538,13 @@ const st = StyleSheet.create({
   posName: { fontFamily: Fonts.bodySemiBold, fontSize: 10, color: '#fff' },
   posNamePick: { fontFamily: Fonts.bodyBold, color: Colors.yellow },
   pickTag: { fontFamily: Fonts.bodyBold, fontSize: 8, color: Colors.yellow, marginLeft: 4 },
+  // Finished marble: row gets a faint green tint + name dims; "FIN" / finish
+  // time tag in green so the leaderboard makes it obvious which marbles are
+  // done racing vs which are still on the course.
+  posRowFinished: { backgroundColor: 'rgba(46,204,113,0.15)' },
+  posNumFinished: { color: 'rgba(46,204,113,0.85)' },
+  posNameFinished: { color: 'rgba(255,255,255,0.55)' },
+  finishTag: { fontFamily: Fonts.bodyBold, fontSize: 8, color: '#2ecc71', marginLeft: 4, letterSpacing: 0.3 },
   timer: { fontFamily: Fonts.bodyBold, fontSize: 18, color: '#fff', textAlign: 'right' },
   bet: {
     position: 'absolute', bottom: 28, left: 16, zIndex: 20,
