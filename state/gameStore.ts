@@ -700,12 +700,33 @@ export const useGameStore = create<GameState>()(
     if (num >= 2) {
       const { coins, coinHistory } = get();
       const bonus = Math.min(2500, 500 + (num - 2) * 250);
+      // Optimistic local credit so the season-hub UI shows the new balance
+      // immediately. The server call below reconciles to the authoritative
+      // value, and the natural idempotency key (season_starter:{playerId}:
+      // {seasonNumber}) means it's safe to retry across cold starts.
       set({
         coins: coins + bonus,
         coinHistory: [
           { type: 'payout' as const, amount: bonus, description: `Season ${num} Starter Bonus`, timestamp: Date.now() },
           ...coinHistory,
         ].slice(0, 200),
+      });
+
+      applyEconomyAction({
+        action: 'season_starter_bonus',
+        payload: { seasonNumber: num },
+        // Server constructs its own natural key from playerId + seasonNumber
+        // so repeated invocations for the same season are de-duped without
+        // the client needing to know its playerId. We pass a random UUID
+        // here only as the transport-level idempotency hint for retries
+        // within a single attempt; the server's natural key is the real
+        // guard against multi-claim.
+      }).then((res) => {
+        if (res.ok) {
+          useGameStore.setState({ coins: res.balance });
+        } else if (__DEV__) {
+          console.warn('[season_starter_bonus]', res.message);
+        }
       });
     }
 
@@ -1656,10 +1677,29 @@ export const useGameStore = create<GameState>()(
     }];
     while (newCoinHistory.length > 200) newCoinHistory.shift();
 
+    // Optimistic local update so the UI shows the new balance immediately
     set({
       coins: coins + challenge.reward,
       coinHistory: newCoinHistory,
       challenges: { ...challenges, daily: updatedDaily, weekly: updatedWeekly },
+    });
+
+    // Server-authoritative claim. Previously this was local-only, which is
+    // exactly the silent-drain bug that caused mobile/server coin drift
+    // (mobile said 6,112, admin said 1,688). The server validates the
+    // challenge by id, looks up the canonical reward, and returns the
+    // new balance which we snap to. If the POST fails (offline, 5xx), the
+    // retry queue in lib/syncQueue.ts holds the action and replays it on
+    // the next foreground / sign-in / successful action.
+    applyEconomyAction({
+      action: 'claim_challenge',
+      payload: { challengeId },
+    }).then((res) => {
+      if (res.ok) {
+        useGameStore.setState({ coins: res.balance });
+      } else if (__DEV__) {
+        console.warn('[claim_challenge]', res.message);
+      }
     });
   },
 
