@@ -34,7 +34,7 @@ export const NATIONAL_EVENTS: NationalEvent[] = [
     format: 'single',
     seriesLength: 1,
     colors: ['#e74c3c', '#c0392b'],
-    startHourET: 18,       // 6pm ET daily
+    startHourET: 17,       // 5pm ET daily (afternoon slot)
   },
   {
     id: 'speed-demon',
@@ -56,7 +56,7 @@ export const NATIONAL_EVENTS: NationalEvent[] = [
     format: 'single',
     seriesLength: 1,
     colors: ['#9b59b6', '#7d3c98'],
-    startHourET: 22,       // 10pm ET daily (late night)
+    startHourET: 8,        // 8am ET daily (morning slot)
   },
 ];
 

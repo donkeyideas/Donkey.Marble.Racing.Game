@@ -63,11 +63,11 @@ function formatHour(h: number): string {
  * Schedule daily notifications for all national events.
  * Each notification fires 5 minutes before the event start time (in ET).
  *
- * Schedule:
- * - Speed Demon Dash: 11:55 AM ET (event at 12:00 PM ET)
- * - Marble Mile:       5:55 PM ET (event at  6:00 PM ET)
- * - Grand Prix:        7:55 PM ET (event at  8:00 PM ET)
- * - Chaos Cup:         9:55 PM ET (event at 10:00 PM ET)
+ * Schedule (matches startHourET on NATIONAL_EVENTS — change there, not here):
+ * - Chaos Cup:         7:55 AM ET (event at  8:00 AM ET · morning)
+ * - Speed Demon Dash: 11:55 AM ET (event at 12:00 PM ET · noon)
+ * - Marble Mile:       4:55 PM ET (event at  5:00 PM ET · afternoon)
+ * - Grand Prix:        7:55 PM ET (event at  8:00 PM ET · night)
  */
 export async function scheduleEventNotifications(): Promise<boolean> {
   const granted = await requestNotificationPermission();
