@@ -113,6 +113,15 @@ export const api = {
   post: <T>(path: string, body: unknown) =>
     apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
 
+  registerPushToken: (token: string, platform: 'ios' | 'android') =>
+    apiFetch<{ updated: boolean }>('/push-token', {
+      method: 'POST',
+      body: JSON.stringify({ token, platform }),
+    }),
+
+  clearPushToken: () =>
+    apiFetch<{ cleared: boolean }>('/push-token', { method: 'DELETE' }),
+
   support: {
     listTickets: () =>
       apiFetch<{ tickets: SupportTicketSummary[] }>('/support/tickets'),

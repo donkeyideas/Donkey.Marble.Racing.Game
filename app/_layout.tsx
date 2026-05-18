@@ -15,6 +15,7 @@ import { scheduleIfAlreadyPermitted } from '../utils/eventNotifications';
 import { loadCachedConfig, fetchRemoteConfig } from '../lib/remoteConfig';
 import { fetchAllLiveOps } from '../lib/liveOps';
 import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth';
+import { registerForPushNotifications, unregisterPushNotifications } from '../lib/pushRegistration';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 
@@ -38,7 +39,9 @@ export default function RootLayout() {
     // Configure Google Sign-In (webClientId from Firebase Console)
     configureGoogleSignIn('791385622060-goted95ii4ea0emlb046qeni65icb8a1.apps.googleusercontent.com');
 
-    // Sync Firebase auth state → Zustand store
+    // Sync Firebase auth state → Zustand store, and register/clear push token
+    // around sign-in transitions. Registration is gated on having an
+    // authenticated session because the /push-token endpoint requires it.
     const unsubAuth = onAuthStateChanged((user) => {
       const { setFirebaseUser } = useGameStore.getState();
       if (user) {
@@ -48,8 +51,10 @@ export default function RootLayout() {
           photoURL: user.photoURL,
           email: user.email,
         });
+        registerForPushNotifications().catch(() => {});
       } else {
         setFirebaseUser(null);
+        unregisterPushNotifications().catch(() => {});
       }
     });
 
