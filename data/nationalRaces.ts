@@ -116,9 +116,33 @@ export function getETDateString(): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Check if a national event is currently live (past its start hour today) */
+/**
+ * Each event closes when the NEXT event of the day opens. With one event
+ * per daypart (8 AM / 12 PM / 5 PM / 8 PM), only ONE event is live at a
+ * time. For the last event of the day (Grand Prix at 8 PM) the close
+ * hour is 24 (midnight ET); the gap from midnight to 8 AM has no live
+ * event.
+ *
+ * Computed dynamically from NATIONAL_EVENTS so the schedule is the only
+ * source of truth — change a startHourET and the close times shift
+ * automatically.
+ */
+export function getEventEndHour(event: NationalEvent): number {
+  const sorted = [...NATIONAL_EVENTS].sort((a, b) => a.startHourET - b.startHourET);
+  const idx = sorted.findIndex((e) => e.id === event.id);
+  const next = sorted[idx + 1];
+  return next ? next.startHourET : 24;
+}
+
+/** Check if a national event is currently live (within its daypart window). */
 export function isEventLive(event: NationalEvent): boolean {
-  return getEasternHour() >= event.startHourET;
+  const h = getEasternHour();
+  return h >= event.startHourET && h < getEventEndHour(event);
+}
+
+/** Check if an event's daypart window has already passed today. */
+export function isEventClosedToday(event: NationalEvent): boolean {
+  return getEasternHour() >= getEventEndHour(event);
 }
 
 /** Check if user already completed this event today */
@@ -152,11 +176,17 @@ export function formatLocalEventTime(etHour: number): string {
 /** Get countdown or status text for an event. Uses LOCAL time strings;
  *  no timezone marker in the user-facing copy. */
 export function getEventTimeText(event: NationalEvent, state: NationalEventState | undefined): string {
-  const live = isEventLive(event);
   const completedToday = isEventCompletedToday(event, state);
-
   if (completedToday) return 'COMPLETED · Resets tomorrow';
+
+  const live = isEventLive(event);
   if (live) return `LIVE NOW · Started at ${formatLocalEventTime(event.startHourET)}`;
+
+  // Window has already passed for today — don't keep saying "live now"
+  // when the next event has opened.
+  if (isEventClosedToday(event)) {
+    return `Closed today · Returns tomorrow at ${formatLocalEventTime(event.startHourET)}`;
+  }
 
   // Not yet live today — show countdown
   const currentHour = getEasternHour();
