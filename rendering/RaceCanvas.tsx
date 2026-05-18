@@ -114,14 +114,18 @@ function RaceCanvasInner(props: RaceCanvasProps) {
   // Theme-aware element colors for track contrast
   const themeElementColors = useMemo(() => getBgTheme(bgImage).elements, [bgImage]);
 
-  // Pre-record static track elements into a single Picture
+  // Pre-record static track elements into a single Picture. The scenery
+  // (clouds / mountains / trees / etc.) for the native theme is BAKED into
+  // this picture via drawThemeBackground — pass hasCustomBg through so it
+  // skips that scenery when the operator has set a remote-config bg image,
+  // otherwise the baked scenery covers the RN <Image> behind the canvas.
   const staticPicture = useMemo(() => {
     if (useSprites && !areSpritesReady(sprites)) return null;
     return createStaticTrackPicture(
       tv, sprites, useSprites, RAMP_H, ex,
-      SW, totalScreenH, engineW, themeElementColors, bgImage,
+      SW, totalScreenH, engineW, themeElementColors, bgImage, hasCustomBg,
     );
-  }, [tv, sprites, useSprites, totalScreenH, engineW, themeElementColors, bgImage]);
+  }, [tv, sprites, useSprites, totalScreenH, engineW, themeElementColors, bgImage, hasCustomBg]);
 
   // Viewport culling (uses prop cameraY for culling decisions)
   const vBuf = SH / SCALE * 0.7;

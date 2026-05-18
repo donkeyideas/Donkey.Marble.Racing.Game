@@ -89,6 +89,12 @@ export function createStaticTrackPicture(
   ENGINE_W: number,
   themeColors?: ThemeElementColors,
   themeId?: string,
+  /** When true, skip baking the theme background scenery (clouds, mountains,
+   *  trees, etc.) into the static picture. Used when a remote-config custom
+   *  background image is rendered behind the canvas — without this, the
+   *  baked scenery covered the custom image even after the explicit bg
+   *  paint in RaceCanvas was already conditionally skipped. */
+  hasCustomBg?: boolean,
 ): SkPicture {
   const recorder = Skia.PictureRecorder();
   const canvas = recorder.beginRecording(
@@ -98,7 +104,9 @@ export function createStaticTrackPicture(
 
   // Theme background scenery — drawn first so track elements overlay it.
   // All shapes baked into this picture, so the cost is paid once at race start.
-  if (themeId) {
+  // Skipped entirely when the operator has set a custom per-track bg via
+  // remote config; the RN <Image> behind the canvas shows through instead.
+  if (themeId && !hasCustomBg) {
     drawThemeBackground(canvas, themeId, totalScreenW, totalScreenH);
   }
 
