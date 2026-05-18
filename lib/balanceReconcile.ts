@@ -26,15 +26,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGameStore } from '../state/gameStore';
 import { applyEconomyAction } from './economy';
 
-/* v2 bump: closes the race-sync drift that accumulated before the
- * race-sync retry queue existed. Fire-and-forget /sync/race failures
- * were silently lost, so per-race payouts (and the corresponding
- * server coin deltas) never reached the DB. Phone balance was correct;
- * server was low. v2 re-runs reconciliation on the next sign-in to
- * close that gap on existing installs. */
-const RECONCILE_VERSION = 'v2';
+/* v3 bump: v2 went out but Firebase's auth listener fires before Zustand
+ * persist finishes its AsyncStorage hydration, so reconcileLocalBalanceOnce
+ * was reading the DEFAULT coins (1000) instead of the actual persisted
+ * value (e.g. 5,162). Server saw "1000 < 5,375" → no gap → returned
+ * success → client marked v2 as done. v2 reconciliation got silently
+ * locked on every account with no real reconciliation happening.
+ *
+ * v3 ships with two fixes:
+ *   1. Wait for store hydration before reading coins (see waitForHydration)
+ *   2. The version bump unlocks every account that got falsely-marked v2 */
+const RECONCILE_VERSION = 'v3';
 const DONE_KEY = `dmr-balance-reconcile-done-${RECONCILE_VERSION}`;
 const MIN_GAP_TO_RECONCILE = 1; // ignore drift of 0 coins
+
+/* Resolve once Zustand's persist middleware has finished reading
+ * dmr-game-state from AsyncStorage. If already hydrated, returns
+ * immediately. */
+function waitForHydration(): Promise<void> {
+  const persist = (useGameStore as any).persist;
+  if (!persist || typeof persist.hasHydrated !== 'function') return Promise.resolve();
+  if (persist.hasHydrated()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const unsub = persist.onFinishHydration(() => {
+      if (typeof unsub === 'function') unsub();
+      resolve();
+    });
+    // Safety cap — don't wait forever if onFinishHydration never fires
+    // (e.g. on a fresh install where there's nothing to hydrate). Zustand
+    // typically resolves within tens of ms, so 3s is a generous ceiling.
+    setTimeout(resolve, 3000);
+  });
+}
 
 /**
  * Idempotent. Safe to call on every sign-in — bails immediately if the
@@ -46,6 +69,16 @@ export async function reconcileLocalBalanceOnce(): Promise<void> {
   try {
     const done = await AsyncStorage.getItem(DONE_KEY);
     if (done === '1') return;
+
+    // CRITICAL: wait for Zustand's persist hydration before reading coins.
+    // The Firebase auth listener fires inside _layout.tsx as soon as the
+    // listener is registered (synchronous if there's a cached user), which
+    // is typically BEFORE the persist middleware finishes its async
+    // AsyncStorage read. Reading too early returns the initial-state
+    // default (1000), not the persisted balance — v2 of this module shipped
+    // without this guard and silently no-op'd reconciliation on every
+    // user. v3 above bumped the version to unlock those accounts.
+    await waitForHydration();
 
     const localBalance = useGameStore.getState().coins;
     if (!Number.isFinite(localBalance) || localBalance < MIN_GAP_TO_RECONCILE) {
