@@ -12,7 +12,7 @@ import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../a
 import RaceCanvas from '../rendering/RaceCanvas';
 import { useRaceSharedState } from '../rendering/raceSharedState';
 import { preloadRaceSounds, unloadRaceSounds, playSound } from '../utils/audioManager';
-import { getConfig } from '../lib/remoteConfig';
+import { getConfig, fetchRemoteConfig } from '../lib/remoteConfig';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
 const USE_SPRITE_RENDERING = true;
@@ -1014,8 +1014,25 @@ export default function RaceScreen() {
   // we render that URL instead of the bundled theme sprite. Theme sprites
   // (the obstacles, walls etc.) keep using the track's native theme so
   // physics-relevant art doesn't shift.
-  const trackBgImages = getConfig().trackBgImages;
-  const customBgUrl = (trackBgImages && trackBgImages[selectedCourseId]) || null;
+  //
+  // State (not a const) because the config might still be fetching when this
+  // screen mounts on a cold-start race-from-deep-link. The useEffect below
+  // re-reads getConfig() after fetchRemoteConfig settles so the bg appears
+  // mid-race instead of being stuck on the cached (URL-less) snapshot.
+  const [customBgUrl, setCustomBgUrl] = useState<string | null>(() => {
+    const map = getConfig().trackBgImages;
+    return (map && map[selectedCourseId]) || null;
+  });
+  useEffect(() => {
+    let cancelled = false;
+    fetchRemoteConfig().then(() => {
+      if (cancelled) return;
+      const map = getConfig().trackBgImages;
+      const next = (map && map[selectedCourseId]) || null;
+      setCustomBgUrl((prev) => (prev === next ? prev : next));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedCourseId]);
   const bgSprite = useMemo(() => getBgSprite(trackConfig.bgImage), [trackConfig.bgImage]);
   const themeSprites = useMemo(() => getThemeSprites(trackConfig.bgImage), [trackConfig.bgImage]);
   const themeOverlay = customBgUrl ? null : (THEME_OVERLAYS[trackConfig.bgImage] || null);
