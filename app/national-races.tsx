@@ -20,6 +20,8 @@ import PrimaryButton from '../components/PrimaryButton';
 import {
   NATIONAL_EVENTS,
   NationalEvent,
+  EventDaypart,
+  getEventDaypart,
   isEventLive,
   isEventCompletedToday,
   getEventTimeText,
@@ -159,7 +161,7 @@ export default function NationalRacesScreen() {
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>HOW IT WORKS</Text>
             <Text style={styles.infoText}>
-              Each event goes live at a set time every day (Eastern Time). You get one shot per event per day. Pay the entry fee, pick your marble, and race for multiplied payouts!
+              Each event goes live at a set time every day. You get one shot per event per day. Pay the entry fee, pick your marble, and race for multiplied payouts!
             </Text>
           </View>
 
@@ -170,97 +172,111 @@ export default function NationalRacesScreen() {
             ))}
           </View>
 
-          {/* Events */}
-          <Text style={styles.sectionTitle}>TODAY'S EVENTS</Text>
+          {/* Events grouped by daypart — section header names the time
+              block and shows events ordered chronologically within it.
+              Local time is already shown on each card via getScheduleText,
+              so the section names give the high-level "when" at a glance. */}
+          {(() => {
+            const dayparts: { key: EventDaypart; label: string }[] = [
+              { key: 'morning',   label: 'MORNING' },
+              { key: 'noon',      label: 'NOON' },
+              { key: 'afternoon', label: 'AFTERNOON' },
+              { key: 'night',     label: 'NIGHT' },
+            ];
+            const grouped = dayparts.map(dp => ({
+              ...dp,
+              events: [...NATIONAL_EVENTS]
+                .filter(e => getEventDaypart(e) === dp.key)
+                .sort((a, b) => a.startHourET - b.startHourET),
+            })).filter(g => g.events.length > 0);
 
-          {/* Sort events by daily start hour (ET) so the schedule reads
-              chronologically top-to-bottom — 12pm event first, then 6pm,
-              8pm, 10pm. Stable copy of the array to avoid mutating the
-              imported constant. */}
-          {[...NATIONAL_EVENTS].sort((a, b) => a.startHourET - b.startHourET).map((event) => {
-            const state = nationalRaces?.[event.id];
-            const isEntered = state?.entered ?? false;
-            const canAfford = coins >= event.entryFee;
-            const seriesProgress = state?.seriesProgress;
-            const live = isEventLive(event);
-            const completedToday = isEventCompletedToday(event, state);
-            const isLocked = !live || completedToday;
-
-            return (
-              <Pressable
-                key={event.id}
-                onPress={() => handleCardPress(event)}
-                disabled={isLocked && !isEntered}
-                style={({ pressed }) => [pressed && !isLocked && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
-              >
-                <LinearGradient
-                  colors={isLocked && !isEntered ? ['#333', '#2a2a2a'] : event.colors}
-                  style={[styles.eventCard, isLocked && !isEntered && { opacity: 0.5 }]}
+            const renderEventCard = (event: NationalEvent) => {
+              const state = nationalRaces?.[event.id];
+              const isEntered = state?.entered ?? false;
+              const canAfford = coins >= event.entryFee;
+              const seriesProgress = state?.seriesProgress;
+              const live = isEventLive(event);
+              const completedToday = isEventCompletedToday(event, state);
+              const isLocked = !live || completedToday;
+              return (
+                <Pressable
+                  key={event.id}
+                  onPress={() => handleCardPress(event)}
+                  disabled={isLocked && !isEntered}
+                  style={({ pressed }) => [pressed && !isLocked && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
                 >
-                  <View style={styles.eventHeader}>
-                    <View style={styles.multiplierBadge}>
-                      <Text style={styles.multiplierText}>{event.multiplier}X</Text>
+                  <LinearGradient
+                    colors={isLocked && !isEntered ? ['#333', '#2a2a2a'] : event.colors}
+                    style={[styles.eventCard, isLocked && !isEntered && { opacity: 0.5 }]}
+                  >
+                    <View style={styles.eventHeader}>
+                      <View style={styles.multiplierBadge}>
+                        <Text style={styles.multiplierText}>{event.multiplier}X</Text>
+                      </View>
+                      {completedToday ? (
+                        <View style={styles.completedBadge}>
+                          <Text style={styles.completedText}>DONE</Text>
+                        </View>
+                      ) : isEntered ? (
+                        <View style={styles.enteredBadge}>
+                          <Text style={styles.enteredText}>ENTERED</Text>
+                        </View>
+                      ) : live ? (
+                        <Animated.View style={[styles.liveBadge, { opacity: pulseAnim }]}>
+                          <Text style={styles.liveText}>LIVE</Text>
+                        </Animated.View>
+                      ) : (
+                        <View style={styles.upcomingBadge}>
+                          <Text style={styles.upcomingText}>UPCOMING</Text>
+                        </View>
+                      )}
                     </View>
-                    {completedToday ? (
-                      <View style={styles.completedBadge}>
-                        <Text style={styles.completedText}>DONE</Text>
-                      </View>
-                    ) : isEntered ? (
-                      <View style={styles.enteredBadge}>
-                        <Text style={styles.enteredText}>ENTERED</Text>
-                      </View>
-                    ) : live ? (
-                      <Animated.View style={[styles.liveBadge, { opacity: pulseAnim }]}>
-                        <Text style={styles.liveText}>LIVE</Text>
-                      </Animated.View>
-                    ) : (
-                      <View style={styles.upcomingBadge}>
-                        <Text style={styles.upcomingText}>UPCOMING</Text>
+
+                    <Text style={styles.eventName}>{event.name}</Text>
+                    <Text style={styles.eventSub}>{event.subtitle}</Text>
+
+                    <Text style={styles.scheduleText}>
+                      {getEventTimeText(event, state)}
+                    </Text>
+
+                    {seriesProgress && event.format === 'series' && !completedToday && (
+                      <View style={styles.seriesBar}>
+                        <Text style={styles.seriesText}>
+                          Race {seriesProgress.racesCompleted + 1} of {event.seriesLength}
+                        </Text>
                       </View>
                     )}
-                  </View>
 
-                  <Text style={styles.eventName}>{event.name}</Text>
-                  <Text style={styles.eventSub}>{event.subtitle}</Text>
-
-                  {/* Time status */}
-                  <Text style={styles.scheduleText}>
-                    {getEventTimeText(event, state)}
-                  </Text>
-
-                  {/* Series progress */}
-                  {seriesProgress && event.format === 'series' && !completedToday && (
-                    <View style={styles.seriesBar}>
-                      <Text style={styles.seriesText}>
-                        Race {seriesProgress.racesCompleted + 1} of {event.seriesLength}
+                    <View style={styles.eventFooter}>
+                      <Text style={styles.entryFee}>
+                        {completedToday
+                          ? 'Resets tomorrow'
+                          : isEntered
+                            ? 'CONTINUE'
+                            : live
+                              ? `Entry: ${event.entryFee} coins`
+                              : getScheduleText(event)}
+                      </Text>
+                      <Text style={styles.enterText}>
+                        {completedToday
+                          ? 'COMPLETED'
+                          : isEntered
+                            ? 'RACE NOW'
+                            : live
+                              ? canAfford ? 'ENTER' : 'NOT ENOUGH'
+                              : 'LOCKED'}
                       </Text>
                     </View>
-                  )}
+                  </LinearGradient>
+                </Pressable>
+              );
+            };
 
-                  <View style={styles.eventFooter}>
-                    <Text style={styles.entryFee}>
-                      {completedToday
-                        ? 'Resets tomorrow'
-                        : isEntered
-                          ? 'CONTINUE'
-                          : live
-                            ? `Entry: ${event.entryFee} coins`
-                            : getScheduleText(event)}
-                    </Text>
-                    <Text style={styles.enterText}>
-                      {completedToday
-                        ? 'COMPLETED'
-                        : isEntered
-                          ? 'RACE NOW'
-                          : live
-                            ? canAfford ? 'ENTER' : 'NOT ENOUGH'
-                            : 'LOCKED'}
-                    </Text>
-                  </View>
-                </LinearGradient>
-              </Pressable>
-            );
-          })}
+            return grouped.flatMap(g => [
+              <Text key={`hdr-${g.key}`} style={styles.sectionTitle}>{g.label}</Text>,
+              ...g.events.map(renderEventCard),
+            ]);
+          })()}
 
           {/* Rewards info */}
           <Text style={styles.sectionTitle}>REWARDS</Text>

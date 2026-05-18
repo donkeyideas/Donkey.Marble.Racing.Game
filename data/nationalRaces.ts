@@ -127,31 +127,57 @@ export function isEventCompletedToday(event: NationalEvent, state: NationalEvent
   return state.completedDate === getETDateString();
 }
 
-/** Get countdown or status text for an event */
+/**
+ * Convert an ET hour (24h) to the user's LOCAL hour. Event start times are
+ * canonically defined in ET (the schedule is global), but each player sees
+ * the time formatted for their device so they don't have to mentally
+ * convert "8pm ET" to their own timezone.
+ */
+function etHourToLocal(etHour: number): Date {
+  const now = new Date();
+  const etOffset = getETOffset(); // -5 or -4 hours
+  // ET hour → UTC hour: subtract the (negative) offset
+  const utcHour = (etHour - etOffset + 24) % 24;
+  const d = new Date(now);
+  d.setUTCHours(utcHour, 0, 0, 0);
+  return d;
+}
+
+/** Format an ET hour as the user's local time, e.g. "9 AM" / "12 PM". */
+export function formatLocalEventTime(etHour: number): string {
+  const d = etHourToLocal(etHour);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', hour12: true });
+}
+
+/** Get countdown or status text for an event. Uses LOCAL time strings;
+ *  no timezone marker in the user-facing copy. */
 export function getEventTimeText(event: NationalEvent, state: NationalEventState | undefined): string {
   const live = isEventLive(event);
   const completedToday = isEventCompletedToday(event, state);
 
   if (completedToday) return 'COMPLETED · Resets tomorrow';
-  if (live) return `LIVE NOW · Started at ${formatHour(event.startHourET)} ET`;
+  if (live) return `LIVE NOW · Started at ${formatLocalEventTime(event.startHourET)}`;
 
   // Not yet live today — show countdown
   const currentHour = getEasternHour();
   const hoursLeft = event.startHourET - currentHour;
-  if (hoursLeft === 1) return `Starts in 1 hour · ${formatHour(event.startHourET)} ET`;
-  return `Starts in ${hoursLeft}hrs · ${formatHour(event.startHourET)} ET`;
-}
-
-/** Format 24h hour to 12h string */
-function formatHour(h: number): string {
-  if (h === 0) return '12am';
-  if (h === 12) return '12pm';
-  return h > 12 ? `${h - 12}pm` : `${h}am`;
+  if (hoursLeft === 1) return `Starts in 1 hour · ${formatLocalEventTime(event.startHourET)}`;
+  return `Starts in ${hoursLeft}hrs · ${formatLocalEventTime(event.startHourET)}`;
 }
 
 /** Get schedule description for display */
 export function getScheduleText(event: NationalEvent): string {
-  return `Daily at ${formatHour(event.startHourET)} ET`;
+  return `Daily at ${formatLocalEventTime(event.startHourET)}`;
+}
+
+/** Bucket an event into a time-of-day slot by its ET hour. */
+export type EventDaypart = 'morning' | 'noon' | 'afternoon' | 'night';
+export function getEventDaypart(event: NationalEvent): EventDaypart {
+  const h = event.startHourET;
+  if (h < 12) return 'morning';
+  if (h < 16) return 'noon';
+  if (h < 20) return 'afternoon';
+  return 'night';
 }
 
 /** Pick random courses for events */

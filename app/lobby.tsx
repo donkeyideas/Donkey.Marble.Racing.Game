@@ -353,7 +353,7 @@ export default function LobbyScreen() {
               onPress={() => router.push('/courses')}
             >
               <Text style={styles.navLabel}>COURSES</Text>
-              <Text style={styles.navSub}>96 tracks</Text>
+              <Text style={styles.navSub}>246 tracks</Text>
             </Pressable>
           </View>
 

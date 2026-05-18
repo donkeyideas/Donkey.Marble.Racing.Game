@@ -565,12 +565,16 @@ function placeSwingingDoors(
     const hingeLeft = i % 2 === 0;
     const hingeX = hingeLeft ? 30 : ENGINE_WIDTH - 30;
     // Door points toward the center at rest. Length ~ half the playfield.
-    const length = 90 + Math.floor(rng() * 20);
+    const length = 80 + Math.floor(rng() * 16); // 80-95, shorter than before
     const baseAngle = hingeLeft ? 0 : Math.PI; // 0 = right, π = left
-    // Swings between baseAngle - arc and baseAngle + arc.
-    const arc = Math.PI / 2.6 + rng() * (Math.PI / 8); // ~70-90°
-    // Period: 1.4 – 2.4 s feels visceral without being chaotic.
-    const periodMs = 1400 + Math.floor(rng() * 1000);
+    // Swings between baseAngle - arc and baseAngle + arc. Narrower arc
+    // than the original 70-90° spec — the wide sweep + 100-unit length
+    // produced tip speeds that could punch a marble through a thin wall
+    // in tight peg fields (seen on gen-2131). 45-60° is plenty visible.
+    const arc = Math.PI / 4 + rng() * (Math.PI / 12); // ~45-60°
+    // Period: 2.0–3.2 s — slower swing keeps tip velocity below the
+    // marble-radius-per-frame threshold that triggers tunneling.
+    const periodMs = 2000 + Math.floor(rng() * 1200);
     doors.push({
       hingeX, hingeY: y,
       length, arc, periodMs,

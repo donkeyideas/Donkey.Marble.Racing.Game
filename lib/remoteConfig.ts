@@ -20,6 +20,17 @@ export interface RemoteConfig {
   maxDailyCoins: number;
   tournamentPrizes: { daily: number; weekly: number; champion: number };
   xpPerLevel: number;
+  /**
+   * Admin-controlled background-theme overrides. Maps a track's stored
+   * `bgImage` value (e.g. "grass", "lava", "snow") to whatever theme key
+   * the admin wants to swap it for. Lets you A/B test scenery, run
+   * seasonal events ("everything snow during December"), or replace a
+   * specific theme without re-releasing the app.
+   *
+   * Leave the map empty to use each track's native bg. If a track's
+   * bgImage isn't in the map, it renders normally.
+   */
+  bgImageOverrides?: Record<string, string>;
 }
 
 export const DEFAULT_CONFIG: RemoteConfig = {
@@ -30,6 +41,7 @@ export const DEFAULT_CONFIG: RemoteConfig = {
   maxDailyCoins: 25000,
   tournamentPrizes: { daily: 4600, weekly: 23000, champion: 46000 },
   xpPerLevel: 1000,
+  bgImageOverrides: {},
 };
 
 let cached: RemoteConfig | null = null;

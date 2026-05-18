@@ -190,11 +190,16 @@ export function getGeneratedCourses(): CourseData[] {
 
 // ── Generated Grand Prix tracks (seeded S-channel variants) ──
 
+// Grand Prix seed list expanded so every theme has at least 4 variants.
+// 14 themes × 4 = 56 GP tracks total. Adds 20 seeds (137-156) to the
+// existing 36, brings overall track count to 246 + 20 = ~266.
 const GP_SEEDS: number[] = [
   101, 102, 103, 104, 105, 106, 107, 108, 109, 110,
   111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
   121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
-  131, 132, 133, 134, 135, 136,
+  131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
+  141, 142, 143, 144, 145, 146, 147, 148, 149, 150,
+  151, 152, 153, 154, 155, 156,
 ];
 
 const GP_PREFIXES = [

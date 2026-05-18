@@ -12,6 +12,7 @@ import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../a
 import RaceCanvas from '../rendering/RaceCanvas';
 import { useRaceSharedState } from '../rendering/raceSharedState';
 import { preloadRaceSounds, unloadRaceSounds, playSound } from '../utils/audioManager';
+import { getConfig } from '../lib/remoteConfig';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
 const USE_SPRITE_RENDERING = true;
@@ -834,15 +835,14 @@ export default function RaceScreen() {
       raceShared.cameraY.value = camRef.current;
 
       // === Race commentary ===
+      // IMPORTANT: only consider still-racing marbles. Once a marble crosses
+      // the finish line it's out of the conversation — the commentator
+      // shouldn't keep talking about who's "in the lead" when the leader is
+      // already done. Player-pick comments also skip if the pick has finished.
       const now = t;
       if (now - lastCommentaryTime.current > 4000 && st.elapsed > 1500) {
-        // Sort lazily — only when we're actually going to evaluate commentary (every 4s).
-        const sortedByY = [...st.marbles].sort((a, b) => {
-          if (a.finished && !b.finished) return -1;
-          if (!a.finished && b.finished) return 1;
-          if (a.finished && b.finished) return a.finishTime - b.finishTime;
-          return b.y - a.y;
-        });
+        const stillRacing = st.marbles.filter(m => !m.finished);
+        const sortedByY = stillRacing.sort((a, b) => b.y - a.y);
         const leader = sortedByY[0];
         const second = sortedByY[1];
         if (leader && second) {
@@ -862,13 +862,16 @@ export default function RaceScreen() {
           else if (gap < 25 && st.elapsed > 5000) {
             msg = `${leader.data.name} and ${second.data.name} neck and neck!`;
           }
-          // Player marble doing well
+          // Player marble doing well — only if pick is still racing
           else if (playerPickId) {
-            const playerIdx = sortedByY.findIndex(m => m.data.id === playerPickId);
-            if (playerIdx === 0 && st.elapsed > 3000) {
-              msg = `Your pick is leading!`;
-            } else if (playerIdx >= sortedByY.length - 2 && st.elapsed > 5000) {
-              msg = `Your pick is falling behind...`;
+            const playerStillRacing = st.marbles.find(m => m.data.id === playerPickId && !m.finished);
+            if (playerStillRacing) {
+              const playerIdx = sortedByY.findIndex(m => m.data.id === playerPickId);
+              if (playerIdx === 0 && st.elapsed > 3000) {
+                msg = `Your pick is leading!`;
+              } else if (playerIdx >= 0 && playerIdx >= sortedByY.length - 2 && st.elapsed > 5000) {
+                msg = `Your pick is falling behind...`;
+              }
             }
           }
 
@@ -1005,9 +1008,15 @@ export default function RaceScreen() {
   }), [pos]);
   const courseName = COURSES.find(c => c.id === selectedCourseId)?.name || 'RACE';
 
-  const bgSprite = useMemo(() => getBgSprite(trackConfig.bgImage), [trackConfig]);
-  const themeSprites = useMemo(() => getThemeSprites(trackConfig.bgImage), [trackConfig]);
-  const themeOverlay = THEME_OVERLAYS[trackConfig.bgImage] || null;
+  // Admin-controlled background override. The remote-config server can
+  // remap a theme key to another (e.g. swap "grass" for "candy" during a
+  // seasonal event) without an app release. Falls back to the track's
+  // native bgImage if no override matches.
+  const overrides = getConfig().bgImageOverrides;
+  const effectiveBg = (overrides && overrides[trackConfig.bgImage]) || trackConfig.bgImage;
+  const bgSprite = useMemo(() => getBgSprite(effectiveBg), [effectiveBg]);
+  const themeSprites = useMemo(() => getThemeSprites(effectiveBg), [effectiveBg]);
+  const themeOverlay = THEME_OVERLAYS[effectiveBg] || null;
 
   // Tile background images to cover full track height
   const totalScreenH = ex(trackConfig.totalHeight);

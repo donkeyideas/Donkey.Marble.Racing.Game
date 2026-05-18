@@ -18,6 +18,7 @@ import { getDatabase as getWebDatabase, Database } from 'firebase/database';
 import { getAuth as getWebAuth, initializeAuth, Auth } from 'firebase/auth';
 import { getAnalytics as getWebAnalytics, isSupported as isAnalyticsSupported, Analytics } from 'firebase/analytics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 // IMPORTANT: must import from '@firebase/auth' (the lower-level package), NOT
 // 'firebase/auth' (the umbrella). The umbrella's package.json has no
 // "react-native" field, so Metro resolves it to the Node bundle which omits
@@ -37,7 +38,13 @@ try {
   getReactNativePersistence = null;
 }
 
-// Values copied from GoogleService-Info.plist (iOS) — same project, same DB/auth.
+// Per-platform Firebase config. The appId differs by platform — using the
+// iOS appId on Android caused subtle Firebase init issues (multiplayer
+// "doesn't work" on Android). Web SDK is otherwise the same; we just need
+// to feed it the matching appId for the active platform.
+//
+// iOS  appId: from GoogleService-Info.plist GOOGLE_APP_ID
+// Android appId: from google-services.json client[0].client_info.mobilesdk_app_id
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyCRJLTl5c9SK20ctIeviJywSMqePjcToOU',
   authDomain: 'donkey-marble-racing.firebaseapp.com',
@@ -45,7 +52,9 @@ const FIREBASE_CONFIG = {
   projectId: 'donkey-marble-racing',
   storageBucket: 'donkey-marble-racing.firebasestorage.app',
   messagingSenderId: '791385622060',
-  appId: '1:791385622060:ios:7312407145171009377389',
+  appId: Platform.OS === 'android'
+    ? '1:791385622060:android:0efc1d60aa75d0c4377389'
+    : '1:791385622060:ios:7312407145171009377389',
 } as const;
 
 let _app: FirebaseApp | null = null;

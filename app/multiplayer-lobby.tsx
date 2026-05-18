@@ -302,13 +302,21 @@ export default function MultiplayerLobbyScreen() {
       // causes: locked-down RTDB rules, missing index, Web SDK auth not
       // ready yet when the DB write fires.
       useGameStore.getState().addCoins(tierConfig.entryFee);
+      // Surface as much detail as possible — on Android the issue might be
+      // Firebase WebSocket init, missing auth context, or a Hermes-specific
+      // resolution problem. We want the user to be able to copy/paste the
+      // exact error string back to us.
       const errMsg = e?.code
         ? `${e.code}: ${e.message ?? 'no detail'}`
-        : (e?.message ?? String(e ?? 'unknown error'));
-      console.warn('[Multiplayer] quickMatch failed:', errMsg, e);
+        : (e?.message ?? (typeof e === 'string' ? e : JSON.stringify(e ?? {}) || 'unknown error'));
+      // Include platform so we can tell Android vs iOS failures apart in
+      // user-submitted reports.
+      const { Platform } = require('react-native');
+      const fullMsg = `[${Platform.OS}] ${errMsg}`;
+      console.warn('[Multiplayer] quickMatch failed:', fullMsg, e);
       showModal({
         title: 'Multiplayer Unavailable',
-        message: `Couldn't connect: ${errMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
+        message: `Couldn't connect: ${fullMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
         buttons: [
           { label: 'Retry', variant: 'yellow', onPress: () => setPhase('pick_payout') },
           { label: 'Back', variant: 'ghost', onPress: () => router.back() },
