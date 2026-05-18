@@ -18,6 +18,7 @@ export default function SplashScreen() {
   const router = useRouter();
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
+  const hasSeenIntroRace = useGameStore((s) => s.hasSeenIntroRace);
 
   const handleStart = () => {
     // Auto-generate a friendly name on first launch. Users can change it
@@ -26,7 +27,10 @@ export default function SplashScreen() {
     const name = playerName || generatePlayerName();
     if (!playerName) setPlayerName(name);
     registerOrLogin(name); // fire-and-forget
-    router.replace('/lobby');
+    // First-time users land on the intro marble-pick screen and play one
+    // tutorial-by-doing race before reaching the lobby. The flag flips
+    // inside /intro-pick the moment we route to /race, so it never replays.
+    router.replace(hasSeenIntroRace ? '/lobby' : '/intro-pick');
   };
 
   return (

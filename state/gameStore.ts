@@ -241,6 +241,14 @@ interface GameState {
   playerName: string;
   setPlayerName: (name: string) => void;
 
+  /**
+   * True after the user has completed (or skipped) the first-launch intro
+   * race. Splash routes to /intro-pick when this is false and straight to
+   * /lobby otherwise, so the marble-pick + tutorial race never re-runs.
+   */
+  hasSeenIntroRace: boolean;
+  setHasSeenIntroRace: (v: boolean) => void;
+
   // Stats
   totalRaces: number;
   totalWins: number;
@@ -443,6 +451,9 @@ export const useGameStore = create<GameState>()(
 
   playerName: '',
   setPlayerName: (name) => set({ playerName: name }),
+
+  hasSeenIntroRace: false,
+  setHasSeenIntroRace: (v) => set({ hasSeenIntroRace: v }),
 
   coins: 1000,
   addCoins: (amount) => set((s) => ({ coins: s.coins + amount })),
@@ -1798,6 +1809,7 @@ export const useGameStore = create<GameState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         playerName: state.playerName,
+        hasSeenIntroRace: state.hasSeenIntroRace,
         coins: state.coins,
         totalRaces: state.totalRaces,
         totalWins: state.totalWins,
@@ -1825,7 +1837,7 @@ export const useGameStore = create<GameState>()(
         customTracks: state.customTracks,
         challenges: state.challenges,
       }),
-      version: 5,
+      version: 6,
       migrate: (persisted: any, version: number) => {
         if (version < 3 && persisted?.season) {
           persisted.season = null;
@@ -1840,6 +1852,10 @@ export const useGameStore = create<GameState>()(
         }
         if (version < 5) {
           persisted.passTrack = persisted.passTrack ?? 'free';
+        }
+        if (version < 6) {
+          /* Existing installs have already played, so they skip the intro. */
+          persisted.hasSeenIntroRace = persisted.hasSeenIntroRace ?? true;
         }
         return persisted;
       },
