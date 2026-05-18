@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /* ------------------------------------------------------------------ */
 
 const CONFIG_URL = __DEV__
-  ? 'http://localhost:3001/api/game-config'
+  ? 'http://localhost:3003/api/game-config'
   : 'https://marble-admin.donkeyideas.com/api/game-config';
 
 const CACHE_KEY = 'dmr-remote-config';
