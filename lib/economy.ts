@@ -12,6 +12,8 @@
 
 import { api, getToken, ApiError } from './api';
 import { enqueueEconomyAction, flushEconomyQueue } from './syncQueue';
+import { flushRaceSyncQueue } from './raceSyncQueue';
+import { useGameStore } from '../state/gameStore';
 
 export type EconomyAction =
   | 'claim_daily'
@@ -97,8 +99,17 @@ export async function applyEconomyAction(opts: {
       payload: opts.payload ?? {},
     });
     // Piggy-back: we know the network and token are good right now, drain
-    // any backlogged actions opportunistically. Fire-and-forget.
+    // any backlogged actions AND any queued race syncs opportunistically.
+    // Fire-and-forget. If the race queue drains anything, snap local coins
+    // to the server's post-drain balance so the UI matches.
     flushEconomyQueue().catch(() => {});
+    flushRaceSyncQueue()
+      .then((q) => {
+        if (q.drained > 0 && typeof q.balance === 'number') {
+          useGameStore.setState({ coins: q.balance });
+        }
+      })
+      .catch(() => {});
     return { ...res, ok: true };
   } catch (err: any) {
     const status: number = err instanceof ApiError ? err.status : 0;

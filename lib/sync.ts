@@ -1,5 +1,6 @@
 import { api, getToken } from './api';
 import { newIdempotencyKey } from './economy';
+import { enqueueRaceSync } from './raceSyncQueue';
 
 /**
  * Fire-and-forget: runs in background, never blocks UI.
@@ -49,14 +50,43 @@ export function syncRaceResult(
   onAuthoritative?: (balance: number) => void,
 ): void {
   const idempotencyKey = data.idempotencyKey ?? newIdempotencyKey();
-  syncInBackground(async () => {
-    const token = await getToken();
-    if (!token) return;
-    const res = await api.post<RaceSyncResponse>('/sync/race', { ...data, idempotencyKey });
-    if (res && typeof res.balance === 'number' && onAuthoritative) {
-      onAuthoritative(res.balance);
+  const body = { ...data, idempotencyKey };
+
+  // Run in background but DO NOT silently drop failures — enqueue them so
+  // the next flush (foreground / sign-in / next successful race) replays
+  // the missing race against /sync/race. Server idempotency-keys prevent
+  // double-recording if the original call actually succeeded but its
+  // response was dropped.
+  (async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
+        await enqueueRaceSync({ payload: body, idempotencyKey, addedAt: Date.now() });
+        return;
+      }
+      const res = await api.post<RaceSyncResponse>('/sync/race', body);
+      if (res && typeof res.balance === 'number' && onAuthoritative) {
+        onAuthoritative(res.balance);
+      }
+    } catch (err: any) {
+      const status: number = err?.status ?? 0;
+      // Permanent client error other than 401 — dropping is the only
+      // safe option (replay won't change anything). Anything else gets
+      // queued for retry.
+      const isPermanent = status >= 400 && status < 500 && status !== 401;
+      if (!isPermanent) {
+        await enqueueRaceSync({ payload: body, idempotencyKey, addedAt: Date.now() });
+      }
+      if (__DEV__) {
+        console.warn(
+          '[sync/race]',
+          isPermanent ? 'dropped (permanent error)' : 'queued for retry',
+          status,
+          err?.message,
+        );
+      }
     }
-  });
+  })();
 }
 
 interface PurchaseSyncResponse {

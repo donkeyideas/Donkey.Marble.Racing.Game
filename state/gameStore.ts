@@ -882,6 +882,12 @@ export const useGameStore = create<GameState>()(
   },
 
   trainMarble: (stat) => {
+    // TODO(economy): this deducts coins LOCALLY only — server isn't told.
+    // Wire to applyEconomyAction('train_marble', { stat }) once that server
+    // action exists. Until then, franchise-mode training drift is recovered
+    // by the periodic local↔server coin reconciliation in lobby.tsx (which
+    // pulls server↑ when server > local, so the server's authoritative
+    // lower-by-training balance eventually wins out).
     const { season, coins } = get();
     if (!season || season.seasonMode !== 'franchise' || !season.seasonMarbleId) {
       return { success: false, gain: 0, cost: 0 };

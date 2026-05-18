@@ -26,7 +26,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGameStore } from '../state/gameStore';
 import { applyEconomyAction } from './economy';
 
-const RECONCILE_VERSION = 'v1';
+/* v2 bump: closes the race-sync drift that accumulated before the
+ * race-sync retry queue existed. Fire-and-forget /sync/race failures
+ * were silently lost, so per-race payouts (and the corresponding
+ * server coin deltas) never reached the DB. Phone balance was correct;
+ * server was low. v2 re-runs reconciliation on the next sign-in to
+ * close that gap on existing installs. */
+const RECONCILE_VERSION = 'v2';
 const DONE_KEY = `dmr-balance-reconcile-done-${RECONCILE_VERSION}`;
 const MIN_GAP_TO_RECONCILE = 1; // ignore drift of 0 coins
 

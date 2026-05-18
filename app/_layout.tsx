@@ -18,6 +18,7 @@ import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth'
 import { registerForPushNotifications, unregisterPushNotifications } from '../lib/pushRegistration';
 import { initSessionTracker, startSession, endSession } from '../lib/sessionTracker';
 import { flushEconomyQueue, clearEconomyQueue } from '../lib/syncQueue';
+import { flushRaceSyncQueue, clearRaceSyncQueue } from '../lib/raceSyncQueue';
 import { reconcileLocalBalanceOnce } from '../lib/balanceReconcile';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
@@ -65,19 +66,32 @@ export default function RootLayout() {
         // or offline — keeps the server's coin balance in lockstep with
         // the local optimistic balance.
         flushEconomyQueue().catch(() => {});
-        // One-time backfill for pre-fix drift: if local coins are ahead
-        // of the server's authoritative balance (from historical
-        // local-only challenge / season-starter grants), send the delta
-        // to the server. Gated by AsyncStorage flag so it only runs once
-        // per install. Server caps the credit.
+        // Drain queued race syncs (failed /sync/race POSTs from earlier
+        // sessions). When the queue had pending items, the LAST race's
+        // server-returned balance is the authoritative post-drain coin
+        // count — snap local state to it so the phone matches the admin
+        // immediately after a reconciliation pass.
+        flushRaceSyncQueue()
+          .then((res) => {
+            if (res.drained > 0 && typeof res.balance === 'number') {
+              useGameStore.setState({ coins: res.balance });
+            }
+          })
+          .catch(() => {});
+        // Backfill for pre-fix drift: if local coins are ahead of the
+        // server's authoritative balance (historical local-only grants,
+        // OR lost race syncs from before the queue existed), send the
+        // delta. Version-gated so a new bump can trigger a fresh pass
+        // when needed; server caps the credit.
         reconcileLocalBalanceOnce().catch(() => {});
       } else {
         setFirebaseUser(null);
         unregisterPushNotifications().catch(() => {});
         endSession();
-        // Drop the queue so the next user doesn't inherit the previous
+        // Drop the queues so the next user doesn't inherit the previous
         // user's pending writes.
         clearEconomyQueue().catch(() => {});
+        clearRaceSyncQueue().catch(() => {});
       }
     });
 
