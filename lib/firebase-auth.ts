@@ -55,26 +55,66 @@ let googleConfigured = false;
 export function configureGoogleSignIn(webClientId: string) {
   const gs = getGoogleSignin();
   if (gs) {
-    gs.configure({ webClientId });
+    /* `scopes` is required on Android for the id token to come back with
+     * email/profile claims attached — without it the Google picker still
+     * opens but the response is missing fields Firebase needs to build a
+     * useful user record, which surfaced as the "signed in with Google
+     * doesn't take" report on Android.
+     *
+     * `offlineAccess: false` because Firebase doesn't need server-side
+     * refresh tokens — the Web SDK handles its own session management. */
+    gs.configure({
+      webClientId,
+      scopes: ['profile', 'email'],
+      offlineAccess: false,
+    });
     googleConfigured = true;
   }
 }
 
+/* Last Google sign-in error, surfaced by signInWithGoogle so the caller
+ * can show a real message in the UI instead of "Could not sign in" —
+ * required to diagnose Android SHA-1 / Play Services / OAuth client
+ * mismatches on TestFlight / internal-track builds. */
+let lastGoogleError: string | null = null;
+export function getLastGoogleSignInError(): string | null {
+  return lastGoogleError;
+}
+
 export async function signInWithGoogle(): Promise<User | null> {
+  lastGoogleError = null;
   try {
     const gs = getGoogleSignin();
-    if (!gs || !googleConfigured) return null;
+    if (!gs) {
+      lastGoogleError = 'Google Sign-In native module not available (Expo Go or unlinked native build)';
+      return null;
+    }
+    if (!googleConfigured) {
+      lastGoogleError = 'Google Sign-In not configured — webClientId missing';
+      return null;
+    }
 
     await gs.hasPlayServices({ showPlayServicesUpdateDialog: true });
     const response = await gs.signIn();
-    if (!response.data?.idToken) return null;
+    /* Newer @react-native-google-signin versions wrap the result in
+     * { type: 'success' | 'cancelled', data: {...} }. Older versions
+     * return the data fields directly. Read defensively. */
+    const idToken: string | undefined =
+      response?.data?.idToken ?? response?.idToken;
+    if (!idToken) {
+      lastGoogleError = 'Google did not return an idToken (likely SHA-1 fingerprint mismatch or OAuth client misconfigured)';
+      return null;
+    }
 
     // Exchange the Google idToken for a Firebase credential via the Web SDK.
-    const credential = GoogleAuthProvider.credential(response.data.idToken);
+    const credential = GoogleAuthProvider.credential(idToken);
     const userCredential = await signInWithCredential(getFbAuth(), credential);
     return userCredential.user;
   } catch (error: any) {
-    console.warn('[Auth] Google sign-in failed:', error?.message || error);
+    const code = error?.code ?? '';
+    const msg = error?.message ?? String(error);
+    lastGoogleError = code ? `${code}: ${msg}` : msg;
+    if (__DEV__) console.warn('[Auth] Google sign-in failed:', lastGoogleError);
     return null;
   }
 }

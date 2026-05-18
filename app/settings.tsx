@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
-import { signInWithGoogle, signInWithApple, signOut } from '../lib/firebase-auth';
+import { signInWithGoogle, signInWithApple, signOut, getLastGoogleSignInError } from '../lib/firebase-auth';
 
 const LEGAL_PAGES = [
   {
@@ -70,9 +70,21 @@ export default function SettingsScreen() {
           photoURL: user.photoURL,
           email: user.email,
         });
+      } else {
+        /* signInWithGoogle returns null AND records the actual reason in
+         * getLastGoogleSignInError. Show it so Android SHA-1 / OAuth-
+         * client / Play-Services failures are debuggable instead of
+         * presenting a useless "please try again" generic. */
+        const reason = getLastGoogleSignInError();
+        Alert.alert(
+          'Sign-In Failed',
+          reason
+            ? `Couldn't complete sign-in.\n\n${reason}`
+            : 'Could not sign in with Google. Please try again.',
+        );
       }
-    } catch {
-      Alert.alert('Sign-In Failed', 'Could not sign in with Google. Please try again.');
+    } catch (err: any) {
+      Alert.alert('Sign-In Failed', err?.message ?? 'Could not sign in with Google. Please try again.');
     }
     setSigningIn(false);
   };

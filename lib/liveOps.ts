@@ -51,6 +51,54 @@ let messages: GameMessage[] = [];
 let abAssignments: ABTestAssignment[] = [];
 let playerId: string | null = null;
 
+/* IDs the user has tapped to dismiss locally. Filtered out of
+ * getAnnouncements()/getActivePromos() so a dismissed banner doesn't
+ * pop back up on the next config refresh. Persisted to AsyncStorage so
+ * dismissals survive cold starts. */
+const DISMISSED_KEY = 'dmr-live-ops-dismissed-v1';
+let dismissedIds: Set<string> = new Set();
+let dismissedLoaded = false;
+const subscribers = new Set<() => void>();
+
+function notify() {
+  for (const cb of subscribers) {
+    try { cb(); } catch {}
+  }
+}
+
+/** Subscribe to dismissal changes so screens can re-render. */
+export function onLiveOpsChange(cb: () => void): () => void {
+  subscribers.add(cb);
+  return () => subscribers.delete(cb);
+}
+
+async function loadDismissed(): Promise<void> {
+  if (dismissedLoaded) return;
+  try {
+    const raw = await AsyncStorage.getItem(DISMISSED_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw) as string[];
+      if (Array.isArray(arr)) dismissedIds = new Set(arr);
+    }
+  } catch {}
+  dismissedLoaded = true;
+}
+
+async function saveDismissed(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissedIds]));
+  } catch {}
+}
+
+/** Mark an announcement / promo as dismissed locally. Idempotent. */
+export async function dismissLiveOpsItem(id: string): Promise<void> {
+  await loadDismissed();
+  if (dismissedIds.has(id)) return;
+  dismissedIds.add(id);
+  await saveDismissed();
+  notify();
+}
+
 // ── Player ID ──
 
 export async function getPlayerId(): Promise<string | null> {
@@ -133,21 +181,27 @@ export async function fetchABTests(): Promise<ABTestAssignment[]> {
 
 export async function fetchAllLiveOps(): Promise<void> {
   await Promise.all([
+    loadDismissed(),
     fetchAnnouncements(),
     fetchPromos(),
     fetchMessages(),
     fetchABTests(),
   ]);
+  // Tell subscribers (lobby banner, etc.) — initial dataset is now in memory
+  // and any persisted dismissals have been applied.
+  notify();
 }
 
 // ── Getters (synchronous, from memory) ──
 
 export function getAnnouncements(): Announcement[] {
-  return announcements;
+  if (dismissedIds.size === 0) return announcements;
+  return announcements.filter((a) => !dismissedIds.has(a.id));
 }
 
 export function getActivePromos(): Promo[] {
-  return promos;
+  if (dismissedIds.size === 0) return promos;
+  return promos.filter((p) => !dismissedIds.has(p.id));
 }
 
 export function getUnreadMessages(): GameMessage[] {

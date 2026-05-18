@@ -679,15 +679,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-  },
-  franchiseBetCardActive: {
-    backgroundColor: 'rgba(255,194,32,0.15)',
-    borderColor: Colors.yellow,
-    shadowColor: Colors.yellow,
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    /* Pre-reserve the same shadow space as the active variant so the cards
+     * don't shift / size differently when one becomes selected. Setting
+     * shadowOpacity to 0 leaves the layout slot intact without a visible
+     * shadow. Android's elevation does the same thing. */
+    shadowColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
     shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
+    elevation: 0,
+  },
+  /* Active state was rendering inconsistently — on some Androids the
+   * elevation-driven material shadow + the 15% yellow inner tint looked
+   * like a DARKER INNER BOX inside the yellow border (different from
+   * the smaller-digit "25" card next to it). Solid border + slightly
+   * stronger inner fill, no platform-shadow tricks → identical look for
+   * 25 / 100 / 250 / 500 when selected. */
+  franchiseBetCardActive: {
+    backgroundColor: 'rgba(255,194,32,0.20)',
+    borderColor: Colors.yellow,
+    borderWidth: 2,
   },
   franchiseBetAmount: {
     fontFamily: Fonts.display,

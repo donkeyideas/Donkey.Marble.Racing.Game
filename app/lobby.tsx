@@ -15,9 +15,9 @@ import { Colors, Fonts, MARBLES, Spacing, BorderRadius } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import { showModal } from '../components/GameModal';
 import { syncPlayerState } from '../lib/sync';
-import { getAnnouncements, getActivePromos } from '../lib/liveOps';
+import { getAnnouncements, getActivePromos, onLiveOpsChange, dismissLiveOpsItem } from '../lib/liveOps';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { getTrackOfTheDay } from '../data/courses';
+import { ALL_COURSES, getTrackOfTheDay } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import { pollSupportReplies, readBannerDismissedCount, writeBannerDismissedCount } from '../lib/supportNotifier';
@@ -112,6 +112,15 @@ export default function LobbyScreen() {
     });
   }, []);
 
+  /* Re-render trigger when live-ops change (announcement / promo dismissal,
+   * fresh fetch). getAnnouncements / getActivePromos read from a module-
+   * level cache; without this hook the lobby wouldn't update when the
+   * user taps the banner to dismiss it. */
+  const [liveOpsTick, setLiveOpsTick] = useState(0);
+  useEffect(() => onLiveOpsChange(() => setLiveOpsTick((n) => n + 1)), []);
+  // Touch the tick so React keeps this as a dep even if unused inline.
+  void liveOpsTick;
+
   // Periodic state sync — pushes non-economy hints (streaks, pass XP) and
   // pulls server-authoritative coins / totalRaces / totalWins / dailyStreak.
   // Reconciles any drift on every lobby entry + every 60s while in lobby.
@@ -183,29 +192,58 @@ export default function LobbyScreen() {
             <CoinPill amount={coins} onPress={() => router.push('/store')} />
           </View>
 
-          {/* ===== ANNOUNCEMENT BANNER ===== */}
-          {getAnnouncements().length > 0 && (
-            <View style={styles.announcementBanner}>
-              <View style={[styles.announcementBadge, {
-                backgroundColor:
-                  getAnnouncements()[0].type === 'warning' ? '#e74c3c'
-                  : getAnnouncements()[0].type === 'maintenance' ? '#f39c12'
-                  : getAnnouncements()[0].type === 'promo' ? '#2ecc71'
-                  : '#3498db',
-              }]}>
-                <Text style={styles.announcementBadgeText}>
-                  {getAnnouncements()[0].type === 'warning' ? 'WARNING'
-                    : getAnnouncements()[0].type === 'maintenance' ? 'MAINTENANCE'
-                    : getAnnouncements()[0].type === 'promo' ? 'PROMO'
-                    : 'INFO'}
-                </Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.announcementTitle}>{getAnnouncements()[0].title}</Text>
-                <Text style={styles.announcementBody}>{getAnnouncements()[0].body}</Text>
-              </View>
-            </View>
-          )}
+          {/* ===== ANNOUNCEMENT BANNER =====
+              Tap routes to the relevant screen (national-races for live
+              event promos, otherwise stays on lobby) AND dismisses the
+              banner so it doesn't pop back up next time the same id
+              comes through. Dismissed ids are persisted in AsyncStorage
+              via dismissLiveOpsItem — see lib/liveOps.ts. */}
+          {getAnnouncements().length > 0 && (() => {
+            const ann = getAnnouncements()[0];
+            const isEventPromo = ann.id.startsWith('auto-live-') || ann.id.startsWith('auto-soon-');
+            const handlePress = () => {
+              dismissLiveOpsItem(ann.id).catch(() => {});
+              if (isEventPromo) router.push('/national-races');
+            };
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.announcementBanner,
+                  pressed && { opacity: 0.85 },
+                ]}
+                onPress={handlePress}
+              >
+                <View style={[styles.announcementBadge, {
+                  backgroundColor:
+                    ann.type === 'warning' ? '#e74c3c'
+                    : ann.type === 'maintenance' ? '#f39c12'
+                    : ann.type === 'promo' ? '#2ecc71'
+                    : '#3498db',
+                }]}>
+                  <Text style={styles.announcementBadgeText}>
+                    {ann.type === 'warning' ? 'WARNING'
+                      : ann.type === 'maintenance' ? 'MAINTENANCE'
+                      : ann.type === 'promo' ? 'PROMO'
+                      : 'INFO'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.announcementTitle}>{ann.title}</Text>
+                  <Text style={styles.announcementBody}>{ann.body}</Text>
+                </View>
+                <Pressable
+                  hitSlop={10}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    dismissLiveOpsItem(ann.id).catch(() => {});
+                  }}
+                  style={styles.announcementClose}
+                >
+                  <Text style={styles.announcementCloseText}>×</Text>
+                </Pressable>
+              </Pressable>
+            );
+          })()}
 
           {/* ===== SUPPORT REPLY BANNER ===== */}
           {showSupportBanner && (
@@ -361,7 +399,7 @@ export default function LobbyScreen() {
               onPress={() => router.push('/courses')}
             >
               <Text style={styles.navLabel}>COURSES</Text>
-              <Text style={styles.navSub}>246 tracks</Text>
+              <Text style={styles.navSub}>{ALL_COURSES.length} tracks</Text>
             </Pressable>
           </View>
 
@@ -524,6 +562,19 @@ const styles = StyleSheet.create({
     minWidth: 64,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  announcementClose: {
+    marginLeft: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  announcementCloseText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 20,
+    color: 'rgba(255,255,255,0.55)',
+    lineHeight: 22,
   },
   announcementBadgeText: {
     fontFamily: Fonts.bodyBold,
