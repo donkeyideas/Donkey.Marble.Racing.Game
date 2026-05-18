@@ -128,21 +128,29 @@ export default function LobbyScreen() {
           passXp: s.passXp,
         },
         (serverState) => {
-          // Periodic sync no longer overwrites coins. Reason: most
-          // coin-altering actions (race payouts, playoff payouts, etc.)
-          // are fire-and-forget on the server side, so there's a brief
-          // window where the server hasn't credited yet. If the lobby
-          // sync hit during that window it would snap the player's
-          // balance DOWN, looking exactly like the game "charged them"
-          // to start a new season / etc. Coins are still kept in sync
-          // via the explicit applyEconomyAction response path — that's
-          // the authoritative source. We pull only the counters that
-          // are pure server-side state (race totals, streak).
+          // Counters that are pure server-side state always pull down.
           useGameStore.setState({
             totalRaces: serverState.totalRaces,
             totalWins: serverState.totalWins,
             dailyStreak: serverState.dailyStreak,
           });
+
+          // Coins: ONE-WAY safe sync. Only pull server→local when the
+          // server's value is STRICTLY GREATER than what we have locally
+          // (e.g., admin granted a bonus via the dashboard, daily streak
+          // claimed in another session, refund). We never snap DOWN here
+          // because race / tournament / national payouts are written to
+          // the server in the background and a lobby sync hitting during
+          // that window would otherwise zero out a payout the player just
+          // earned — that's the bug this guard prevents.
+          //
+          // The applyEconomyAction response path remains the authoritative
+          // source for any local-initiated coin change; this is purely to
+          // close the loop on changes that originated server-side.
+          const local = useGameStore.getState().coins;
+          if (serverState.coins > local) {
+            useGameStore.setState({ coins: serverState.coins });
+          }
         },
       );
     };
