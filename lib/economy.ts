@@ -11,6 +11,7 @@
  */
 
 import { api, getToken, ApiError } from './api';
+import { enqueueEconomyAction, flushEconomyQueue } from './syncQueue';
 
 export type EconomyAction =
   | 'claim_daily'
@@ -70,11 +71,22 @@ export async function applyEconomyAction(opts: {
   payload?: Record<string, unknown>;
   idempotencyKey?: string;
 }): Promise<EconomyResult> {
-  const token = await getToken();
-  if (!token) {
-    return { ok: false, status: 401, message: 'Not signed in' };
-  }
   const idempotencyKey = opts.idempotencyKey ?? newIdempotencyKey();
+  const token = await getToken();
+
+  // No auth token yet — queue for retry once the user signs in. Local UI
+  // state stays optimistic; the queue flush after sign-in reconciles
+  // server-side. Previously this just returned and let the optimistic
+  // balance drift forever.
+  if (!token) {
+    await enqueueEconomyAction({
+      action: opts.action,
+      payload: opts.payload,
+      idempotencyKey,
+      addedAt: Date.now(),
+    });
+    return { ok: false, status: 401, message: 'Not signed in (queued for retry)' };
+  }
 
   try {
     const res = await api.post<EconomyResponse>('/economy/transaction', {
@@ -82,10 +94,25 @@ export async function applyEconomyAction(opts: {
       idempotencyKey,
       payload: opts.payload ?? {},
     });
+    // Piggy-back: we know the network and token are good right now, drain
+    // any backlogged actions opportunistically. Fire-and-forget.
+    flushEconomyQueue().catch(() => {});
     return { ...res, ok: true };
   } catch (err: any) {
     const status: number = err instanceof ApiError ? err.status : 0;
     const message: string = err?.message ?? 'Economy request failed';
+
+    // Retriable failure (network, 5xx, transient 401) — queue for retry.
+    // Permanent client errors (4xx other than 401) get dropped.
+    const isRetriable = status === 0 || status === 401 || (status >= 500 && status < 600);
+    if (isRetriable) {
+      await enqueueEconomyAction({
+        action: opts.action,
+        payload: opts.payload,
+        idempotencyKey,
+        addedAt: Date.now(),
+      });
+    }
     return { ok: false, status, message };
   }
 }

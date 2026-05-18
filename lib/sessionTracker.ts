@@ -19,6 +19,7 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
+import { flushEconomyQueue } from './syncQueue';
 
 const OPEN_SESSION_KEY = 'dmr-app-session-open-v1';
 const MIN_LOG_SECONDS = 2;
@@ -126,6 +127,9 @@ function handleAppStateChange(state: AppStateStatus): void {
     } else if (!openStartedAt) {
       startSession();
     }
+    // Foreground is also a good moment to retry any queued economy
+    // actions — network is usually freshly available.
+    flushEconomyQueue().catch(() => {});
   } else if (state === 'inactive' || state === 'background') {
     lastForegroundAt = Date.now();
     endSession();

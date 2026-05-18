@@ -17,6 +17,7 @@ import { fetchAllLiveOps } from '../lib/liveOps';
 import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth';
 import { registerForPushNotifications, unregisterPushNotifications } from '../lib/pushRegistration';
 import { initSessionTracker, startSession, endSession } from '../lib/sessionTracker';
+import { flushEconomyQueue, clearEconomyQueue } from '../lib/syncQueue';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 
@@ -59,10 +60,17 @@ export default function RootLayout() {
         registerForPushNotifications().catch(() => {});
         initSessionTracker(true);
         startSession();
+        // Drain any economy actions queued while the user was signed out
+        // or offline — keeps the server's coin balance in lockstep with
+        // the local optimistic balance.
+        flushEconomyQueue().catch(() => {});
       } else {
         setFirebaseUser(null);
         unregisterPushNotifications().catch(() => {});
         endSession();
+        // Drop the queue so the next user doesn't inherit the previous
+        // user's pending writes.
+        clearEconomyQueue().catch(() => {});
       }
     });
 
