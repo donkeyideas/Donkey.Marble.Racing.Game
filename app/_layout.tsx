@@ -16,6 +16,7 @@ import { loadCachedConfig, fetchRemoteConfig } from '../lib/remoteConfig';
 import { fetchAllLiveOps } from '../lib/liveOps';
 import { onAuthStateChanged, configureGoogleSignIn } from '../lib/firebase-auth';
 import { registerForPushNotifications, unregisterPushNotifications } from '../lib/pushRegistration';
+import { initSessionTracker, startSession, endSession } from '../lib/sessionTracker';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 
@@ -42,6 +43,10 @@ export default function RootLayout() {
     // Sync Firebase auth state → Zustand store, and register/clear push token
     // around sign-in transitions. Registration is gated on having an
     // authenticated session because the /push-token endpoint requires it.
+    // The session tracker is initialised once with the current sign-in state
+    // and then opens/closes sessions on AppState transitions; we still
+    // start/end explicitly on sign-in / sign-out so anonymous time doesn't
+    // get attributed to the player.
     const unsubAuth = onAuthStateChanged((user) => {
       const { setFirebaseUser } = useGameStore.getState();
       if (user) {
@@ -52,9 +57,12 @@ export default function RootLayout() {
           email: user.email,
         });
         registerForPushNotifications().catch(() => {});
+        initSessionTracker(true);
+        startSession();
       } else {
         setFirebaseUser(null);
         unregisterPushNotifications().catch(() => {});
+        endSession();
       }
     });
 

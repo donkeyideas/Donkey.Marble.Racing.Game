@@ -122,6 +122,17 @@ export const api = {
   clearPushToken: () =>
     apiFetch<{ cleared: boolean }>('/push-token', { method: 'DELETE' }),
 
+  recordAppSession: (data: {
+    startedAt: string;
+    endedAt: string;
+    durationSecs: number;
+    platform: 'ios' | 'android' | 'web';
+  }) =>
+    apiFetch<{ accepted: boolean }>('/session', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   support: {
     listTickets: () =>
       apiFetch<{ tickets: SupportTicketSummary[] }>('/support/tickets'),
