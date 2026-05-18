@@ -73,6 +73,8 @@ export default function StoreScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [iapReady, setIapReady] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
 
   // Reset daily counters display if new day
   const today = new Date().toISOString().slice(0, 10);
@@ -194,6 +196,70 @@ export default function StoreScreen() {
         setTimeout(() => setErrorMsg(null), 3000);
       }
       setPurchasing(null);
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!IAP || !iapReady) {
+      setRestoreMsg('Store not available in this build.');
+      setTimeout(() => setRestoreMsg(null), 3000);
+      return;
+    }
+
+    setRestoring(true);
+    setRestoreMsg(null);
+    setErrorMsg(null);
+
+    try {
+      const purchases: Purchase[] = await IAP.getAvailablePurchases();
+      // Only non-consumables can be restored. Coin packs are consumed on
+      // grant, so only the season passes show up here.
+      const passPurchases = purchases.filter((p) => {
+        const packId = STORE_ID_TO_PACK[p.productId];
+        return packId === 'season_pass' || packId === 'season_pass_premium';
+      });
+
+      if (passPurchases.length === 0) {
+        setRestoreMsg('No purchases to restore.');
+        setTimeout(() => setRestoreMsg(null), 3000);
+        setRestoring(false);
+        return;
+      }
+
+      let restoredCount = 0;
+      for (const purchase of passPurchases) {
+        const packId = STORE_ID_TO_PACK[purchase.productId];
+        const track = packId === 'season_pass' ? 'premium' : 'plus';
+        const purchaseToken: string =
+          purchase.purchaseToken ?? purchase.transactionReceipt ?? '';
+        if (!purchaseToken) continue;
+
+        const result = await purchaseSeasonPass(track, purchaseToken, purchase.productId);
+        if (result.success) {
+          restoredCount++;
+          try {
+            await IAP.finishTransaction({ purchase, isConsumable: false });
+          } catch (err) {
+            console.warn('Failed to finish restored transaction:', err);
+          }
+        } else if (result.error === 'Already own this pass' || result.error === 'Already on Plus tier') {
+          // Server entitlement already present locally — that counts as a successful restore.
+          restoredCount++;
+        }
+      }
+
+      if (restoredCount > 0) {
+        setRestoreMsg(`Restored ${restoredCount} purchase${restoredCount === 1 ? '' : 's'}.`);
+      } else {
+        setRestoreMsg('Nothing to restore.');
+      }
+      setTimeout(() => setRestoreMsg(null), 3000);
+    } catch (err) {
+      console.warn('Restore failed:', err);
+      setRestoreMsg('Restore failed. Please try again.');
+      setTimeout(() => setRestoreMsg(null), 3000);
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -403,6 +469,25 @@ export default function StoreScreen() {
               </Pressable>
             );
           })()}
+
+          {/* Restore Purchases \u2014 required by Apple App Store guideline 3.1.1 */}
+          <Pressable
+            onPress={handleRestore}
+            disabled={restoring}
+            style={({ pressed }) => [
+              styles.restoreBtn,
+              pressed && !restoring && { opacity: 0.7 },
+              restoring && { opacity: 0.5 },
+            ]}
+          >
+            <Text style={styles.restoreBtnText}>
+              {restoring ? 'RESTORING...' : 'RESTORE PURCHASES'}
+            </Text>
+          </Pressable>
+
+          {restoreMsg && (
+            <Text style={styles.restoreMsg}>{restoreMsg}</Text>
+          )}
 
           {/* Footer disclaimer */}
           <Text style={styles.disclaimer}>
@@ -632,6 +717,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.red,
     textAlign: 'center',
+  },
+
+  /* Restore */
+  restoreBtn: {
+    alignSelf: 'center',
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 2,
+    borderColor: 'rgba(110,193,255,0.4)',
+    backgroundColor: 'rgba(110,193,255,0.1)',
+  },
+  restoreBtnText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.blueSky,
+    letterSpacing: 1,
+  },
+  restoreMsg: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: Colors.whiteAlpha50,
+    textAlign: 'center',
+    marginTop: 8,
   },
 
   /* Disclaimer */
