@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated';
+import Fireworks from '../components/Fireworks';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
@@ -452,7 +453,7 @@ export default function TournamentBracketScreen() {
               coin count-up; eliminated gets a red flash + shake. */}
           {status === 'champion' && (
             <>
-              <ConfettiBurst />
+              <Fireworks />
               <ChampionBanner totalEarned={totalEarned} />
             </>
           )}

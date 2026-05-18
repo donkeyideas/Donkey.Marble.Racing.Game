@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
-  Animated as RNAnimated, Easing, Dimensions,
+  Animated as RNAnimated, Easing,
 } from 'react-native';
+import Fireworks from '../components/Fireworks';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,62 +16,6 @@ import { useGameStore } from '../state/gameStore';
 
 function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
-}
-
-// ── Confetti for champion screen ───────────────────────────────────────────
-const { width: SCREEN_W } = Dimensions.get('window');
-const CONFETTI_COLORS = ['#ffc220', '#2ecc71', '#e74c3c', '#3498db', '#9b59b6', '#ff9a1a', '#1abc9c'];
-const CONFETTI_COUNT = 32;
-
-function ConfettiBurst() {
-  const pieces = useRef(
-    Array.from({ length: CONFETTI_COUNT }, (_, i) => ({
-      tx: new RNAnimated.Value(0),
-      ty: new RNAnimated.Value(-20),
-      rot: new RNAnimated.Value(0),
-      opacity: new RNAnimated.Value(0),
-      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      startX: Math.random() * SCREEN_W,
-      driftX: (Math.random() - 0.5) * 140,
-      fallY: 500 + Math.random() * 400,
-      delay: Math.random() * 500,
-      spin: (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 2),
-      size: 6 + Math.random() * 7,
-    })),
-  ).current;
-  useEffect(() => {
-    pieces.forEach((p) => {
-      RNAnimated.parallel([
-        RNAnimated.timing(p.opacity, { toValue: 1, duration: 200, delay: p.delay, useNativeDriver: true }),
-        RNAnimated.timing(p.tx, { toValue: p.driftX, duration: 2400, delay: p.delay, useNativeDriver: true, easing: Easing.out(Easing.quad) }),
-        RNAnimated.timing(p.ty, { toValue: p.fallY, duration: 2400, delay: p.delay, useNativeDriver: true, easing: Easing.in(Easing.quad) }),
-        RNAnimated.timing(p.rot, { toValue: p.spin, duration: 2400, delay: p.delay, useNativeDriver: true }),
-        RNAnimated.sequence([
-          RNAnimated.delay(p.delay + 1800),
-          RNAnimated.timing(p.opacity, { toValue: 0, duration: 600, useNativeDriver: true }),
-        ]),
-      ]).start();
-    });
-  }, []);
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {pieces.map((p, i) => (
-        <RNAnimated.View
-          key={i}
-          style={{
-            position: 'absolute', left: p.startX, top: 0,
-            width: p.size, height: p.size * 0.6, backgroundColor: p.color,
-            opacity: p.opacity,
-            transform: [
-              { translateX: p.tx },
-              { translateY: p.ty },
-              { rotate: p.rot.interpolate({ inputRange: [-3, 3], outputRange: ['-540deg', '540deg'] }) },
-            ],
-          }}
-        />
-      ))}
-    </View>
-  );
 }
 
 // Champion banner: spring-in scale + pulsing label + glow + coin count-up
@@ -223,7 +168,7 @@ export default function ChampionshipScreen() {
           ) : isComplete && championId ? (
             // ── Champion crowned ──
             <>
-              {playerIsChampion && <ConfettiBurst />}
+              {playerIsChampion && <Fireworks />}
               {(() => {
                 // Compute placement + payout for the fanfare count-up.
                 // Bettor mode always pays a completion bonus = win fanfare.
@@ -301,6 +246,46 @@ export default function ChampionshipScreen() {
                 )}
               </View>
 
+              {/* Season-long breakdown: every marble, regular-season W-L,
+                  and an annotation if they made it past the regular season
+                  ("+ Champion" / "+ Runner-Up" / "+ Top 3" / "+ Playoffs").
+                  Sorted by points desc so the best racers are at the top. */}
+              <Text style={styles.sectionTitle}>SEASON STANDINGS</Text>
+              <View style={styles.gamesCard}>
+                {season ? Object.entries(season.standings)
+                  .sort(([, a], [, b]) => b.points - a.points || b.wins - a.wins)
+                  .map(([marbleId, entry]) => {
+                    let badge: { label: string; color: string } | null = null;
+                    if (playoffs?.championId === marbleId) {
+                      badge = { label: '+ Champion', color: Colors.yellow };
+                    } else if (playoffs?.eliminatedIds.includes(marbleId)) {
+                      const elimIdx = playoffs.eliminatedIds.indexOf(marbleId);
+                      const placement = playoffs.eliminatedIds.length - elimIdx + 1;
+                      if (placement === 2) badge = { label: '+ Runner-Up', color: '#c0c0c0' };
+                      else if (placement === 3) badge = { label: '+ Top 3', color: '#cd7f32' };
+                      else if (playoffs.seeds.includes(marbleId)) badge = { label: '+ Playoffs', color: Colors.green };
+                    } else if (playoffs?.seeds.includes(marbleId)) {
+                      badge = { label: '+ Playoffs', color: Colors.green };
+                    }
+                    return (
+                      <View key={marbleId} style={styles.gameRow}>
+                        <MarbleDot marble={getMarble(marbleId)} size={18} />
+                        <Text style={[styles.gameWinner, { flex: 1 }]}>
+                          {getMarble(marbleId).name}
+                        </Text>
+                        <Text style={styles.recordText}>
+                          {entry.wins}W · {entry.podiums}P
+                        </Text>
+                        {badge && (
+                          <Text style={[styles.badgePlus, { color: badge.color }]}>
+                            {badge.label}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  }) : null}
+              </View>
+
               {/* Lives summary */}
               <Text style={styles.sectionTitle}>LIVES USED</Text>
               <View style={styles.gamesCard}>
@@ -358,7 +343,12 @@ export default function ChampionshipScreen() {
                 onPress={handleNewSeason}
               />
               <Text style={styles.newSeasonBonus}>
-                +{Math.min(2500, 500 + ((season?.seasonNumber ?? 1) - 1) * 250).toLocaleString()} coin starter bonus
+                +{Math.min(2500, 500 + ((season?.seasonNumber ?? 1) - 1) * 250).toLocaleString()} free coins on start
+              </Text>
+              <Text style={styles.newSeasonHint}>
+                Returning-player bonus credited to your balance the moment you start
+                the next season. Grows by 250 coins each season (caps at 2,500). No
+                entry fee — starting a season is always free.
               </Text>
             </>
           ) : (
@@ -568,6 +558,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.whiteAlpha40,
   },
+  recordText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: Colors.whiteAlpha60,
+    letterSpacing: 0.5,
+  },
+  badgePlus: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    marginLeft: 8,
+    letterSpacing: 0.3,
+  },
 
   /* Section title */
   sectionTitle: {
@@ -618,5 +620,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.yellow,
     marginTop: 8,
+  },
+  newSeasonHint: {
+    textAlign: 'center',
+    fontFamily: Fonts.body,
+    fontSize: 11,
+    color: Colors.whiteAlpha50,
+    marginTop: 6,
+    paddingHorizontal: 20,
+    lineHeight: 16,
   },
 });
