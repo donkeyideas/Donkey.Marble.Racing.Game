@@ -10,7 +10,12 @@ const CONFIG_URL = __DEV__
   : 'https://marble-admin.donkeyideas.com/api/game-config';
 
 const CACHE_KEY = 'dmr-remote-config';
-const STALE_MS = 5 * 60 * 1000; // refetch every 5 minutes
+/* Cache window dropped 5min → 60s. Combined with the foreground-refetch
+ * hook in sessionTracker, this means an admin pushing a new track
+ * background sees it appear on the app within ~60 seconds (or instantly
+ * on the next foreground transition). The old 5-min window was tuned
+ * for steady-state cost but made live-ops testing painful. */
+const STALE_MS = 60 * 1000;
 
 export interface RemoteConfig {
   betAmounts: number[];

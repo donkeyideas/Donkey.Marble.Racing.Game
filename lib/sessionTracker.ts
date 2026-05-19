@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 import { flushEconomyQueue } from './syncQueue';
 import { flushRaceSyncQueue } from './raceSyncQueue';
+import { fetchRemoteConfig } from './remoteConfig';
 import { useGameStore } from '../state/gameStore';
 
 const OPEN_SESSION_KEY = 'dmr-app-session-open-v1';
@@ -160,6 +161,14 @@ function handleAppStateChange(state: AppStateStatus): void {
         }
       })
       .catch(() => {});
+    /* Also refresh remote config on foreground so live-ops changes
+     * (new track backgrounds, retuned coin rewards, promo flags) appear
+     * within seconds of the user returning to the app — not only after
+     * a cold restart. Previously the config cache only invalidated on
+     * STALE_MS expiry (default 60s) AND cold start; an admin who
+     * uploaded a sponsor backdrop and then backgrounded/foregrounded
+     * the app saw no change for up to 60 seconds. */
+    fetchRemoteConfig().catch(() => {});
   } else if (state === 'inactive' || state === 'background') {
     lastForegroundAt = Date.now();
     endSession();
