@@ -213,10 +213,15 @@ function generateGapPegs(centerY: number, _rows: number): ObstacleInfo[] {
 // ── Course 1: Classic Zigzag ──
 
 export function buildClassicZigzag(): TrackConfig {
+  // Track shortened: removed one ramp pair (was 6, now 4) and one peg zone.
+  // The 6-ramp + 2-peg-zone layout averaged ~48s per race with the new
+  // lossy-bumper physics — too close to the 55s doomsday trigger. Cutting
+  // to 4 ramps + 1 peg zone drops total height to 2480 and avg race to
+  // ~30–35s while preserving the zigzag-with-bumpers identity.
   const RAMP_DROP = 65;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1150, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [300, 520, 740, 1500];
+  const PEG_ZONE_YS = [1150];
+  const FINISH_Y = 2200;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -227,33 +232,23 @@ export function buildClassicZigzag(): TrackConfig {
 
   const obstacles: ObstacleInfo[] = [];
 
-  // Peg zones — first zone lighter (3 rows) to improve flow
+  // Single peg zone (was 2 zones — second was redundant after track shortened)
   obstacles.push(...generatePegZone(PEG_ZONE_YS[0], 3, 5, 65, 35));
-  obstacles.push(...generatePegZone(PEG_ZONE_YS[1], 3, 5, 65, 35));
 
-  // Bumpers between ramp pairs
+  // Bumpers between the middle ramp pair
   const mid12 = (520 + 740) / 2;
   obstacles.push(
     { x: 150, y: mid12 - 40, r: 14, type: 'bumper' },
     { x: 250, y: mid12, r: 14, type: 'bumper' },
     { x: 150, y: mid12 + 40, r: 14, type: 'bumper' },
   );
-  const mid45 = (1720 + 1940) / 2;
-  obstacles.push(
-    { x: 250, y: mid45 - 40, r: 14, type: 'bumper' },
-    { x: 150, y: mid45, r: 14, type: 'bumper' },
-    { x: 250, y: mid45 + 40, r: 14, type: 'bumper' },
-  );
 
-  // Fill gaps with sparse bumpers — removed y=1350 (was double-bottleneck with peg zone)
+  // Sparse gap bumpers
   obstacles.push(...generateGapBumpers(950, 40));
-  obstacles.push(...generateGapBumpers(2150, 40));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 340, speed: randSign() * (0.005 + Math.random() * 0.005) },
     { x: 200, y: 950, width: 200, speed: randSign() * (0.008 + Math.random() * 0.005) },
-    { x: 200, y: (1500 + 1720) / 2, width: 320, speed: randSign() * (0.006 + Math.random() * 0.005) },
-    { x: 200, y: 2150, width: 200, speed: randSign() * (0.007 + Math.random() * 0.005) },
   ];
 
   PEG_ZONE_YS.forEach(pegY => {
@@ -280,13 +275,16 @@ export function buildClassicZigzag(): TrackConfig {
     funnels,
     finishFunnel: finish.finishFunnel,
     springs,
-    gravity: { x: 0, y: 1.0, scale: 0.001 },
+    // Gravity 1.25 (was 1.0). High variance in marble paths through the
+    // bumper field + peg zone meant the slowest marble per race could
+    // still take 55s+ even with shortened layout. Strong gravity pulls
+    // lingering marbles down within the safety window.
+    gravity: { x: 0, y: 1.25, scale: 0.001 },
     // Visual test: layered Hills parallax PNGs instead of the procedural grass scenery.
     // Only this track points at 'grass_hills'; other grass courses stay procedural.
     bgImage: 'grass_hills',
     speedBursts: [
       { x: 120, y: 605, width: 50, direction: 'left', activationChance: 0.6 },
-      { x: 280, y: 2005, width: 50, direction: 'right', activationChance: 0.6 },
     ],
   };
 }
@@ -488,7 +486,8 @@ export function buildBallPitRun(): TrackConfig {
     funnels,
     finishFunnel: finish.finishFunnel,
     springs,
-    gravity: { x: 0, y: 1.0, scale: 0.001 },
+    // Gravity 1.1 — ball pits add drag; this offsets it.
+    gravity: { x: 0, y: 1.1, scale: 0.001 },
     bgImage: 'cyber',
     ballPits,
   };
@@ -631,7 +630,9 @@ export function buildCradleDrop(): TrackConfig {
     funnels,
     finishFunnel: finish.finishFunnel,
     springs,
-    gravity: { x: 0, y: 1.0, scale: 0.001 },
+    // Gravity 1.15 — cradle bobs absorb energy elastically but their
+    // swing decays slowly; marbles often dawdle behind the cradle row.
+    gravity: { x: 0, y: 1.15, scale: 0.001 },
     bgImage: 'grass',
     cradles,
   };

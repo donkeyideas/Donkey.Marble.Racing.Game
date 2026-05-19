@@ -49,12 +49,12 @@ export const COURSES: CourseData[] = [
   { id: 'grand-prix-frozen', name: 'Glacier Grand Prix', theme: 'frozen', trackType: 'grand-prix-frozen', description: 'F1-style curves across icy terrain', favoredMarbleId: 'frosty', favoredStat: 'Bounce', gradientColors: ['#0a2a4a', '#3498db'] },
   // ── Featured generated tracks (first 10 from validated set) ──
   { id: 'gen-1004', name: 'Thunder Canyon', theme: 'meadow', trackType: 'gen-1004', description: 'Clean medium-peg descent — pure speed', favoredMarbleId: 'dash', favoredStat: 'Speed', gradientColors: ['#1a4a1a', '#3a8a3a'] },
-  { id: 'gen-1028', name: 'Crystal Falls', theme: 'volcano', trackType: 'gen-1028', description: 'Ball pits and cradles weave through ramps', favoredMarbleId: 'rocky', favoredStat: 'Power', gradientColors: ['#5a1a0a', '#c44000'] },
+  { id: 'gen-1006', name: 'Crystal Falls', theme: 'volcano', trackType: 'gen-1006', description: 'Ball pits and cradles weave through ramps', favoredMarbleId: 'rocky', favoredStat: 'Power', gradientColors: ['#5a1a0a', '#c44000'] },
   { id: 'gen-1043', name: 'Iron Run', theme: 'frozen', trackType: 'gen-1043', description: 'Long descent with light pegs', favoredMarbleId: 'lucky', favoredStat: 'Luck', gradientColors: ['#0a2a4a', '#4a9aca'] },
-  { id: 'gen-1725', name: 'Mystic Gorge', theme: 'cyber', trackType: 'gen-1725', description: 'Pendulums and trampolines on a fast course', favoredMarbleId: 'frosty', favoredStat: 'Bounce', gradientColors: ['#2a0a4a', '#9b59b6'] },
+  { id: 'gen-1192', name: 'Mystic Gorge', theme: 'cyber', trackType: 'gen-1192', description: 'Pendulums and trampolines on a fast course', favoredMarbleId: 'frosty', favoredStat: 'Bounce', gradientColors: ['#2a0a4a', '#9b59b6'] },
   { id: 'gen-1068', name: 'Blazing Pass', theme: 'meadow', trackType: 'gen-1068', description: 'Pendulums and trampolines with medium pegs', favoredMarbleId: 'spike', favoredStat: 'Power', gradientColors: ['#2d6b2d', '#4a9a4a'] },
   { id: 'gen-1970', name: 'Shadow Valley', theme: 'volcano', trackType: 'gen-1970', description: 'Smooth ramp run through medium pegs', favoredMarbleId: 'shadow', favoredStat: 'Dark horse', gradientColors: ['#6a1a00', '#e74c3c'] },
-  { id: 'gen-1081', name: 'Frozen Drop', theme: 'frozen', trackType: 'gen-1081', description: 'Cradles and trampolines across winding ramps', favoredMarbleId: 'nova', favoredStat: 'Wild card', gradientColors: ['#0a3a6a', '#3498db'] },
+  { id: 'gen-1143', name: 'Frozen Drop', theme: 'frozen', trackType: 'gen-1143', description: 'Cradles and trampolines across winding ramps', favoredMarbleId: 'nova', favoredStat: 'Wild card', gradientColors: ['#0a3a6a', '#3498db'] },
   { id: 'gen-1094', name: 'Neon Descent', theme: 'cyber', trackType: 'gen-1094', description: 'Ball pits and trampolines through tight ramps', favoredMarbleId: 'aqua', favoredStat: 'Speed', gradientColors: ['#1a0a3a', '#8a2aca'] },
   { id: 'gen-1098', name: 'Storm Rapids', theme: 'meadow', trackType: 'gen-1098', description: 'Pendulum gauntlet on a fast course', favoredMarbleId: 'dash', favoredStat: 'Speed', gradientColors: ['#3a7a3a', '#5aaa5a'] },
   { id: 'gen-1106', name: 'Golden Chute', theme: 'volcano', trackType: 'gen-1106', description: 'Dense peg zones with cradles and trampolines', favoredMarbleId: 'spike', favoredStat: 'Power', gradientColors: ['#3a0a0a', '#aa2020'] },
@@ -79,34 +79,39 @@ export const THEME_COLORS: Record<CourseTheme, string> = {
 
 // ── Generated tracks ──
 
-// Validated: 3 runs per seed, avg <55s, 8/8 finish, <30 stuck events, no escapes
+// Validated: 5 runs per seed, all 8/8 finish naturally in <55s, zero "real
+// stuck" events (3-second motionless windows), zero doomsday rescues.
+// Re-audited after the engine pinch-repair pass + frictionStatic /
+// trampoline-tilt fixes — seeds that consistently fail any criterion
+// across multiple audit runs were dropped. See scripts/test-all-tracks.ts.
 const VALIDATED_SEEDS: number[] = [
-  // Original 81 seeds
-  1004, 1006, 1013, 1028, 1043, 1068, 1081, 1094,
-  1098, 1106, 1109, 1130, 1139, 1143, 1165,
-  1172, 1175, 1177, 1178, 1187, 1192, 1203, 1204, 1214,
-  1219, 1240, 1241, 1250, 1262, 1280, 1299, 1300, 1322, 1325,
-  1337, 1351, 1353, 1365, 1368, 1387, 1390, 1403, 1410,
-  1411, 1425, 1426, 1428, 1432, 1433, 1435, 1466,
-  1479, 1488, 1489, 1494, 1510, 1520, 1523, 1548, 1561, 1564,
-  1579, 1580, 1581, 1592, 1598, 1618, 1620, 1638,
-  1646, 1657, 1667, 1670, 1691, 1693, 1694, 1725,
-  1750, 1840, 1895, 1940, 1970, 2005, 2010,
-  // New 110 seeds (92.4% pass rate, 3 runs each, 8/8 finish, no doomsday)
-  2100, 2101, 2102, 2103, 2104, 2105, 2106, 2107,
-  2108, 2109, 2110, 2111, 2112, 2113, 2114, 2115,
-  2116, 2117, 2118, 2119, 2120, 2121, 2122, 2123,
-  2124, 2125, 2126, 2127, 2128, 2129, 2130, 2131,
-  2133, 2134, 2135, 2136, 2138, 2141, 2142, 2144,
-  2145, 2146, 2147, 2148, 2149, 2151, 2152, 2153,
-  2154, 2155, 2156, 2157, 2159, 2160, 2161, 2162,
-  2163, 2164, 2165, 2166, 2167, 2168, 2169, 2171,
-  2172, 2173, 2174, 2175, 2176, 2177, 2178, 2179,
-  2180, 2181, 2182, 2183, 2184, 2186, 2187, 2188,
-  2189, 2190, 2191, 2192, 2193, 2194, 2195, 2196,
-  2197, 2198, 2199, 2200, 2201, 2202, 2203, 2204,
-  2205, 2206, 2207, 2208, 2209, 2210, 2211, 2212,
-  2213, 2214, 2215, 2216, 2217, 2218,
+  // Original cohort (1004–2010) — minus seeds that geometrically pinch
+  // marbles or whose long ramp counts push avg time over 55s even with
+  // the lossy bumper / tilted trampoline / pinch repair fixes.
+  1004, 1006, 1043, 1068, 1094, 1098, 1106,
+  1143, 1165, 1175, 1177, 1178, 1187, 1192, 1204, 1214,
+  1219, 1280, 1299, 1300,
+  1368, 1403, 1410, 1426, 1428,
+  1432, 1466, 1494, 1510, 1520, 1561, 1564,
+  1579, 1580, 1581, 1592, 1598, 1620, 1638,
+  1646, 1670, 1691, 1693,
+  1840, 1895, 1970,
+  // 2100-series — kept the seeds that audit cleanly. Dropped seeds with
+  // recurring stuck patterns or 3/5+ doomsday triggers.
+  2100, 2101, 2102,
+  2108, 2109, 2110, 2112, 2115,
+  2118, 2123,
+  2128, 2129, 2131,
+  2135, 2136, 2142,
+  2145, 2146, 2148, 2153,
+  2156, 2159,
+  2164, 2169,
+  2173, 2174, 2175, 2176, 2177, 2178,
+  2182, 2184,
+  2190, 2195,
+  2198, 2199, 2201, 2203, 2204,
+  2205, 2207, 2208, 2210, 2211,
+  2215, 2218,
 ];
 
 const PREFIXES = [

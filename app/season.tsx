@@ -17,15 +17,24 @@ import CoinPill from '../components/CoinPill';
 import BackButton from '../components/BackButton';
 import PrimaryButton from '../components/PrimaryButton';
 import { WEEKS_PER_SEASON, SeasonRace, SeasonWeek, isSeasonComplete, getNextAvailableRace, getCurrentWeek } from '../data/seasonSchedule';
-
-function getMarble(id: string): MarbleData {
-  return MARBLES.find((m) => m.id === id)!;
-}
+import { getSkinnedMarble } from '../data/skins';
 
 export default function SeasonScreen() {
   const router = useRouter();
   const coins = useGameStore((s) => s.coins);
   const season = useGameStore((s) => s.season);
+  const equippedSkins = useGameStore((s) => s.equippedSkins);
+
+  /* Resolve a marble by id, applying any equipped skin so the rendered
+   * color matches what the player picked in the locker. Without this,
+   * the standings table always shows the default base-color marble even
+   * after the player selected a custom skin, which makes the row look
+   * like a different marble from the one they're playing as. */
+  const resolveMarble = (id: string): MarbleData => {
+    const base = MARBLES.find((m) => m.id === id);
+    if (!base) return MARBLES[0];
+    return getSkinnedMarble(base, equippedSkins);
+  };
   const initSeason = useGameStore((s) => s.initSeason);
   const selectCourse = useGameStore((s) => s.selectCourse);
   const setActiveMode = useGameStore((s) => s.setActiveMode);
@@ -161,7 +170,7 @@ export default function SeasonScreen() {
     selectCourse(race.courseId);
     setActiveMode({ type: 'season', weekNumber: race.weekNumber, raceIndex: race.raceIndex });
     if (isFranchise && season.seasonMarbleId) {
-      selectMarble(getMarble(season.seasonMarbleId));
+      selectMarble(resolveMarble(season.seasonMarbleId));
     } else {
       selectMarble(null as any);
     }
@@ -197,12 +206,12 @@ export default function SeasonScreen() {
             {isFranchise && season.seasonMarbleId && (
               <>
                 <View style={styles.franchiseBadge}>
-                  <MarbleDot marble={getMarble(season.seasonMarbleId)} size={16} />
-                  <Text style={styles.franchiseBadgeText}>YOUR MARBLE: {getMarble(season.seasonMarbleId).name.toUpperCase()}</Text>
+                  <MarbleDot marble={resolveMarble(season.seasonMarbleId)} size={16} />
+                  <Text style={styles.franchiseBadgeText}>YOUR MARBLE: {resolveMarble(season.seasonMarbleId).name.toUpperCase()}</Text>
                 </View>
                 {season.seasonStats?.[season.seasonMarbleId] && (() => {
                   const g = season.seasonStats[season.seasonMarbleId]!;
-                  const base = getMarble(season.seasonMarbleId!).stats;
+                  const base = resolveMarble(season.seasonMarbleId!).stats;
                   const statKeys: { key: keyof SeasonMarbleStats; label: string; color: string }[] = [
                     { key: 'speed', label: 'SPD', color: '#4dabf7' },
                     { key: 'power', label: 'PWR', color: '#ff6b6b' },
@@ -276,12 +285,12 @@ export default function SeasonScreen() {
 
           {/* ===== MARBLE TRAINING (franchise only) ===== */}
           {isFranchise && season.seasonMarbleId && !seasonComplete && (() => {
-            const marble = getMarble(season.seasonMarbleId!);
+            const marble = resolveMarble(season.seasonMarbleId!);
             const condition = season.condition?.[season.seasonMarbleId!] ?? 100;
             const stats = season.seasonStats?.[season.seasonMarbleId!] ?? { speed: 0, power: 0, bounce: 0, luck: 0 };
             const trainCost = 200 + (season.trainingHistory?.length ?? 0) * 100;
             const canTrain = !season.trainedThisWeek && coins >= trainCost && !!nextRace;
-            const rival = season.rivalMarbleId ? getMarble(season.rivalMarbleId) : null;
+            const rival = season.rivalMarbleId ? resolveMarble(season.rivalMarbleId) : null;
 
             const statKeys: (keyof SeasonMarbleStats)[] = ['speed', 'power', 'bounce', 'luck'];
             const STAT_LABELS: Record<string, string> = { speed: 'SPD', power: 'PWR', bounce: 'BNC', luck: 'LCK' };
@@ -435,11 +444,11 @@ export default function SeasonScreen() {
                       </Text>
                       {race.featuredMatchup && (
                         <View style={styles.matchupRow}>
-                          <MarbleDot marble={getMarble(race.featuredMatchup.marble1Id)} size={14} />
+                          <MarbleDot marble={resolveMarble(race.featuredMatchup.marble1Id)} size={14} />
                           <Text style={styles.matchupText}>
                             {race.featuredMatchup.headline}
                           </Text>
-                          <MarbleDot marble={getMarble(race.featuredMatchup.marble2Id)} size={14} />
+                          <MarbleDot marble={resolveMarble(race.featuredMatchup.marble2Id)} size={14} />
                         </View>
                       )}
                     </View>
@@ -453,9 +462,9 @@ export default function SeasonScreen() {
                         return (
                           <View style={styles.completedCol}>
                             <View style={styles.completedBadge}>
-                              <MarbleDot marble={getMarble(race.winnerId!)} size={16} />
+                              <MarbleDot marble={resolveMarble(race.winnerId!)} size={16} />
                               <Text style={styles.completedText}>
-                                {getMarble(race.winnerId!).name}
+                                {resolveMarble(race.winnerId!).name}
                               </Text>
                             </View>
                             {place && (
@@ -497,8 +506,8 @@ export default function SeasonScreen() {
                   {standings.slice(0, 6).map((s, i) => (
                     <View key={s.marbleId} style={styles.seedRow}>
                       <Text style={[styles.seedNum, i < 2 && { color: Colors.yellow }]}>#{i + 1}</Text>
-                      <MarbleDot marble={getMarble(s.marbleId)} size={20} />
-                      <Text style={styles.seedName}>{getMarble(s.marbleId).name}</Text>
+                      <MarbleDot marble={resolveMarble(s.marbleId)} size={20} />
+                      <Text style={styles.seedName}>{resolveMarble(s.marbleId).name}</Text>
                       <Text style={styles.seedPts}>{s.points} pts</Text>
                     </View>
                   ))}
@@ -527,18 +536,18 @@ export default function SeasonScreen() {
               <View style={styles.matchupCard}>
                 <View style={styles.matchupVsRow}>
                   <View style={styles.matchupMarbleCol}>
-                    <MarbleDot marble={getMarble(nextRace.featuredMatchup.marble1Id)} size={40} />
+                    <MarbleDot marble={resolveMarble(nextRace.featuredMatchup.marble1Id)} size={40} />
                     <Text style={styles.matchupMarbleName}>
-                      {getMarble(nextRace.featuredMatchup.marble1Id).name}
+                      {resolveMarble(nextRace.featuredMatchup.marble1Id).name}
                     </Text>
                   </View>
                   <View style={styles.matchupVsBadge}>
                     <Text style={styles.matchupVsText}>VS</Text>
                   </View>
                   <View style={styles.matchupMarbleCol}>
-                    <MarbleDot marble={getMarble(nextRace.featuredMatchup.marble2Id)} size={40} />
+                    <MarbleDot marble={resolveMarble(nextRace.featuredMatchup.marble2Id)} size={40} />
                     <Text style={styles.matchupMarbleName}>
-                      {getMarble(nextRace.featuredMatchup.marble2Id).name}
+                      {resolveMarble(nextRace.featuredMatchup.marble2Id).name}
                     </Text>
                   </View>
                 </View>
@@ -562,7 +571,7 @@ export default function SeasonScreen() {
             </View>
 
             {standings.map((entry, i) => {
-              const marble = getMarble(entry.marbleId);
+              const marble = resolveMarble(entry.marbleId);
               const isPlayoff = i < 6;
               const isPlayerMarble = isFranchise && entry.marbleId === season.seasonMarbleId;
               return (

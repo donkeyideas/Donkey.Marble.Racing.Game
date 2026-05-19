@@ -16,10 +16,15 @@ const W = ENGINE_WIDTH; // 400
 const SUBSTEPS = 3;
 const FIXED_DT = (1000 / 60) / SUBSTEPS;
 const MAX_SPEED = 15;
-const DOOMSDAY_TRIGGER_MS = 45000;
-const DOOMSDAY_DEADLINE_MS = 60000;
+const DOOMSDAY_TRIGGER_MS = 55000;
+const DOOMSDAY_DEADLINE_MS = 70000;
+// Real stuck = a marble that hasn't moved 4px for >= 3 seconds.
+// This matches the player perception of "stuck"; transient pauses
+// (e.g., bouncing off a wall) don't count.
+const REAL_STUCK_MS = 3000;
+const STUCK_DIST_PX = 4;
 const DOOMSDAY_BAR_HEIGHT = 20;
-const MAX_FRAMES = 65 * 60; // 65s at 60fps
+const MAX_FRAMES = 75 * 60; // 75s — beyond DOOMSDAY_DEADLINE_MS so the bar can finish its sweep
 
 // Collision categories
 const CAT_WALL = 0x0001;
@@ -65,12 +70,13 @@ function simulateRace(trackId: string): RaceResult {
   } as any);
   const world = engine.world;
 
-  // Walls
+  // Walls — match race.ts STATIC_FRICTION=0.005 exactly
+  const SF = 0.005;
   Composite.add(world, [
-    Bodies.rectangle(0, track.totalHeight / 2, 50, track.totalHeight + 200, { isStatic: true, friction: 0.01, restitution: 0.2 }),
-    Bodies.rectangle(W, track.totalHeight / 2, 50, track.totalHeight + 200, { isStatic: true, friction: 0.01, restitution: 0.2 }),
-    Bodies.rectangle(W / 2, -25, W + 100, 50, { isStatic: true, friction: 0.01, restitution: 0.2 }),
-    Bodies.rectangle(W / 2, track.totalHeight + 25, W + 100, 50, { isStatic: true, friction: 0.3, restitution: 0.1 }),
+    Bodies.rectangle(0, track.totalHeight / 2, 50, track.totalHeight + 200, { isStatic: true, friction: 0.01, frictionStatic: SF, restitution: 0.2 }),
+    Bodies.rectangle(W, track.totalHeight / 2, 50, track.totalHeight + 200, { isStatic: true, friction: 0.01, frictionStatic: SF, restitution: 0.2 }),
+    Bodies.rectangle(W / 2, -25, W + 100, 50, { isStatic: true, friction: 0.01, frictionStatic: SF, restitution: 0.2 }),
+    Bodies.rectangle(W / 2, track.totalHeight + 25, W + 100, 50, { isStatic: true, friction: 0.3, frictionStatic: 0.3, restitution: 0.1 }),
   ]);
 
   // Ramps (using actual TrackConfig point arrays — multi-segment bezier curves)
@@ -80,16 +86,68 @@ function simulateRace(trackId: string): RaceResult {
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.sqrt(dx * dx + dy * dy);
       Composite.add(world, Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, 14, {
-        isStatic: true, angle: Math.atan2(dy, dx), friction: 0.005, restitution: 0.3,
+        isStatic: true, angle: Math.atan2(dy, dx), friction: 0.005, frictionStatic: SF, restitution: 0.3,
         chamfer: { radius: 4 }, label: 'ramp',
       }));
     }
   });
 
-  // Bumpers & pegs
-  track.obstacles.forEach(o => {
+  // Bumpers & pegs — apply same pinch-zone repair as race.ts.
+  const MD = 22, WSL = 25, WSR = W - 25, PB = 4;
+  const RHT = 7;
+  const repaired = track.obstacles.map(o => {
+    let x = o.x;
+    const lg = (x - o.r) - WSL;
+    if (lg > 0 && lg < MD + PB) x = WSL + o.r;
+    const rg = WSR - (x + o.r);
+    if (rg > 0 && rg < MD + PB) x = WSR - o.r;
+    return { ...o, x };
+  });
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < repaired.length; i++) {
+      for (let j = i + 1; j < repaired.length; j++) {
+        const a = repaired[i], b = repaired[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minSafe = a.r + b.r;
+        const pinchMax = minSafe + MD + PB;
+        if (dist > minSafe && dist < pinchMax) {
+          const target = minSafe - 0.5;
+          const need = dist - target;
+          const ux = dx / dist, uy = dy / dist;
+          if (a.r <= b.r) { a.x += ux * need; a.y += uy * need; }
+          else { b.x -= ux * need; b.y -= uy * need; }
+        }
+      }
+    }
+  }
+  // Peg-to-ramp-segment pinch repair
+  function d2seg(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+    const abx = bx - ax, aby = by - ay;
+    const apx = px - ax, apy = py - ay;
+    const ab2 = abx * abx + aby * aby;
+    const t = Math.max(0, Math.min(1, ab2 === 0 ? 0 : (apx * abx + apy * aby) / ab2));
+    const cx = ax + t * abx, cy = ay + t * aby;
+    return { dist: Math.hypot(px - cx, py - cy), cx, cy };
+  }
+  for (const obs of repaired) {
+    for (const ramp of track.ramps) {
+      for (let s = 0; s < ramp.points.length - 1; s++) {
+        const a = ramp.points[s], b = ramp.points[s + 1];
+        const { dist, cx, cy } = d2seg(obs.x, obs.y, a.x, a.y, b.x, b.y);
+        const minSafe = obs.r + RHT;
+        const pinchMax = minSafe + MD + PB;
+        if (dist > minSafe && dist < pinchMax) {
+          const ux = (obs.x - cx) / dist, uy = (obs.y - cy) / dist;
+          obs.x = cx + ux * (minSafe - 0.5);
+          obs.y = cy + uy * (minSafe - 0.5);
+        }
+      }
+    }
+  }
+  repaired.forEach(o => {
     Composite.add(world, Bodies.circle(o.x, o.y, o.r, {
-      isStatic: true, restitution: o.type === 'bumper' ? 0.6 : 0.3, friction: 0.005, label: o.type,
+      isStatic: true, restitution: o.type === 'bumper' ? 0.95 : 0.6, friction: 0.005, frictionStatic: SF, label: o.type,
     }));
   });
 
@@ -98,11 +156,11 @@ function simulateRace(trackId: string): RaceResult {
     const dy = f.y2 - f.y1;
     const ldx = f.leftX2 - f.leftX1, lLen = Math.sqrt(ldx * ldx + dy * dy);
     Composite.add(world, Bodies.rectangle((f.leftX1 + f.leftX2) / 2, (f.y1 + f.y2) / 2, lLen, 12, {
-      isStatic: true, angle: Math.atan2(dy, ldx), friction: 0.005, restitution: 0.35, label: 'funnel',
+      isStatic: true, angle: Math.atan2(dy, ldx), friction: 0.005, frictionStatic: SF, restitution: 0.35, label: 'funnel',
     }));
     const rdx = f.rightX2 - f.rightX1, rLen = Math.sqrt(rdx * rdx + dy * dy);
     Composite.add(world, Bodies.rectangle((f.rightX1 + f.rightX2) / 2, (f.y1 + f.y2) / 2, rLen, 12, {
-      isStatic: true, angle: Math.atan2(dy, rdx), friction: 0.005, restitution: 0.35, label: 'funnel',
+      isStatic: true, angle: Math.atan2(dy, rdx), friction: 0.005, frictionStatic: SF, restitution: 0.35, label: 'funnel',
     }));
   });
 
@@ -111,11 +169,11 @@ function simulateRace(trackId: string): RaceResult {
   const fdy = ff.y2 - ff.y1;
   const fldx = ff.leftX2 - ff.leftX1, flLen = Math.sqrt(fldx * fldx + fdy * fdy);
   Composite.add(world, Bodies.rectangle((ff.leftX1 + ff.leftX2) / 2, (ff.y1 + ff.y2) / 2, flLen, 14, {
-    isStatic: true, angle: Math.atan2(fdy, fldx), friction: 0.005, restitution: 0.3,
+    isStatic: true, angle: Math.atan2(fdy, fldx), friction: 0.005, frictionStatic: SF, restitution: 0.3,
   }));
   const frdx = ff.rightX2 - ff.rightX1, frLen = Math.sqrt(frdx * frdx + fdy * fdy);
   Composite.add(world, Bodies.rectangle((ff.rightX1 + ff.rightX2) / 2, (ff.y1 + ff.y2) / 2, frLen, 14, {
-    isStatic: true, angle: Math.atan2(fdy, frdx), friction: 0.005, restitution: 0.3,
+    isStatic: true, angle: Math.atan2(fdy, frdx), friction: 0.005, frictionStatic: SF, restitution: 0.3,
   }));
   // Mini-funnel
   const miniH = track.miniFunnelH;
@@ -124,21 +182,21 @@ function simulateRace(trackId: string): RaceResult {
   const mlDx = track.channelLeft - funnelExitLeft;
   const mlLen = Math.sqrt(mlDx * mlDx + miniH * miniH);
   Composite.add(world, Bodies.rectangle((funnelExitLeft + track.channelLeft) / 2, track.finishY + miniH / 2, mlLen, 10, {
-    isStatic: true, angle: Math.atan2(miniH, mlDx), friction: 0.005, restitution: 0.3,
+    isStatic: true, angle: Math.atan2(miniH, mlDx), friction: 0.005, frictionStatic: SF, restitution: 0.3,
   }));
   const mrDx = track.channelRight - funnelExitRight;
   const mrLen = Math.sqrt(mrDx * mrDx + miniH * miniH);
   Composite.add(world, Bodies.rectangle((funnelExitRight + track.channelRight) / 2, track.finishY + miniH / 2, mrLen, 10, {
-    isStatic: true, angle: Math.atan2(miniH, mrDx), friction: 0.005, restitution: 0.3,
+    isStatic: true, angle: Math.atan2(miniH, mrDx), friction: 0.005, frictionStatic: SF, restitution: 0.3,
   }));
   // Channel walls
   const channelTopY = track.finishY + miniH;
   const channelWallH = track.channelDepth - miniH;
   Composite.add(world, Bodies.rectangle(track.channelLeft - 5, channelTopY + channelWallH / 2, 10, channelWallH + 20, {
-    isStatic: true, friction: 0.005, restitution: 0.2,
+    isStatic: true, friction: 0.005, frictionStatic: SF, restitution: 0.2,
   }));
   Composite.add(world, Bodies.rectangle(track.channelRight + 5, channelTopY + channelWallH / 2, 10, channelWallH + 20, {
-    isStatic: true, friction: 0.005, restitution: 0.2,
+    isStatic: true, friction: 0.005, frictionStatic: SF, restitution: 0.2,
   }));
   Composite.add(world, Bodies.rectangle(track.channelCX, track.finishY + track.channelDepth + 10, (track.channelRight - track.channelLeft) + 20, 14, {
     isStatic: true, friction: 0.5, restitution: 0.1,
@@ -149,7 +207,7 @@ function simulateRace(trackId: string): RaceResult {
   const wmBodies: WMBody[] = [];
   track.windmillConfigs.forEach(wm => {
     const blade = Bodies.rectangle(wm.x, wm.y, wm.width, 8, {
-      isStatic: true, friction: 0.01, restitution: 0.5, label: 'windmill',
+      isStatic: true, friction: 0.01, frictionStatic: SF, restitution: 0.5, label: 'windmill',
     });
     Composite.add(world, blade);
     wmBodies.push({ body: blade, x: wm.x, y: wm.y, w: wm.width, s: wm.speed });
@@ -218,11 +276,13 @@ function simulateRace(trackId: string): RaceResult {
     });
   }
 
-  // Trampolines
+  // Trampolines (matches race.ts: 2° outward tilt eliminates static rest)
   if (track.trampolines) {
     track.trampolines.forEach(t => {
+      const tiltDir = t.x < W / 2 ? 1 : -1;
+      const tilt = tiltDir * (2 * Math.PI / 180);
       const body = Bodies.rectangle(t.x, t.y, t.width, 10, {
-        isStatic: true, restitution: 0.5, friction: 0.005, label: 'trampoline', chamfer: { radius: 3 },
+        isStatic: true, angle: tilt, restitution: 0.5, friction: 0.005, frictionStatic: SF, label: 'trampoline', chamfer: { radius: 3 },
       });
       trampBounceCount.set(body, 0);
       Composite.add(world, body);
@@ -300,17 +360,17 @@ function simulateRace(trackId: string): RaceResult {
 
   // Scrambler + gate
   const scrambler = Bodies.rectangle(W / 2, 140, 280, 8, {
-    isStatic: true, friction: 0.01, restitution: 0.5, label: 'windmill',
+    isStatic: true, friction: 0.01, frictionStatic: SF, restitution: 0.5, label: 'windmill',
   });
   Composite.add(world, scrambler);
   wmBodies.push({ body: scrambler, x: W / 2, y: 140, w: 280, s: 0.04 });
 
   const gate = Bodies.rectangle(W / 2, 230, W - 20, 10, {
-    isStatic: true, friction: 0.1, restitution: 0.3, label: 'gate',
+    isStatic: true, friction: 0.1, frictionStatic: 0.1, restitution: 0.3, label: 'gate',
   });
   Composite.add(world, gate);
 
-  // Marbles — exact race.ts physics
+  // Marbles — exact race.ts physics (frictionStatic dropped from 0.1 to 0.001)
   const marbleBodies: { body: Matter.Body; data: MarbleData }[] = [];
   const shuffled = [...MARBLES].sort(() => Math.random() - 0.5);
   shuffled.forEach((m, i) => {
@@ -319,7 +379,7 @@ function simulateRace(trackId: string): RaceResult {
     const body = Bodies.circle(sx, sy, 11, {
       restitution: 0.48 + m.stats.bounce * 0.01,
       friction: 0.00001,
-      frictionStatic: 0.1,
+      frictionStatic: 0.001,
       density: 0.001 + m.stats.power * 0.00005,
       frictionAir: 0.008 - m.stats.speed * 0.0005,
       label: m.id,
@@ -419,22 +479,22 @@ function simulateRace(trackId: string): RaceResult {
         });
       }
 
-      // Stuck detection
+      // HONEST stuck detection — no velocity kick, mirrors engine behavior.
+      // A marble that hasn't moved STUCK_DIST_PX in REAL_STUCK_MS is a
+      // genuine stuck event. We log it once per stuck-window and reset
+      // the tracker so a marble pinned for 9s logs 3 events (one per 3s).
       const last = stuckTracker.get(data.id);
       if (last) {
         const dx = body.position.x - last.x, dy = body.position.y - last.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 4 && elapsed - last.t > 800) {
-          const kicks = (stuckKickCount.get(data.id) || 0) + 1;
-          stuckKickCount.set(data.id, kicks);
-          const mult = Math.min(kicks, 5);
+        if (dist >= STUCK_DIST_PX) {
+          stuckTracker.set(data.id, { x: body.position.x, y: body.position.y, t: elapsed });
+        } else if (elapsed - last.t >= REAL_STUCK_MS) {
           stuckEvents.push({
             marble: data.name, x: Math.round(body.position.x),
             y: Math.round(body.position.y), time: (elapsed / 1000).toFixed(1) + 's',
           });
-          Body.setVelocity(body, { x: (Math.random() - 0.5) * 5 * mult, y: 4 + Math.random() * 2 * mult });
-          stuckTracker.set(data.id, { x: body.position.x, y: body.position.y, t: elapsed });
-        } else if (dist >= 4) {
+          // Reset the timer so we don't log every frame after the threshold.
           stuckTracker.set(data.id, { x: body.position.x, y: body.position.y, t: elapsed });
         }
       } else {
@@ -493,7 +553,7 @@ function simulateRace(trackId: string): RaceResult {
 // MAIN
 // ═══════════════════════════════════════════
 const targetTrack = process.argv[2];
-const RUNS_PER_TRACK = 3;
+const RUNS_PER_TRACK = 5;
 
 // Get all course IDs
 let courseIds: string[];
@@ -550,22 +610,22 @@ for (let idx = 0; idx < courseIds.length; idx++) {
   const doomsdayCount = runs.filter(r => r.doomsdayTriggered).length;
   const bodyCount = runs[0].bodyCount;
 
-  // Pass criteria — realistic thresholds:
-  // - All 8 marbles must finish (anti-stuck + doomsday ensures this)
-  // - Avg time under 58s (doomsday bar activates at 45s, deadline at 60s)
-  // - Stuck events under 50 (kick mechanism resolves them — not a real problem)
+  // Pass criteria — STRICT, post-nudge-removal:
+  // - All 8 marbles must finish naturally (no doomsday rescue)
+  // - Avg time under 55s (doomsday trigger; healthy tracks beat this)
+  // - Zero "real stuck" events (3-second-motionless windows)
   // - No marble escapes
+  // Body count > 100 is a perf concern, not a correctness one — informational only.
   const issues: string[] = [];
-  if (minFinished < 7) issues.push(`Only ${minFinished}/8 finished in worst run`);
-  if (avgTime > 58) issues.push(`Avg time ${avgTime.toFixed(1)}s > 58s`);
-  if (maxStuck > 50) issues.push(`${maxStuck} stuck events in worst run`);
+  if (minFinished < 8) issues.push(`Only ${minFinished}/8 finished in worst run`);
+  if (avgTime > 55) issues.push(`Avg time ${avgTime.toFixed(1)}s > 55s`);
+  if (maxStuck > 0) issues.push(`${maxStuck} real-stuck events in worst run`);
   if (doomsdayCount > 0) issues.push(`Doomsday triggered ${doomsdayCount}/${RUNS_PER_TRACK} runs`);
-  if (bodyCount > 100) issues.push(`Body count ${bodyCount} > 100`);
 
   const escaped = runs.some(r => r.stuckEvents.some(e => e.type === 'ESCAPED'));
   if (escaped) issues.push('Marble ESCAPED the course!');
 
-  const pass = minFinished >= 7 && avgTime <= 58 && maxStuck <= 50 && !escaped;
+  const pass = minFinished >= 8 && avgTime <= 55 && maxStuck === 0 && !escaped && doomsdayCount === 0;
 
   results.push({ id, avgTime, minFinished, avgFinished, totalStuck, maxStuck, doomsdayCount, bodyCount, pass, issues });
 

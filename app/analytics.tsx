@@ -13,9 +13,46 @@ import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import MarbleDot from '../components/MarbleDot';
 
-function getOverallRating(marble: MarbleData) {
+/**
+ * Composite "OVERALL" score 0.0 – 10.0 that combines base stats with
+ * real race performance. Previously this was just the integer average
+ * of the 4 base stats (speed/power/bounce/luck), so it showed "3" for
+ * every marble — the screen looked broken because the W-L records
+ * varied wildly but OVERALL was identical.
+ *
+ * Now:
+ *   - Base score: (speed+power+bounce+luck)/4 scaled to 0–6  (60%)
+ *   - Performance bonus: ±2 based on win rate vs the 12.5% baseline
+ *     a marble would get from random chance among 8 (20%)
+ *   - Recent-form bonus: ±1 for hot/cold last-5-races (10%)
+ *   - Bet-popularity bonus: ±1 for high-bet marbles (10%) — proxy
+ *     for player consensus
+ * One decimal place so two marbles with similar stats but different
+ * race records get distinguishable scores.
+ */
+function getOverallRating(
+  marble: MarbleData,
+  opts: { winRatePct?: number; form?: 'hot' | 'cold' | 'neutral'; betCount?: number; maxBetCount?: number } = {},
+): string {
   const { speed, power, bounce, luck } = marble.stats;
-  return Math.round((speed + power + bounce + luck) / 4);
+  const baseAvg = (speed + power + bounce + luck) / 4;       // 0..5 typical
+  const baseScore = (baseAvg / 5) * 6;                       // 0..6
+
+  // Performance bonus: win rate relative to 12.5% chance baseline
+  const winRate = opts.winRatePct ?? 0;
+  const perfBonus = Math.max(-2, Math.min(2, ((winRate - 12.5) / 12.5) * 2));
+
+  // Form: ±1
+  const formBonus = opts.form === 'hot' ? 1 : opts.form === 'cold' ? -1 : 0;
+
+  // Bet popularity: ±1 (0 when no bets exist anywhere)
+  const popBonus =
+    opts.maxBetCount && opts.maxBetCount > 0 && opts.betCount !== undefined
+      ? ((opts.betCount / opts.maxBetCount) - 0.5) * 2
+      : 0;
+
+  const total = Math.max(0, Math.min(10, baseScore + perfBonus + formBonus + popBonus));
+  return total.toFixed(1);
 }
 
 function StatBarInline({ label, value, color }: { label: string; value: number; color: string }) {
@@ -50,7 +87,7 @@ export default function AnalyticsScreen() {
     last5.forEach((race) => {
       if (race.positions[0] === m.id) recentWins++;
     });
-    const form = last5.length > 0
+    const form: 'hot' | 'cold' | 'neutral' = last5.length > 0
       ? recentWins >= 3 ? 'hot' : recentWins === 0 ? 'cold' : 'neutral'
       : 'neutral';
 
@@ -169,10 +206,17 @@ export default function AnalyticsScreen() {
                 </View>
               )}
 
-              {/* Overall rating */}
+              {/* Overall rating — composite of base stats, win rate, form, bet popularity */}
               <View style={styles.ratingRow}>
                 <Text style={styles.ratingLabel}>OVERALL</Text>
-                <Text style={styles.ratingValue}>{getOverallRating(entry.marble)}</Text>
+                <Text style={styles.ratingValue}>
+                  {getOverallRating(entry.marble, {
+                    winRatePct: entry.winRate,
+                    form: entry.form,
+                    betCount: entry.stats.betCount,
+                    maxBetCount: rankings.reduce((max, r) => Math.max(max, r.stats.betCount), 0),
+                  })}
+                </Text>
               </View>
             </View>
           ))}

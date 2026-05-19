@@ -122,6 +122,8 @@ function FinishRow({
   isWinner,
   isPlayerPick,
   variant,
+  betAmount = 0,
+  playerWonBet = false,
 }: {
   position: number;
   marble: MarbleData;
@@ -129,6 +131,8 @@ function FinishRow({
   isWinner: boolean;
   isPlayerPick: boolean;
   variant: 'win' | 'loss';
+  betAmount?: number;
+  playerWonBet?: boolean;
 }) {
   const isWinVariant = variant === 'win';
 
@@ -146,6 +150,29 @@ function FinishRow({
     : isPlayerPick
       ? 'YOUR PICK'
       : null;
+
+  /* Coin-amount label per row (only when there was a bet):
+   *   - Player's pick that won  \u2192 "+payout"   (green)
+   *   - Player's pick that lost \u2192 "-betAmount" (red)
+   *   - Winner (not player's)   \u2192 "+payout missed" muted, so the
+   *     player sees the opportunity cost of picking elsewhere
+   *   - Other rows              \u2192 blank
+   * Quick race / no-bet shows blank everywhere. */
+  const hypothetical = Math.round(betAmount * odds);
+  let coinLabel: string | null = null;
+  let coinTone: 'win' | 'loss' | 'muted' | null = null;
+  if (betAmount > 0) {
+    if (isPlayerPick && playerWonBet) {
+      coinLabel = `+${hypothetical.toLocaleString()}`;
+      coinTone = 'win';
+    } else if (isPlayerPick) {
+      coinLabel = `-${betAmount.toLocaleString()}`;
+      coinTone = 'loss';
+    } else if (isWinner) {
+      coinLabel = `+${hypothetical.toLocaleString()} missed`;
+      coinTone = 'muted';
+    }
+  }
 
   return (
     <View style={[styles.finishRow, rowHighlight]}>
@@ -171,14 +198,30 @@ function FinishRow({
           {marble.name}
         </Text>
 
-        <Text
-          style={[
-            styles.finishOdds,
-            isWinVariant ? styles.finishOddsWin : styles.finishOddsLoss,
-          ]}
-        >
-          {odds.toFixed(1)}x
-        </Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text
+            style={[
+              styles.finishOdds,
+              isWinVariant ? styles.finishOddsWin : styles.finishOddsLoss,
+            ]}
+          >
+            {odds.toFixed(1)}x
+          </Text>
+          {coinLabel && (
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '700',
+                marginTop: 2,
+                color: coinTone === 'win' ? '#22c55e'
+                  : coinTone === 'loss' ? '#ef4444'
+                  : 'rgba(255,255,255,0.45)',
+              }}
+            >
+              {coinLabel}
+            </Text>
+          )}
+        </View>
       </View>
 
       {tag && (
@@ -336,7 +379,6 @@ function WinScreen() {
     router.replace('/race');
   };
 
-  const topFinishers = lastResult.positions.slice(0, 4);
 
   return (
     <LinearGradient colors={['#ffd84d', '#ffc220', '#ff9a1a']} style={styles.fill}>
@@ -429,7 +471,7 @@ function WinScreen() {
         <View style={styles.winCard}>
           <Text style={styles.winCardTitle}>FINISH ORDER</Text>
 
-          {topFinishers.map((entry, index) => {
+          {lastResult.positions.map((entry, index) => {
             const isPlayerPick = lastResult.playerPick?.id === entry.marble.id;
             const isWinner = index === 0;
             return (
@@ -441,6 +483,8 @@ function WinScreen() {
                 isWinner={isWinner}
                 isPlayerPick={isPlayerPick}
                 variant="win"
+                betAmount={lastResult.betAmount}
+                playerWonBet={lastResult.payout > 0}
               />
             );
           })}
@@ -607,7 +651,6 @@ function LossScreen() {
     router.replace(dest.secondary as any || '/lobby');
   };
 
-  const topFinishers = lastResult.positions.slice(0, 4);
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96', '#0a1a3a']} style={styles.fill}>
@@ -660,7 +703,7 @@ function LossScreen() {
         <View style={styles.lossCard}>
           <Text style={styles.lossCardTitle}>FINISH ORDER</Text>
 
-          {topFinishers.map((entry, index) => {
+          {lastResult.positions.map((entry, index) => {
             const isPlayerPick = lastResult.playerPick?.id === entry.marble.id;
             const isWinner = index === 0;
             return (
@@ -672,6 +715,8 @@ function LossScreen() {
                 isWinner={isWinner}
                 isPlayerPick={isPlayerPick}
                 variant="loss"
+                betAmount={lastResult.betAmount}
+                playerWonBet={lastResult.payout > 0}
               />
             );
           })}

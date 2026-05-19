@@ -545,6 +545,13 @@ export default function RaceScreen() {
   });
   const [countdown, setCountdown] = useState(3);
   const [raceOver, setRaceOver] = useState(false);
+  /* Outcome flag for the race-over overlay. Used to swap the generic
+   * "RACE OVER" caption for an outcome-specific treatment (green WIN
+   * vs red LOST + red screen tint). Players said the generic overlay
+   * felt like a weird animation glitch — without context, the screen
+   * just briefly says "RACE OVER" before navigating to results, which
+   * reads as a bug. Now the overlay tells them what happened. */
+  const [raceOutcome, setRaceOutcome] = useState<'won' | 'lost' | null>(null);
   const [firstFinisher, setFirstFinisher] = useState<{ name: string; color: string } | null>(null);
   const firstAnim = useRef(new Animated.Value(0)).current;
   const firstFinishShown = useRef(false);
@@ -647,7 +654,17 @@ export default function RaceScreen() {
     setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
-    if (selectedMarble) { won ? raceHaptics.playerWin() : raceHaptics.playerLose(); }
+    /* Set outcome BEFORE haptics so the overlay renders the right
+     * treatment on the same frame the haptic fires. `won` is the
+     * "successful round" flag (placement-based for tournaments, bet-hit
+     * for bet mode); falling back to playerWonRace for quick-race lets
+     * us still color the screen even when there was no bet. */
+    if (selectedMarble) {
+      setRaceOutcome(won ? 'won' : 'lost');
+      won ? raceHaptics.playerWin() : raceHaptics.playerLose();
+    } else if (playerWonRace) {
+      setRaceOutcome('won');
+    }
     setTimeout(() => router.replace('/results'), 800);
   }, [selectedMarble, betAmount, setLastResult, getOdds, router, activeMode]);
 
@@ -823,15 +840,28 @@ export default function RaceScreen() {
       if (st.doomsdayBar && st.doomsdayBar.active) {
         followY = st.doomsdayBar.y;
       }
-      // Once ANY marble has crossed the finish line, force the camera to
-      // maxCam (the very bottom of the track) so all 8 finish-slot labels
-      // and the marbles stacking into them are visible. Without this, the
-      // leader-at-35%-from-top heuristic leaves slot 1 / slot 2 below the
-      // screen on tracks where totalHeight has a tight buffer past the
-      // channel bottom — reported as "podium not showing on some tracks".
+      /* Snap-to-podium behavior at race end.
+       *
+       * Default: as soon as ANY marble crosses the finish line, snap the
+       * camera to the bottom (maxCam) so all 8 finish slots are visible.
+       * This is the "show the podium" fix for tracks where slot 1 / slot 2
+       * fell below the screen.
+       *
+       * Season mode override: if the player has a franchise marble and
+       * it hasn't finished yet, stay locked on the player's marble.
+       * Players said the snap-to-bottom yanked the camera away from
+       * their marble mid-race the moment a rival crossed — they wanted
+       * to watch their own marble compete all the way to the line. The
+       * snap still happens once the player's own marble finishes. */
+      const playerMarbleForCam = playerPickId
+        ? st.marbles.find((m) => m.data.id === playerPickId)
+        : null;
+      const isSeasonRace = activeMode.type === 'season' || activeMode.type === 'playoff';
+      const playerStillRacing = !!playerMarbleForCam && !playerMarbleForCam.finished;
       const anyFinished = st.marbles.some((m) => m.finished);
       const maxCam = totalH - SH / SCALE;
-      const target = anyFinished
+      const shouldSnapToPodium = anyFinished && !(isSeasonRace && playerStillRacing);
+      const target = shouldSnapToPodium
         ? maxCam
         : Math.min(maxCam, Math.max(0, followY - SH * 0.35 / SCALE));
       // Frame-rate independent smoothing — gentle follow for natural feel
@@ -1588,11 +1618,44 @@ export default function RaceScreen() {
         </Animated.View>
       )}
 
-      {/* Race over overlay */}
+      {/* Race-over overlay. Outcome-aware: green for win, red for loss
+        * (with full-screen red tint so the loss is visceral), neutral
+        * gray fallback for spectator mode. Replaced the prior generic
+        * "RACE OVER" caption that felt like a UI glitch. */}
       {raceOver && (
-        <View style={st.countdownWrap} pointerEvents="none">
-          <Text style={[st.countdownText, { fontSize: 48 }]}>RACE OVER</Text>
-        </View>
+        <>
+          {raceOutcome === 'lost' && (
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(220, 38, 38, 0.35)',
+                zIndex: 20,
+              }}
+            />
+          )}
+          <View style={st.countdownWrap} pointerEvents="none">
+            <Text
+              style={[
+                st.countdownText,
+                {
+                  fontSize: 56,
+                  color: raceOutcome === 'won' ? '#22c55e'
+                    : raceOutcome === 'lost' ? '#fca5a5'
+                    : '#fff',
+                  textShadowColor: 'rgba(0,0,0,0.6)',
+                  textShadowOffset: { width: 0, height: 2 },
+                  textShadowRadius: 8,
+                },
+              ]}
+            >
+              {raceOutcome === 'won' ? 'YOU WON!'
+                : raceOutcome === 'lost' ? 'YOU LOST'
+                : 'RACE OVER'}
+            </Text>
+          </View>
+        </>
       )}
 
       {selectedMarble && (

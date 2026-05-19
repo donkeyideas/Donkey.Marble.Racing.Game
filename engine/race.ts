@@ -119,23 +119,31 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   const W = track.engineWidth;
 
   // === WALLS — 50px thick boundaries (avalanche demo: near-zero friction) ===
+  // CRITICAL: frictionStatic explicitly set to 0.005 across all static bodies.
+  // Matter computes contact static friction as sqrt(a.frictionStatic * b.frictionStatic).
+  // Default frictionStatic is 0.5, so even with marble.frictionStatic=0.001
+  // the contact static friction was sqrt(0.0005)=0.022 — enough to hold a
+  // marble in a V-pocket between a wall and a nearby peg. Setting it to
+  // 0.005 on both surfaces drops contact static friction to 0.005, which
+  // means any non-zero gravity vector slides the marble out.
+  const STATIC_FRICTION = 0.005;
   const totalH = track.totalHeight;
   Matter.Composite.add(world, [
     // Left wall — moderate restitution to bounce marbles back into play
     Matter.Bodies.rectangle(0, totalH / 2, 50, totalH + 200, {
-      isStatic: true, friction: 0.01, restitution: 0.2, label: 'wall',
+      isStatic: true, friction: 0.01, frictionStatic: STATIC_FRICTION, restitution: 0.2, label: 'wall',
     }),
     // Right wall
     Matter.Bodies.rectangle(W, totalH / 2, 50, totalH + 200, {
-      isStatic: true, friction: 0.01, restitution: 0.2, label: 'wall',
+      isStatic: true, friction: 0.01, frictionStatic: STATIC_FRICTION, restitution: 0.2, label: 'wall',
     }),
     // Ceiling
     Matter.Bodies.rectangle(W / 2, -25, W + 100, 50, {
-      isStatic: true, friction: 0.01, restitution: 0.2, label: 'ceiling',
+      isStatic: true, friction: 0.01, frictionStatic: STATIC_FRICTION, restitution: 0.2, label: 'ceiling',
     }),
     // Floor
     Matter.Bodies.rectangle(W / 2, totalH + 25, W + 100, 50, {
-      isStatic: true, friction: 0.3, restitution: 0.1, label: 'floor',
+      isStatic: true, friction: 0.3, frictionStatic: 0.3, restitution: 0.1, label: 'floor',
     }),
   ]);
 
@@ -149,7 +157,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       Matter.Composite.add(world,
         Matter.Bodies.rectangle((a.x + b.x) / 2, (a.y + b.y) / 2, len + 6, RAMP_THICKNESS, {
           isStatic: true, angle: Math.atan2(dy, dx),
-          friction: 0.005, restitution: 0.3, // near-zero rolling friction (avalanche demo pattern)
+          friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.3,
           chamfer: { radius: 4 },
           label: 'ramp',
         }),
@@ -158,12 +166,101 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   });
 
   // === BUMPERS & PEGS — bumpers deflect marbles with satisfying kick ===
-  track.obstacles.forEach(obs => {
+  // Bumper restitution capped at 0.95 (was 1.2). Above 1.0 each bounce GAINS
+  // energy, which makes a marble trapped between a bumper and a wall
+  // accelerate to perpetual oscillation — a stuck state that looks chaotic
+  // rather than the V-pocket pinch but is the same root problem.
+  //
+  // GEOMETRIC PINCH REPAIR: a peg/bumper placed so its surface sits between
+  // 0 and 1 marble-diameter from a wall creates a STABLE V-pocket. A marble
+  // landing in that pocket has both contact normals balanced against
+  // gravity and remains motionless regardless of friction. We cannot fix
+  // this with physics tuning; only by eliminating the pocket. So before
+  // building the bodies we snap any obstacle whose center is in the pinch
+  // zone to touch the wall (gap = 0 means the marble bounces off the
+  // exposed top of the peg instead of falling into the gap).
+  const MARBLE_RADIUS = 11;
+  const MARBLE_DIAMETER = MARBLE_RADIUS * 2;
+  const WALL_SURFACE_L = 25;       // right edge of left wall (0..50)
+  const WALL_SURFACE_R = W - 25;   // left edge of right wall
+  const PINCH_BUFFER = 4;          // extra px beyond marble diameter
+  const repairedObstacles = track.obstacles.map(o => {
+    let x = o.x;
+    // Left-wall pinch: surface gap in (0, marbleDiameter + buffer)
+    const leftGap = (x - o.r) - WALL_SURFACE_L;
+    if (leftGap > 0 && leftGap < MARBLE_DIAMETER + PINCH_BUFFER) {
+      x = WALL_SURFACE_L + o.r; // snap to touch the wall
+    }
+    // Right-wall pinch
+    const rightGap = WALL_SURFACE_R - (x + o.r);
+    if (rightGap > 0 && rightGap < MARBLE_DIAMETER + PINCH_BUFFER) {
+      x = WALL_SURFACE_R - o.r;
+    }
+    return { ...o, x };
+  });
+  /* Peg-to-peg pinches: any two pegs whose surface gap is in (0, diameter+buffer)
+   * form a horizontal V-pocket. Resolve by snapping the pair to touching
+   * (gap = -0.5 px so contact solver treats them as a single static cluster).
+   * Iterate twice so 3-peg chains converge. */
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < repairedObstacles.length; i++) {
+      for (let j = i + 1; j < repairedObstacles.length; j++) {
+        const a = repairedObstacles[i], b = repairedObstacles[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minSafe = a.r + b.r;
+        const pinchMax = minSafe + MARBLE_DIAMETER + PINCH_BUFFER;
+        if (dist > minSafe && dist < pinchMax) {
+          // Pull the smaller-radius peg toward the larger one until touching.
+          // (Or split the difference if equal.)
+          const target = minSafe - 0.5;
+          const need = dist - target;
+          const ux = dx / dist, uy = dy / dist;
+          if (a.r <= b.r) { a.x += ux * need; a.y += uy * need; }
+          else { b.x -= ux * need; b.y -= uy * need; }
+        }
+      }
+    }
+  }
+
+  /* Peg-to-ramp-segment pinches: closest distance from peg center to each
+   * ramp line segment. If the resulting clearance is in the pinch zone, snap
+   * the peg toward the segment until it touches. Ramp thickness = 14 (so
+   * segment surface is 7px from the line). Marble radius = 11. */
+  const RAMP_HALF_THICKNESS = 7;
+  function distPointToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+    const abx = bx - ax, aby = by - ay;
+    const apx = px - ax, apy = py - ay;
+    const ab2 = abx * abx + aby * aby;
+    const t = Math.max(0, Math.min(1, ab2 === 0 ? 0 : (apx * abx + apy * aby) / ab2));
+    const cx = ax + t * abx, cy = ay + t * aby;
+    return { dist: Math.hypot(px - cx, py - cy), cx, cy };
+  }
+  for (const obs of repairedObstacles) {
+    for (const ramp of track.ramps) {
+      for (let s = 0; s < ramp.points.length - 1; s++) {
+        const a = ramp.points[s], b = ramp.points[s + 1];
+        const { dist, cx, cy } = distPointToSegment(obs.x, obs.y, a.x, a.y, b.x, b.y);
+        const minSafe = obs.r + RAMP_HALF_THICKNESS;
+        const pinchMax = minSafe + MARBLE_DIAMETER + PINCH_BUFFER;
+        if (dist > minSafe && dist < pinchMax) {
+          // Move the peg toward the closest point on the segment until touching
+          const ux = (obs.x - cx) / dist, uy = (obs.y - cy) / dist;
+          obs.x = cx + ux * (minSafe - 0.5);
+          obs.y = cy + uy * (minSafe - 0.5);
+        }
+      }
+    }
+  }
+  // Peg restitution 0.6, bumper restitution 0.8 (was 1.2 → causes perpetual
+  // oscillation; was 0.95 → still nearly-elastic so a marble pinned between
+  // two bumpers loses energy too slowly to ever stop).
+  repairedObstacles.forEach(obs => {
     Matter.Composite.add(world,
       Matter.Bodies.circle(obs.x, obs.y, obs.r, {
         isStatic: true,
-        restitution: obs.type === 'bumper' ? 1.2 : 0.3, // bumpers: strong bounce, pegs: absorb energy
-        friction: 0.001,
+        restitution: obs.type === 'bumper' ? 0.8 : 0.6,
+        friction: 0.001, frictionStatic: STATIC_FRICTION,
         collisionFilter: { category: CAT_WALL, mask: CAT_MARBLE | CAT_OBSTACLE },
         label: obs.type,
       }),
@@ -178,7 +275,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     Matter.Composite.add(world,
       Matter.Bodies.rectangle(
         (f.leftX1 + f.leftX2) / 2, (f.y1 + f.y2) / 2, lLen, 12,
-        { isStatic: true, angle: Math.atan2(dy, ldx), friction: 0.005, restitution: 0.35, label: 'funnel' },
+        { isStatic: true, angle: Math.atan2(dy, ldx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.35, label: 'funnel' },
       ),
     );
     const rdx = f.rightX2 - f.rightX1;
@@ -186,7 +283,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     Matter.Composite.add(world,
       Matter.Bodies.rectangle(
         (f.rightX1 + f.rightX2) / 2, (f.y1 + f.y2) / 2, rLen, 12,
-        { isStatic: true, angle: Math.atan2(dy, rdx), friction: 0.005, restitution: 0.35, label: 'funnel' },
+        { isStatic: true, angle: Math.atan2(dy, rdx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.35, label: 'funnel' },
       ),
     );
   });
@@ -199,7 +296,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(
       (ff.leftX1 + ff.leftX2) / 2, (ff.y1 + ff.y2) / 2, flLen, 14,
-      { isStatic: true, angle: Math.atan2(fdy, fldx), friction: 0.005, restitution: 0.3, label: 'finish-funnel' },
+      { isStatic: true, angle: Math.atan2(fdy, fldx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.3, label: 'finish-funnel' },
     ),
   );
   const frdx = ff.rightX2 - ff.rightX1;
@@ -207,7 +304,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(
       (ff.rightX1 + ff.rightX2) / 2, (ff.y1 + ff.y2) / 2, frLen, 14,
-      { isStatic: true, angle: Math.atan2(fdy, frdx), friction: 0.005, restitution: 0.3, label: 'finish-funnel' },
+      { isStatic: true, angle: Math.atan2(fdy, frdx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.3, label: 'finish-funnel' },
     ),
   );
   // Mini-funnel: narrows from funnel exit to channel width over miniFunnelH below finishY
@@ -220,7 +317,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(
       (funnelExitLeft + track.channelLeft) / 2, track.finishY + miniH / 2, mlLen, 10,
-      { isStatic: true, angle: Math.atan2(miniH, mlDx), friction: 0.005, restitution: 0.3, label: 'channel-funnel' },
+      { isStatic: true, angle: Math.atan2(miniH, mlDx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.3, label: 'channel-funnel' },
     ),
   );
   // Right mini-funnel wall: from funnel exit right edge → channel right edge
@@ -229,7 +326,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(
       (funnelExitRight + track.channelRight) / 2, track.finishY + miniH / 2, mrLen, 10,
-      { isStatic: true, angle: Math.atan2(miniH, mrDx), friction: 0.005, restitution: 0.3, label: 'channel-funnel' },
+      { isStatic: true, angle: Math.atan2(miniH, mrDx), friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.3, label: 'channel-funnel' },
     ),
   );
   // Channel walls (below mini-funnel)
@@ -237,12 +334,12 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   const channelWallH = track.channelDepth - miniH;
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(track.channelLeft - 5, channelTopY + channelWallH / 2, 10, channelWallH + 20, {
-      isStatic: true, friction: 0.005, restitution: 0.2, label: 'channel-wall',
+      isStatic: true, friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.2, label: 'channel-wall',
     }),
   );
   Matter.Composite.add(world,
     Matter.Bodies.rectangle(track.channelRight + 5, channelTopY + channelWallH / 2, 10, channelWallH + 20, {
-      isStatic: true, friction: 0.005, restitution: 0.2, label: 'channel-wall',
+      isStatic: true, friction: 0.005, frictionStatic: STATIC_FRICTION, restitution: 0.2, label: 'channel-wall',
     }),
   );
   Matter.Composite.add(world,
@@ -256,7 +353,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   const wmBodies: WMBody[] = [];
   track.windmillConfigs.forEach(wm => {
     const blade = Matter.Bodies.rectangle(wm.x, wm.y, wm.width, 8, {
-      isStatic: true, friction: 0.01, restitution: 0.5, // satisfying deflection
+      isStatic: true, friction: 0.01, frictionStatic: STATIC_FRICTION, restitution: 0.5,
       label: 'windmill',
     });
     Matter.Composite.add(world, blade);
@@ -276,7 +373,7 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     const cy = d.hingeY + (d.length / 2) * Math.sin(d.baseAngle);
     const body = Matter.Bodies.rectangle(cx, cy, d.length, 6, {
       isStatic: true,
-      friction: 0.02,
+      friction: 0.02, frictionStatic: STATIC_FRICTION,
       restitution: 0.45,
       angle: d.baseAngle,
       label: 'swinging-door',
@@ -471,12 +568,22 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   }
 
   // === TRAMPOLINES — high restitution handles bounce; force adds extra kick ===
+  // Geometric anti-stick: each trampoline gets a tiny tilt (±2°). A flat
+  // horizontal trampoline allows a marble to settle on top in stable
+  // equilibrium (gravity vs. normal force, no tangent component). With a
+  // 2° slope the gravity vector has a horizontal component and marbles
+  // always roll off — they cannot remain motionless on the surface.
+  // Direction is deterministic from x position so the same track always
+  // tilts the same way.
   if (track.trampolines) {
     track.trampolines.forEach(t => {
+      const tiltDir = t.x < W / 2 ? 1 : -1; // tilt outward toward nearest wall
+      const tilt = tiltDir * (2 * Math.PI / 180); // 2°
       const body = Matter.Bodies.rectangle(t.x, t.y, t.width, 10, {
         isStatic: true,
-        restitution: 0.5, // moderate bounce — prevents marbles getting trapped
-        friction: 0.005,
+        angle: tilt,
+        restitution: 0.5,
+        friction: 0.005, frictionStatic: STATIC_FRICTION,
         label: 'trampoline',
         chamfer: { radius: 3 },
       });
@@ -524,7 +631,13 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     const body = Matter.Bodies.circle(startX, startY, 11, {
       restitution: 0.48 + marble.stats.bounce * 0.01,       // 0.50-0.54 — tight around avalanche's 0.5
       friction: 0.00001,                                      // exact avalanche demo value
-      frictionStatic: 0.1,                                    // default — helps marbles settle naturally
+      // CRITICAL: frictionStatic was 0.1. With STATIC_FRICTION=0.005 on
+      // every surface above, the contact frictionStatic ended up
+      // sqrt(0.1 * 0.005) = 0.022 — still enough to lock a marble in
+      // a V-pocket. Dropping marble.frictionStatic to 0.001 takes the
+      // contact value to sqrt(0.001 * 0.005) = 0.0022, which is the
+      // "marbles slide out of any pinch" zone.
+      frictionStatic: 0.001,
       density: 0.001 + marble.stats.power * 0.00005,        // 0.0011-0.00125 — tight around default 0.001
       frictionAir: 0.008 - marble.stats.speed * 0.0005,      // 0.0055-0.0075 — low drag for natural flow, gravity dominates
       label: marble.id,
@@ -555,16 +668,19 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
   let finishRankCounter = 0;
 
-  // No anti-stuck code in the per-frame loop. The real reason marbles
-  // appeared stuck was Matter's sleeping optimization freezing them when
-  // their velocity dropped low — that's been disabled per-marble above by
-  // setting sleepThreshold = Infinity on racing marbles. Pure physics from
-  // here, no kicks, no nudges, no overrides. Doomsday bar remains the only
-  // safety net at 45s.
-
-  // Doomsday bar — physical sweep bar for true physics finish guarantee
-  const DOOMSDAY_TRIGGER_MS = 45000; // 45s — sweep stragglers (no anti-stuck, so trigger earlier)
-  const DOOMSDAY_DEADLINE_MS = 60000; // 60s hard cap
+  /* Doomsday bar — TRUE EMERGENCY ONLY.
+   *
+   * The earlier 1.5s/4px velocity-bump nudge masked geometry problems
+   * instead of fixing them. It was deleted. Marbles now have to flow
+   * naturally through the track; if they don't, that's a track-design
+   * bug to be fixed at the source — not papered over per-frame.
+   *
+   * Trigger at 55s with deadline 70s. The longest legitimately slow
+   * tracks finish in ~45–55s naturally; the bar is purely a safety net
+   * for genuine geometric failures, which should be rare after the
+   * pinch repair + tilted trampolines + restitution rebalance below. */
+  const DOOMSDAY_TRIGGER_MS = 55000;
+  const DOOMSDAY_DEADLINE_MS = 70000;
   const DOOMSDAY_BAR_HEIGHT = 20;
   const DOOMSDAY_FILTER = { category: CAT_DOOMSDAY, mask: CAT_MARBLE };
   let doomsdayBar: Matter.Body | null = null;

@@ -1,6 +1,7 @@
-import { api, getToken } from './api';
+import { api, getToken, clearToken } from './api';
 import { newIdempotencyKey } from './economy';
 import { enqueueRaceSync } from './raceSyncQueue';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Fire-and-forget: runs in background, never blocks UI.
@@ -168,9 +169,61 @@ export function syncPlayerState(
   syncInBackground(async () => {
     const token = await getToken();
     if (!token) return;
-    const res = await api.post<StateSyncResponse>('/sync/state', data);
-    if (res?.state && onAuthoritative) {
-      onAuthoritative(res.state);
+    try {
+      const res = await api.post<StateSyncResponse>('/sync/state', data);
+      if (res?.state && onAuthoritative) {
+        onAuthoritative(res.state);
+      }
+    } catch (err: any) {
+      /* If the server says our session is invalid AND we held a token,
+       * that means the player record (or its session) no longer exists.
+       * Two common causes: admin deleted the account, or the player
+       * self-deleted on a sibling device. In either case the local
+       * state is now orphaned — the next /sync would just 401 in a
+       * loop forever. Wipe local state and the token; the next app
+       * cold-start runs registerOrLogin and creates a fresh player. */
+      const status: number = err?.status ?? 0;
+      if (status === 401) {
+        await handleAccountDeletedRemotely();
+      }
+      throw err; // let syncInBackground log it in dev
     }
   });
+}
+
+/**
+ * Called when the server returns 401 to a request that DID send a token.
+ * Best-effort cleanup so the app doesn't loop forever on a dead session.
+ *
+ *   1. Clear the auth token from AsyncStorage so the next sync skips the
+ *      doomed /sync/state call entirely.
+ *   2. Clear the persisted Zustand store so cached coins / races / etc.
+ *      from the deleted player don't survive into the fresh registration.
+ *   3. On next cold-start, registerOrLogin() sees no token, falls through
+ *      to /auth/register, server creates a brand-new player keyed on the
+ *      device id, and the user lands on the onboarding flow.
+ *
+ * We don't try to force-reload the UI here — bouncing through a stale
+ * screen is worse UX than letting the user back out naturally. The 60s
+ * lobby tick will pick up the cleared token on the next iteration and
+ * surface "session expired, please restart the app" via the existing
+ * empty-state.
+ */
+let sessionExpiredHandled = false;
+async function handleAccountDeletedRemotely(): Promise<void> {
+  if (sessionExpiredHandled) return; // dedup repeated 401s within a session
+  sessionExpiredHandled = true;
+  try {
+    await clearToken();
+    await AsyncStorage.removeItem('dmr-game-state');
+  } catch {
+    // Best-effort — even if storage fails, the in-memory state will reset
+    // on next app launch.
+  }
+  if (__DEV__) {
+    console.warn(
+      '[sync/state] 401 with token present — treating as account-deleted-remotely. ' +
+      'Local state + token cleared. Restart the app for a fresh registration.',
+    );
+  }
 }
