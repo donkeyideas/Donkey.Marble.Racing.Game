@@ -143,10 +143,10 @@ export default function LobbyScreen() {
           // raceSyncQueue) hasn't reached the server yet. Snapping straight
           // to server would visually undo that race in the lobby until the
           // queue drains. Daily streak is always server-authoritative.
-          const local = useGameStore.getState();
+          const localCounters = useGameStore.getState();
           useGameStore.setState({
-            totalRaces: Math.max(local.totalRaces, serverState.totalRaces),
-            totalWins: Math.max(local.totalWins, serverState.totalWins),
+            totalRaces: Math.max(localCounters.totalRaces, serverState.totalRaces),
+            totalWins: Math.max(localCounters.totalWins, serverState.totalWins),
             dailyStreak: serverState.dailyStreak,
           });
 
