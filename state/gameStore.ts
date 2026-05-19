@@ -1589,6 +1589,54 @@ export const useGameStore = create<GameState>()(
     if (lastPlaceId === tourney.playerPickId) {
       tourney.status = 'eliminated';
       tourney.currentRound = roundIdx + 1;
+
+      /* Placement bonus on elimination. remainingIds.length at this point
+       * is the count BEFORE eliminating lastPlaceId, so:
+       *   - 2 remaining → eliminated marble is 2nd place (final round)
+       *   - 3 remaining → eliminated marble is 3rd place (semi-final)
+       * Anything earlier (4+ remaining) gets no placement bonus — those
+       * marbles already pocketed their per-round survival payout. */
+      const remote = getConfig();
+      const tier = tourney.tournamentId === 'daily-blitz' ? 'daily'
+        : tourney.tournamentId === 'weekly-cup' ? 'weekly'
+        : 'champion';
+      let placementBonus = 0;
+      let placementLabel = '';
+      if (remainingIds.length === 2) {
+        placementBonus = remote.tournamentSecondPrizes?.[tier] ?? 0;
+        placementLabel = '2nd place';
+      } else if (remainingIds.length === 3) {
+        placementBonus = remote.tournamentThirdPrizes?.[tier] ?? 0;
+        placementLabel = '3rd place';
+      }
+
+      if (placementBonus > 0) {
+        tourney.totalEarned += placementBonus;
+        const newCoinHistoryElim = [...coinHistory, {
+          type: 'payout' as const,
+          amount: placementBonus,
+          description: `Tournament ${placementLabel} prize`,
+          timestamp: Date.now(),
+        }];
+        while (newCoinHistoryElim.length > 200) newCoinHistoryElim.shift();
+        set({
+          tournaments: tourney,
+          coins: coins + placementBonus,
+          coinHistory: newCoinHistoryElim,
+        });
+        applyEconomyAction({
+          action: 'tournament_payout',
+          payload: { tournamentId: tourney.tournamentId, amount: placementBonus },
+        }).then((res) => {
+          if (res.ok) {
+            useGameStore.setState({ coins: res.balance });
+          } else if (__DEV__) {
+            console.warn('[tournament_payout placement]', res.message);
+          }
+        });
+        return;
+      }
+
       set({ tournaments: tourney });
       return;
     }

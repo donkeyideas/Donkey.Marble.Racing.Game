@@ -24,11 +24,14 @@ export interface RemoteConfig {
   maxDailyPurchases: number;
   maxDailyCoins: number;
   tournamentPrizes: { daily: number; weekly: number; champion: number };
-  /* Optional because the admin API doesn't emit this yet — clients fall back
-   * to the DEFAULT_CONFIG values when the field is absent. Adding the field
-   * server-side is a follow-up; the server's canonical TOURNAMENT_CONFIGS
-   * already validates entry fees so this is purely a UI hint. */
   tournamentEntryFees?: { daily: number; weekly: number; champion: number };
+  /* Per-tier 2nd and 3rd place placement bonuses. Awarded when the
+   * player's marble is eliminated in the final round (2nd place) or the
+   * semi-final (3rd place). Distinct from per-round survival payouts.
+   * Optional for back-compat with old admin API responses; absent →
+   * DEFAULT_CONFIG values are used. */
+  tournamentSecondPrizes?: { daily: number; weekly: number; champion: number };
+  tournamentThirdPrizes?: { daily: number; weekly: number; champion: number };
   xpPerLevel: number;
   /**
    * Per-track custom background images. Maps a course id (e.g.
@@ -69,6 +72,11 @@ export const DEFAULT_CONFIG: RemoteConfig = {
    * the server validates against canonical values from
    * apps/dashboard/.../economy-config.ts so this is just a UI hint. */
   tournamentEntryFees: { daily: 100, weekly: 500, champion: 1000 },
+  /* 2nd/3rd placement bonuses — must mirror admin SEED_CONFIGS defaults
+   * so a client that boots without remote config (offline first run)
+   * sees the same payout structure as the live server. */
+  tournamentSecondPrizes: { daily: 1200, weekly: 6000, champion: 12000 },
+  tournamentThirdPrizes: { daily: 600, weekly: 3000, champion: 6000 },
   trackBgImages: {},
 };
 
