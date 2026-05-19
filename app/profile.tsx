@@ -15,7 +15,7 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
-import { XP_PER_LEVEL } from '../data/seasonPass';
+import { getXpPerLevel } from '../lib/remoteConfig';
 
 const LEAGUE_TIERS = [
   { name: 'BRONZE', threshold: 1, color: Colors.bronze, next: 'SILVER', nextLevel: 10 },
@@ -197,7 +197,7 @@ export default function ProfileScreen() {
 
   const league = getLeague(passLevel);
   const currentXP = passXp;
-  const nextTierXP = XP_PER_LEVEL;
+  const nextTierXP = getXpPerLevel();
   const progressPercent = (currentXP / nextTierXP) * 100;
   const favorite = getFavoriteMarble(marbleStats);
 

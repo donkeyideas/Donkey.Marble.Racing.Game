@@ -20,6 +20,8 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from './api';
 import { flushEconomyQueue } from './syncQueue';
+import { flushRaceSyncQueue } from './raceSyncQueue';
+import { useGameStore } from '../state/gameStore';
 
 const OPEN_SESSION_KEY = 'dmr-app-session-open-v1';
 const MIN_LOG_SECONDS = 2;
@@ -128,8 +130,20 @@ function handleAppStateChange(state: AppStateStatus): void {
       startSession();
     }
     // Foreground is also a good moment to retry any queued economy
-    // actions — network is usually freshly available.
+    // actions AND any queued race-syncs — network is usually freshly
+    // available. Previously only the economy queue drained here; a race
+    // played while the device was offline would sit unsynced until the
+    // user happened to trigger an economy action. Now both queues drain
+    // on every foreground transition; if the race queue drains anything,
+    // snap local coins to the server's authoritative balance.
     flushEconomyQueue().catch(() => {});
+    flushRaceSyncQueue()
+      .then((q) => {
+        if (q.drained > 0 && typeof q.balance === 'number') {
+          useGameStore.setState({ coins: q.balance });
+        }
+      })
+      .catch(() => {});
   } else if (state === 'inactive' || state === 'background') {
     lastForegroundAt = Date.now();
     endSession();

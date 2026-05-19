@@ -12,7 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
-import { useGameStore, GameMode, SeasonMarbleStats } from '../state/gameStore';
+import { useGameStore, GameMode, SeasonMarbleStats, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import { ALL_COURSES as COURSES } from '../data/courses';
@@ -277,7 +277,7 @@ function WinScreen() {
   const dest = getModeDest(activeMode);
   const isQuickRace = activeMode.type === 'quick_race';
   const isTournament = activeMode.type === 'tournament';
-  const isTournamentChampion = isTournament && tournaments?.currentRound !== undefined && tournaments.currentRound >= 7;
+  const isTournamentChampion = isTournament && tournaments?.currentRound !== undefined && tournaments.currentRound >= TOURNAMENT_ROUNDS;
   const isFranchise = season?.seasonMode === 'franchise' && (activeMode.type === 'season' || activeMode.type === 'playoff');
 
   // Get the payout for the round that just completed

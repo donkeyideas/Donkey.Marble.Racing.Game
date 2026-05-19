@@ -34,18 +34,31 @@ export default function LeaderboardsScreen() {
     }).sort((a, b) => b.wins - a.wins || b.winRate - a.winRate);
   }, [marbleStats]);
 
+  /* Lifetime coins earned. coinHistory is bounded to the most recent 200
+   * entries, so this is "earned in the last ~200 transactions" — close to
+   * lifetime for casual players, undercounts for heavy ones. The proper
+   * fix lives server-side in /sync/state once it grows a totalEarned
+   * field; until then this is the best the client can do. */
   const totalCoinsEarned = useMemo(() =>
     coinHistory.filter(t => t.type === 'payout').reduce((s, t) => s + t.amount, 0),
   [coinHistory]);
 
   const seasonsWon = season?.seasonHistory?.length ?? 0;
 
+  /* Most-profitable marble — winRate stored as a 0..100 percentage so it
+   * matches the `marbleRankings.winRate` units used elsewhere on this
+   * screen. Previously stored as a 0..1 fraction, so the field meant
+   * "winRate" in one card and "percentage" in another, which made the
+   * "Most Profitable: Dash (0.42)" label look like a literal coin payout
+   * instead of a 42% win rate. */
   const mostProfitable = useMemo(() => {
     let best = { name: '—', winRate: 0 };
     MARBLES.forEach(m => {
       const s = marbleStats[m.id];
       if (!s || s.betCount === 0) return;
-      const wr = s.wins / (s.wins + s.losses);
+      const total = s.wins + s.losses;
+      if (total === 0) return;
+      const wr = (s.wins / total) * 100;
       if (wr > best.winRate) best = { name: m.name, winRate: wr };
     });
     return best;

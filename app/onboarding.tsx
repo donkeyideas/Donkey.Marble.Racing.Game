@@ -155,7 +155,7 @@ function PitchStep({ onEnter }: { onEnter: () => void }) {
         </Text>
       </FadeIn>
       <FadeIn delay={4800}>
-        <Text style={styles.pitchCoins}>Here's 500 coins to get you started.</Text>
+        <Text style={styles.pitchCoins}>Here's 1,000 coins to get you started.</Text>
       </FadeIn>
       <FadeIn delay={5400}>
         <Pressable onPress={onEnter} style={({ pressed }) => pressed && styles.pressed}>

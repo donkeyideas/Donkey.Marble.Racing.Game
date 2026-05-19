@@ -15,7 +15,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, Spacing, BorderRadius, MARBLES } from '../theme';
-import { useGameStore } from '../state/gameStore';
+import { useGameStore, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
@@ -51,6 +51,7 @@ import {
   AI_BACKFILL_DELAY_MS,
 } from '../lib/multiplayer';
 import { recordPlayedWith } from '../lib/mpFriends';
+import { applyEconomyAction } from '../lib/economy';
 
 type Phase = 'pick_payout' | 'matching' | 'waiting' | 'drafting' | 'racing' | 'round_result' | 'finished' | 'submitting';
 
@@ -143,8 +144,11 @@ export default function MultiplayerLobbyScreen() {
     }
   }, []);
 
-  // Common pre-entry check + fee charge used by all entry paths.
-  const chargeEntryFee = useCallback((): boolean => {
+  // Common pre-entry check used by all entry paths. Only checks affordability
+  // locally; the actual server-authoritative debit happens AFTER the Firebase
+  // lobby is created (via serverChargeMpEntry below) so the entry naturally
+  // keys on the lobbyId.
+  const canAffordEntry = useCallback((): boolean => {
     const store = useGameStore.getState();
     if (store.coins < tierConfig.entryFee) {
       showModal({
@@ -157,9 +161,36 @@ export default function MultiplayerLobbyScreen() {
       });
       return false;
     }
-    store.removeCoins(tierConfig.entryFee);
     return true;
   }, [tierConfig.entryFee, router]);
+
+  /* Server-authoritative entry-fee charge keyed on lobbyId so the same lobby
+   * entry can never be billed twice (the natural idempotency key is
+   * `mp_entry:{playerId}:{lobbyId}`). On success, snap local coins to the
+   * server's authoritative balance. On failure, return false so callers can
+   * tear down the Firebase lobby they just created. Previously this path
+   * mutated coins locally only, which let a tampered client claim payouts
+   * for entries the server never recorded. */
+  const serverChargeMpEntry = useCallback(
+    async (entryLobbyId: string, entryTier: 'daily' | 'weekly' | 'champion'): Promise<boolean> => {
+      const res = await applyEconomyAction({
+        action: 'mp_entry',
+        payload: { tier: entryTier, lobbyId: entryLobbyId },
+      });
+      if (res.ok) {
+        useGameStore.setState({ coins: res.balance });
+        return true;
+      }
+      // 401 = signed-out anon path (already enqueued by economy.ts) — let the
+      // user continue and the retry queue will settle it once auth is back.
+      if (res.status === 401) {
+        useGameStore.getState().removeCoins(tierConfig.entryFee);
+        return true;
+      }
+      return false;
+    },
+    [tierConfig.entryFee],
+  );
 
   // ---------------------------------------------------------------------------
   // Create a PRIVATE lobby — generates a 6-char code that can be shared.
@@ -167,26 +198,36 @@ export default function MultiplayerLobbyScreen() {
   // who have the code can join.
   // ---------------------------------------------------------------------------
   const createPrivate = useCallback(async (mode: PayoutMode) => {
-    if (!chargeEntryFee()) return;
+    if (!canAffordEntry()) return;
     setPayoutMode(mode);
     setPhase('matching');
     try {
       const { lobbyId: id, code } = await createPrivateLobby(uid, displayName, tier, mode);
+      const charged = await serverChargeMpEntry(id, tier);
+      if (!charged) {
+        await leaveLobby(id, uid).catch(() => {});
+        showModal({
+          title: 'Couldn’t Charge Entry',
+          message: 'Server rejected the entry fee. Try again in a moment.',
+          buttons: [{ label: 'OK', variant: 'yellow' }],
+        });
+        setPhase('pick_payout');
+        return;
+      }
       setLobbyId(id);
       setMpLobbyId(id);
       setCreatedCode(code);
       setPhase('waiting');
     } catch (e: any) {
-      useGameStore.getState().addCoins(tierConfig.entryFee);
       const msg = e?.message ?? 'Network error';
       showModal({
         title: 'Couldn’t Create Lobby',
-        message: `${msg}\n\nEntry refunded.`,
+        message: msg,
         buttons: [{ label: 'OK', variant: 'yellow' }],
       });
       setPhase('pick_payout');
     }
-  }, [chargeEntryFee, uid, displayName, tier, setMpLobbyId, tierConfig.entryFee]);
+  }, [canAffordEntry, serverChargeMpEntry, uid, displayName, tier, setMpLobbyId]);
 
   // ---------------------------------------------------------------------------
   // Join a lobby by its 6-char code. Validates the code locally first (length,
@@ -194,7 +235,7 @@ export default function MultiplayerLobbyScreen() {
   // ---------------------------------------------------------------------------
   const submitCode = useCallback(async () => {
     setCodeError(null);
-    if (!chargeEntryFee()) {
+    if (!canAffordEntry()) {
       setCodeOpen(false);
       return;
     }
@@ -202,9 +243,15 @@ export default function MultiplayerLobbyScreen() {
     setCodeOpen(false);
     const res = await joinByCode(codeInput, uid, displayName);
     if (!res.ok) {
-      // Refund + surface the reason
-      useGameStore.getState().addCoins(tierConfig.entryFee);
       setCodeError(res.reason);
+      setCodeOpen(true);
+      setPhase('pick_payout');
+      return;
+    }
+    const charged = await serverChargeMpEntry(res.lobbyId, tier);
+    if (!charged) {
+      await leaveLobby(res.lobbyId, uid).catch(() => {});
+      setCodeError('Server rejected entry fee. Try again.');
       setCodeOpen(true);
       setPhase('pick_payout');
       return;
@@ -213,7 +260,7 @@ export default function MultiplayerLobbyScreen() {
     setMpLobbyId(res.lobbyId);
     setCodeInput('');
     setPhase('waiting');
-  }, [chargeEntryFee, codeInput, uid, displayName, setMpLobbyId, tierConfig.entryFee]);
+  }, [canAffordEntry, serverChargeMpEntry, codeInput, uid, displayName, setMpLobbyId, tier]);
 
   // ---------------------------------------------------------------------------
   // Open the public lobby browser
@@ -237,6 +284,7 @@ export default function MultiplayerLobbyScreen() {
     // Use that lobby's tier / mode for accounting, not the screen's current
     // tier — the user may be browsing across tiers from a Daily Blitz entry.
     const fee = target.lobby.entryFee;
+    const targetTier = target.lobby.tier as 'daily' | 'weekly' | 'champion';
     const store = useGameStore.getState();
     if (store.coins < fee) {
       showModal({
@@ -246,16 +294,25 @@ export default function MultiplayerLobbyScreen() {
       });
       return;
     }
-    store.removeCoins(fee);
     setPhase('matching');
     try {
       const { joinLobby } = await import('../lib/multiplayer');
       const joined = await joinLobby(target.lobbyId, uid, displayName);
       if (!joined) {
-        store.addCoins(fee);
         showModal({
           title: 'Couldn’t Join',
           message: 'That lobby just filled or started. Try another.',
+          buttons: [{ label: 'OK', variant: 'yellow' }],
+        });
+        setPhase('pick_payout');
+        return;
+      }
+      const charged = await serverChargeMpEntry(target.lobbyId, targetTier);
+      if (!charged) {
+        await leaveLobby(target.lobbyId, uid).catch(() => {});
+        showModal({
+          title: 'Couldn’t Charge Entry',
+          message: 'Server rejected the entry fee. Try again.',
           buttons: [{ label: 'OK', variant: 'yellow' }],
         });
         setPhase('pick_payout');
@@ -266,10 +323,9 @@ export default function MultiplayerLobbyScreen() {
       setPayoutMode((target.lobby.payoutMode || 'standard') as PayoutMode);
       setPhase('waiting');
     } catch (e: any) {
-      store.addCoins(fee);
       setPhase('pick_payout');
     }
-  }, [uid, displayName, setMpLobbyId]);
+  }, [serverChargeMpEntry, uid, displayName, setMpLobbyId]);
 
   // Share the active lobby's invite code via the OS share sheet.
   const shareCode = useCallback(async () => {
@@ -288,20 +344,27 @@ export default function MultiplayerLobbyScreen() {
   // Start matchmaking with the player's chosen payout mode
   // ---------------------------------------------------------------------------
   const beginMatchmaking = useCallback(async (mode: PayoutMode) => {
-    if (!chargeEntryFee()) return;
+    if (!canAffordEntry()) return;
     setPayoutMode(mode);
     setPhase('matching');
 
     try {
       const id = await quickMatch(uid, displayName, tier, mode);
+      const charged = await serverChargeMpEntry(id, tier);
+      if (!charged) {
+        await leaveLobby(id, uid).catch(() => {});
+        showModal({
+          title: 'Couldn’t Charge Entry',
+          message: 'Server rejected the entry fee. Try again.',
+          buttons: [{ label: 'OK', variant: 'yellow' }],
+        });
+        setPhase('pick_payout');
+        return;
+      }
       setLobbyId(id);
       setMpLobbyId(id);
       setPhase('waiting');
     } catch (e: any) {
-      // Refund and surface the actual error so we can diagnose. Common
-      // causes: locked-down RTDB rules, missing index, Web SDK auth not
-      // ready yet when the DB write fires.
-      useGameStore.getState().addCoins(tierConfig.entryFee);
       // Surface as much detail as possible — on Android the issue might be
       // Firebase WebSocket init, missing auth context, or a Hermes-specific
       // resolution problem. We want the user to be able to copy/paste the
@@ -309,14 +372,12 @@ export default function MultiplayerLobbyScreen() {
       const errMsg = e?.code
         ? `${e.code}: ${e.message ?? 'no detail'}`
         : (e?.message ?? (typeof e === 'string' ? e : JSON.stringify(e ?? {}) || 'unknown error'));
-      // Include platform so we can tell Android vs iOS failures apart in
-      // user-submitted reports.
       const { Platform } = require('react-native');
       const fullMsg = `[${Platform.OS}] ${errMsg}`;
       console.warn('[Multiplayer] quickMatch failed:', fullMsg, e);
       showModal({
         title: 'Multiplayer Unavailable',
-        message: `Couldn't connect: ${fullMsg}\n\nYour ${tierConfig.entryFee} coins were refunded.`,
+        message: `Couldn't connect: ${fullMsg}`,
         buttons: [
           { label: 'Retry', variant: 'yellow', onPress: () => setPhase('pick_payout') },
           { label: 'Back', variant: 'ghost', onPress: () => router.back() },
@@ -324,7 +385,7 @@ export default function MultiplayerLobbyScreen() {
       });
       setPhase('pick_payout');
     }
-  }, [tier, tierConfig.entryFee, uid, displayName, router, setMpLobbyId]);
+  }, [tier, canAffordEntry, serverChargeMpEntry, uid, displayName, router, setMpLobbyId]);
 
   // Cycle the matching-phase status text so the screen feels alive while we
   // do the actual Firebase lookup. Roughly mirrors what a matchmaker would
@@ -525,7 +586,7 @@ export default function MultiplayerLobbyScreen() {
 
     const placement = getPlayerPlacement(lobby, uid);
     const payout = calculateMPPayout(lobby, placement);
-    setMpResult(placement, payout);
+    setMpResult(placement, payout, lobby.tier as 'daily' | 'weekly' | 'champion');
 
     // Auto-record human opponents into the local friends list so they
     // appear on the user's "recently played with" screen next time. No
@@ -920,7 +981,7 @@ export default function MultiplayerLobbyScreen() {
           {phase === 'racing' && lobby && (
             <View style={styles.centerCard}>
               <Text style={styles.statusTitle}>
-                ROUND {lobby.currentRound + 1} of 7
+                ROUND {lobby.currentRound + 1} of {TOURNAMENT_ROUNDS}
               </Text>
               <Text style={styles.statusSub}>
                 {8 - lobby.currentRound} marbles remaining

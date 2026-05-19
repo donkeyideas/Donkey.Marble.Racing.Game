@@ -7,7 +7,8 @@ import { Colors, Fonts, BorderRadius } from '../theme';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
-import { PASS_REWARDS, PassTrack, XP_PER_LEVEL } from '../data/seasonPass';
+import { PASS_REWARDS, PassTrack } from '../data/seasonPass';
+import { getXpPerLevel } from '../lib/remoteConfig';
 
 function getTrackTabs(passTrack: PassTrack): { label: string; sublabel?: string; value: PassTrack }[] {
   return [
@@ -37,7 +38,8 @@ export default function PassScreen() {
   const seasonNum = season?.seasonNumber ?? 1;
   const earnedFreeCount = PASS_REWARDS.filter((r) => r.track === 'free' && passLevel > r.level).length;
 
-  const xpPercent = Math.round((passXp / XP_PER_LEVEL) * 100);
+  const xpPerLevel = getXpPerLevel();
+  const xpPercent = Math.round((passXp / xpPerLevel) * 100);
 
   const filteredRewards = activeTrack === 'free'
     ? PASS_REWARDS
@@ -66,7 +68,7 @@ export default function PassScreen() {
               <View style={styles.levelCircle}>
                 <Text style={styles.levelCircleText}>{passLevel}</Text>
               </View>
-              <Text style={styles.levelText}> — {passXp.toLocaleString()} / {XP_PER_LEVEL.toLocaleString()} XP</Text>
+              <Text style={styles.levelText}> — {passXp.toLocaleString()} / {xpPerLevel.toLocaleString()} XP</Text>
             </View>
             <View style={styles.xpBarTrack}>
               <LinearGradient

@@ -11,7 +11,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, Spacing, BorderRadius } from '../theme';
-import { useGameStore } from '../state/gameStore';
+import { useGameStore, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { showModal } from '../components/GameModal';
@@ -24,7 +24,7 @@ const TOURNAMENTS_LIST = [
     subtitle: '8 marbles · Last place eliminated each round',
     prizePool: '5,000',
     entryFee: 100,
-    format: '8 marbles · 7 rounds',
+    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
     payoutPreview: 'R4: 50 · R5: 100 · R6: 250 · R7: 4,600',
     colors: ['#00b4d8', '#0077b6'] as [string, string],
     minLevel: 0,
@@ -35,7 +35,7 @@ const TOURNAMENTS_LIST = [
     subtitle: 'Higher stakes · King of the Hill elimination',
     prizePool: '25,000',
     entryFee: 500,
-    format: '8 marbles · 7 rounds',
+    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
     payoutPreview: 'R4: 250 · R5: 500 · R6: 1,250 · R7: 23K',
     colors: ['#ffc220', '#e6a800'] as [string, string],
     minLevel: 0,
@@ -46,7 +46,7 @@ const TOURNAMENTS_LIST = [
     subtitle: 'Top stakes · Winner takes all',
     prizePool: '50,000',
     entryFee: 1000,
-    format: '8 marbles · 7 rounds',
+    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
     payoutPreview: 'R4: 500 · R5: 1K · R6: 2,500 · R7: 46K',
     colors: ['#e74c3c', '#c0392b'] as [string, string],
     minLevel: 10,
@@ -134,7 +134,7 @@ export default function TournamentsScreen() {
                 Active tournament in progress — Tap to continue
               </Text>
               <Text style={styles.activeBannerRound}>
-                Round {tournaments.currentRound + 1} of 7 · {8 - tournaments.currentRound} marbles left
+                Round {tournaments.currentRound + 1} of {TOURNAMENT_ROUNDS} · {8 - tournaments.currentRound} marbles left
               </Text>
             </Pressable>
           )}

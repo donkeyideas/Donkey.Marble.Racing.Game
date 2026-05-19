@@ -1,4 +1,5 @@
 import { ALL_COURSES, CourseData } from './courses';
+import { MARBLES } from '../theme';
 
 // ────────────────────────────────────────────────────────
 // Types
@@ -38,7 +39,12 @@ export interface SeasonSchedule {
 // Constants
 // ────────────────────────────────────────────────────────
 
-const MARBLE_IDS = ['rocky', 'dash', 'lucky', 'spike', 'nova', 'frosty', 'aqua', 'shadow'] as const;
+/* Derived from theme/MARBLES so the season schedule automatically picks up
+ * any new marble added to the roster, instead of getting stuck on the
+ * snapshot of the lineup at the time this file was first written. Order
+ * is preserved from MARBLES so deterministic seeded shuffles stay stable
+ * across runs (as long as the MARBLES list itself doesn't reorder). */
+const MARBLE_IDS = MARBLES.map((m) => m.id);
 
 const MATCHUP_HEADLINES: Record<string, string> = {
   'rocky-dash':    'Power vs Speed',

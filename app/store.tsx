@@ -8,6 +8,7 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
 import { COIN_PACKS, CoinPack } from '../state/gameStore';
+import { getConfig } from '../lib/remoteConfig';
 let IAP: typeof import('react-native-iap') | null = null;
 try {
   IAP = require('react-native-iap');
@@ -81,7 +82,13 @@ export default function StoreScreen() {
   const isNewDay = storeLastPurchaseDate !== today;
   const purchasesUsed = isNewDay ? 0 : storePurchasesToday;
   const coinsUsed = isNewDay ? 0 : storeCoinsPurchasedToday;
-  const capPercent = Math.round((purchasesUsed / 3) * 100);
+  // Limits pulled from remote config so live-ops can adjust without an app
+  // update. Previously hardcoded `/ 3` and `/ 25000` in three places — when
+  // an admin changed maxDailyPurchases via the dashboard, the gameStore
+  // enforced the new limit but the store-page progress bar still said "/ 3".
+  const maxPurchases = getConfig().maxDailyPurchases;
+  const maxCoinsPerDay = getConfig().maxDailyCoins;
+  const capPercent = maxPurchases > 0 ? Math.round((purchasesUsed / maxPurchases) * 100) : 0;
 
   // Initialize IAP connection
   useEffect(() => {
@@ -318,7 +325,7 @@ export default function StoreScreen() {
             const style = PACK_STYLES[pack.id];
             const isSuccess = successPack === pack.id;
             const isPurchasing = purchasing === pack.id;
-            const isDisabled = isPurchasing || purchasesUsed >= 3 || coinsUsed + pack.coins > 25000;
+            const isDisabled = isPurchasing || purchasesUsed >= maxPurchases || coinsUsed + pack.coins > maxCoinsPerDay;
 
             return (
               <Pressable
@@ -391,7 +398,7 @@ export default function StoreScreen() {
               <View style={[styles.dailyCapBarFill, { width: `${capPercent}%` }]} />
             </View>
             <Text style={styles.dailyCapText}>
-              {purchasesUsed} / 3 transactions today {'\u00B7'} {coinsUsed.toLocaleString()} / 25,000 coins today
+              {purchasesUsed} / {maxPurchases} transactions today {'\u00B7'} {coinsUsed.toLocaleString()} / {maxCoinsPerDay.toLocaleString()} coins today
             </Text>
           </View>
 

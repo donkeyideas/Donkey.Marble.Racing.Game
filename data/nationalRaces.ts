@@ -210,12 +210,52 @@ export function getEventDaypart(event: NationalEvent): EventDaypart {
   return 'night';
 }
 
-/** Pick random courses for events */
-export function generateEventCourses(): Record<string, string[]> {
-  const result: Record<string, string[]> = {};
-  const shuffled = [...ALL_COURSES].sort(() => Math.random() - 0.5);
-  let idx = 0;
+/* Deterministic per-day course selection.
+ *
+ * Previously `Math.random()` re-shuffled the course list on every call,
+ * which meant two phones opening the same national event saw DIFFERENT
+ * courses, and a single player's "current event" silently swapped its
+ * course set every time gameStore re-derived it (state recompute, app
+ * resume, persistence rehydrate). That broke the "all players race the
+ * same course today" promise — entries placed at 8:01 could be on a
+ * volcano track while entries placed at 8:02 were on a grass one.
+ *
+ * Now we seed a small PRNG with today's ET date string so:
+ *   1. Every device sees the same courses for the same day.
+ *   2. The selection is stable across resumes / rehydrates.
+ *   3. Tomorrow's set is different.
+ *
+ * dateOverride is for tests that need to lock to a specific day. */
+function seedFromString(seed: string): () => number {
+  // xmur3 → splitmix32-ish: cheap deterministic 32-bit RNG.
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h += 0x6D2B79F5;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
+export function generateEventCourses(dateOverride?: string): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  const day = dateOverride || getETDateString();
+  const rand = seedFromString(`national-courses:${day}`);
+
+  // Fisher-Yates with the seeded RNG so the same `day` always produces the
+  // same ordering. ALL_COURSES is the canonical course list from data/courses.ts.
+  const shuffled = [...ALL_COURSES];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+
+  let idx = 0;
   NATIONAL_EVENTS.forEach((event) => {
     const count = event.seriesLength;
     result[event.id] = shuffled.slice(idx, idx + count).map((c) => c.id);

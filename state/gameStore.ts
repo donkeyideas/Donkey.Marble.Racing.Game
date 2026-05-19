@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MARBLES, MarbleData } from '../theme';
-import { XP_PER_LEVEL, PassTrack } from '../data/seasonPass';
+import { PassTrack } from '../data/seasonPass';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import {
   SeasonSchedule, SeasonWeek, SeasonRace,
   generateSeasonSchedule, advanceSchedule, isSeasonComplete,
+  RACES_PER_WEEK, WEEKS_PER_SEASON,
   SEASON_POINTS,
 } from '../data/seasonSchedule';
 import {
@@ -16,7 +17,7 @@ import {
 } from '../data/nationalRaces';
 import { syncRaceResult, syncPurchase } from '../lib/sync';
 import { applyEconomyAction } from '../lib/economy';
-import { getConfig, fetchRemoteConfig, loadCachedConfig } from '../lib/remoteConfig';
+import { getConfig, fetchRemoteConfig, loadCachedConfig, getXpPerLevel } from '../lib/remoteConfig';
 import { getPromoMultiplier } from '../lib/liveOps';
 import { ACHIEVEMENTS, AchievementCheckState } from '../data/achievements';
 import {
@@ -195,6 +196,16 @@ export const COIN_PACKS: CoinPack[] = [
   { id: 'whale',    coins: 40000, price: '$24.99', bonus: '+60%',  badge: 'BEST VALUE' },
 ];
 
+/* Number of single-elimination rounds in a tournament.
+ *
+ * 8 marbles → 7 eliminations to crown a champion. Previously the literal
+ * `7` was scattered across tournament-bracket.tsx, tournaments.tsx,
+ * multiplayer-lobby.tsx, results.tsx, and gameStore tournament logic. If
+ * we ever change the format (e.g. 16-marble bracket → 15 rounds), missing
+ * one of those callsites silently breaks the "Round N of M" labelling.
+ * Import and use this constant instead. */
+export const TOURNAMENT_ROUNDS = 7;
+
 function getMaxDailyPurchases(): number { return getConfig().maxDailyPurchases; }
 function getMaxDailyCoins(): number { return getConfig().maxDailyCoins; }
 
@@ -321,7 +332,7 @@ interface GameState {
   mpSurvivingMarbleIds: string[];
   setMpSurvivingMarbleIds: (ids: string[]) => void;
   setMpLobbyId: (lobbyId: string | null) => void;
-  setMpResult: (placement: number, payout: number) => void;
+  setMpResult: (placement: number, payout: number, tier?: 'daily' | 'weekly' | 'champion') => void;
 
   // Store
   storePurchasesToday: number;
@@ -506,16 +517,20 @@ export const useGameStore = create<GameState>()(
     const newTotalRaces = totalRaces + 1;
 
     // --- COMMON: Pass XP (50% for quick race, full for others) ---
+    // xpPerLevel comes from remote config so admins can tune progression
+    // speed without a new app build. Defaults to the data/seasonPass.ts
+    // constant when remote config hasn't loaded yet.
     const MAX_PASS_LEVEL = 30;
+    const xpPerLevel = getXpPerLevel();
     const xpGain = isQuickRace ? 125 : 250;
     const xpWinBonus = isQuickRace ? 0 : (result.won ? 500 : 0);
     let xp = passXp + xpGain + xpWinBonus;
     let lvl = passLevel;
-    while (xp >= XP_PER_LEVEL && lvl < MAX_PASS_LEVEL) {
-      xp -= XP_PER_LEVEL;
+    while (xp >= xpPerLevel && lvl < MAX_PASS_LEVEL) {
+      xp -= xpPerLevel;
       lvl++;
     }
-    if (lvl >= MAX_PASS_LEVEL) xp = Math.min(xp, XP_PER_LEVEL - 1); // cap at max
+    if (lvl >= MAX_PASS_LEVEL) xp = Math.min(xp, xpPerLevel - 1); // cap at max
 
     // --- MODE-SPECIFIC ---
     let newStandings = seasonStandings;
@@ -546,8 +561,27 @@ export const useGameStore = create<GameState>()(
         newStreak = 0;
       }
 
-      // Season week advances every 5 races
-      newWeek = Math.min(12, Math.floor(newTotalRaces / 5) + 1);
+      /* Season-week advance.
+       *
+       * Previously: `Math.min(12, Math.floor(newTotalRaces / 5) + 1)` — the
+       * formula used LIFETIME races across every mode (bet/season/national/
+       * tournament/playoff) and capped at 12, even though a season only
+       * has 10 weeks of 1 race each (data/seasonSchedule.ts). So a player
+       * who'd raced 50 times in tournaments would land at "Week 11" on a
+       * fresh season they hadn't even started.
+       *
+       * Now: only season-mode races count, the cap matches WEEKS_PER_SEASON,
+       * and we advance via the explicit season.weekIndex when a SeasonState
+       * is present — falling back to a totalRaces-derived value only when
+       * the player is in a bet/free-play context that still surfaces a
+       * decorative "week" indicator. */
+      const seasonState = get().season;
+      if (activeMode.type === 'season' && seasonState) {
+        const curIdx = seasonState.schedule.findIndex(w => w.status === 'current');
+        newWeek = Math.min(WEEKS_PER_SEASON, (curIdx >= 0 ? curIdx + 1 : 1));
+      } else if (activeMode.type !== 'quick_race') {
+        newWeek = Math.min(WEEKS_PER_SEASON, Math.floor(newTotalRaces / RACES_PER_WEEK) + 1);
+      }
 
       // Coin transaction ledger
       if (result.payout > 0) {
@@ -1298,7 +1332,7 @@ export const useGameStore = create<GameState>()(
   mpSurvivingMarbleIds: [],
   setMpSurvivingMarbleIds: (ids) => set({ mpSurvivingMarbleIds: ids }),
   setMpLobbyId: (lobbyId) => set({ mpLobbyId: lobbyId }),
-  setMpResult: (placement, payout) => {
+  setMpResult: (placement, payout, tier) => {
     const { coins, coinHistory, mpLobbyId } = get();
     if (payout > 0) {
       // Optimistic local credit so the FINISHED screen shows the new
@@ -1314,14 +1348,15 @@ export const useGameStore = create<GameState>()(
         ].slice(0, 200),
       });
 
-      // Fire server-authoritative payout. Same pattern as tournament /
-      // playoff / national: send the action, snap to res.balance on
-      // success, leave the optimistic credit in place on failure. This
-      // is what makes the MP win survive cross-device account access —
-      // without it, an MP win lived only on the device that earned it.
+      // Fire server-authoritative payout. The server now validates tier
+      // against MP_TIER_CONFIGS and caps the payout at the tier's prize
+      // pool — without `tier` in the payload the request is rejected with
+      // 400 "Unknown MP tier", so callers MUST pass tier. The optimistic
+      // credit stays in place on failure; the next /sync/state reconcile
+      // straightens it out.
       applyEconomyAction({
         action: 'mp_payout',
-        payload: { lobbyId: mpLobbyId, placement, amount: payout },
+        payload: { lobbyId: mpLobbyId, placement, amount: payout, tier },
       }).then((res) => {
         if (res.ok) {
           useGameStore.setState({ coins: res.balance });
@@ -1336,10 +1371,18 @@ export const useGameStore = create<GameState>()(
 
   enterTournament: async (tournamentId) => {
     const { coins, coinHistory } = get();
+    /* Tournament entry fees + prize pools come from remote config so live-ops
+     * can re-balance the economy without an app update. Falls back to the
+     * baked-in values when remote config hasn't loaded yet — the server's
+     * canonical TOURNAMENT_CONFIGS is the ultimate source of truth and will
+     * reject mismatches at the /economy/transaction layer regardless. */
+    const remote = getConfig();
+    const remoteFees = remote.tournamentEntryFees ?? { daily: 100, weekly: 500, champion: 1000 };
+    const remotePrizes = remote.tournamentPrizes ?? { daily: 4600, weekly: 23000, champion: 46000 };
     const configs: Record<string, { entryFee: number; prizePool: number }> = {
-      'daily-blitz': { entryFee: 100, prizePool: 5000 },
-      'weekly-cup': { entryFee: 500, prizePool: 25000 },
-      'champion-invitational': { entryFee: 1000, prizePool: 50000 },
+      'daily-blitz':           { entryFee: remoteFees.daily,    prizePool: remotePrizes.daily },
+      'weekly-cup':            { entryFee: remoteFees.weekly,   prizePool: remotePrizes.weekly },
+      'champion-invitational': { entryFee: remoteFees.champion, prizePool: remotePrizes.champion },
     };
     const config = configs[tournamentId];
     if (!config) return { ok: false, reason: 'Unknown tournament.' };
@@ -1367,7 +1410,7 @@ export const useGameStore = create<GameState>()(
       [marbleIds[i], marbleIds[j]] = [marbleIds[j], marbleIds[i]];
     }
 
-    // Pick 7 random courses (one per round)
+    // Pick one random course per round
     const coursePool = [...COURSES];
     for (let i = coursePool.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -1375,7 +1418,7 @@ export const useGameStore = create<GameState>()(
     }
 
     const rounds: TournamentRound[] = [];
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < TOURNAMENT_ROUNDS; i++) {
       rounds.push({ courseId: coursePool[i].id, eliminatedMarbleId: null, finishOrder: [] });
     }
 
@@ -1448,7 +1491,7 @@ export const useGameStore = create<GameState>()(
     const newCoinHistory = [...coinHistory];
 
     if (roundPayout > 0) {
-      const isChampionRound = tourney.currentRound >= 7;
+      const isChampionRound = tourney.currentRound >= TOURNAMENT_ROUNDS;
       newCoins += roundPayout;
       newCoinHistory.push({
         type: 'payout' as const,
@@ -1473,7 +1516,7 @@ export const useGameStore = create<GameState>()(
     }
 
     // Final round complete (round 6 done → currentRound becomes 7)
-    if (tourney.currentRound >= 7) {
+    if (tourney.currentRound >= TOURNAMENT_ROUNDS) {
       tourney.status = 'champion';
       set({ coins: newCoins, coinHistory: newCoinHistory, tournaments: tourney });
       return;
@@ -1502,7 +1545,18 @@ export const useGameStore = create<GameState>()(
     if (purchasesToday >= getMaxDailyPurchases()) {
       return { success: false, error: `Daily limit reached (${getMaxDailyPurchases()} purchases per day)` };
     }
-    if (coinsPurchasedToday + pack.coins > getMaxDailyCoins()) {
+
+    /* Compute the post-promo grant BEFORE the daily-cap check. Previously
+     * the cap used `pack.coins` (the base amount) while the player actually
+     * received `pack.coins * coinMultiplier` from any active double_coins
+     * promo. A player could blow the 25k/day cap by 2x simply by buying
+     * during a promo — the cap check passed because base pack.coins fit
+     * under the cap, but the credited amount didn't. Fixed by sizing the
+     * cap check off the actual amount we're about to credit. */
+    const coinMultiplier = getPromoMultiplier('double_coins');
+    const grantedCoins = Math.round(pack.coins * coinMultiplier);
+
+    if (coinsPurchasedToday + grantedCoins > getMaxDailyCoins()) {
       return { success: false, error: `Would exceed daily coin limit (${getMaxDailyCoins().toLocaleString()} coins/day)` };
     }
 
@@ -1525,10 +1579,6 @@ export const useGameStore = create<GameState>()(
       return { success: false, error: `Verification failed: ${syncResult.message}` };
     }
 
-    // Grant coins locally to match the server's authoritative credit.
-    const coinMultiplier = getPromoMultiplier('double_coins');
-    const grantedCoins = Math.round(pack.coins * coinMultiplier);
-
     const newCoinHistory = [...coinHistory, {
       type: 'purchase' as const,
       amount: grantedCoins,
@@ -1543,11 +1593,13 @@ export const useGameStore = create<GameState>()(
       coins: get().coins + grantedCoins,
       coinHistory: newCoinHistory,
       storePurchasesToday: purchasesToday + 1,
-      storeCoinsPurchasedToday: coinsPurchasedToday + pack.coins,
+      // Track the post-promo grant against the daily cap so subsequent
+      // purchases see the real amount credited today, not the base pack.coins.
+      storeCoinsPurchasedToday: coinsPurchasedToday + grantedCoins,
       storeLastPurchaseDate: today,
     });
 
-    return { success: true, coins: pack.coins };
+    return { success: true, coins: grantedCoins };
   },
 
   // ── Achievements & Skins ──

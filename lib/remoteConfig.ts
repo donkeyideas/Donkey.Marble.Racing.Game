@@ -19,6 +19,11 @@ export interface RemoteConfig {
   maxDailyPurchases: number;
   maxDailyCoins: number;
   tournamentPrizes: { daily: number; weekly: number; champion: number };
+  /* Optional because the admin API doesn't emit this yet — clients fall back
+   * to the DEFAULT_CONFIG values when the field is absent. Adding the field
+   * server-side is a follow-up; the server's canonical TOURNAMENT_CONFIGS
+   * already validates entry fees so this is purely a UI hint. */
+  tournamentEntryFees?: { daily: number; weekly: number; champion: number };
   xpPerLevel: number;
   /**
    * Per-track custom background images. Maps a course id (e.g.
@@ -50,9 +55,26 @@ export const DEFAULT_CONFIG: RemoteConfig = {
   maxDailyPurchases: 3,
   maxDailyCoins: 25000,
   tournamentPrizes: { daily: 4600, weekly: 23000, champion: 46000 },
-  xpPerLevel: 1000,
+  // Must match data/seasonPass.ts XP_PER_LEVEL. Previously 1000, which
+  // de-synced the level-up math when remote config briefly returned the
+  // default before the live values loaded — players would jump 3 levels
+  // on a single win until the fetch completed.
+  xpPerLevel: 3500,
+  /* Per-tier multiplayer entry fees. Matches MP_TIERS in lib/multiplayer.ts;
+   * the server validates against canonical values from
+   * apps/dashboard/.../economy-config.ts so this is just a UI hint. */
+  tournamentEntryFees: { daily: 100, weekly: 500, champion: 1000 },
   trackBgImages: {},
 };
+
+/** XP required to advance one Season Pass level. Reads live remote config
+ *  with a safe fallback to the baked-in default. Use this everywhere
+ *  XP-per-level math is needed instead of importing the constant directly
+ *  — that way admins can re-tune progression speed without an app update. */
+export function getXpPerLevel(): number {
+  const v = getConfig().xpPerLevel;
+  return Number.isFinite(v) && v > 0 ? v : DEFAULT_CONFIG.xpPerLevel;
+}
 
 let cached: RemoteConfig | null = null;
 let lastFetchTime = 0;

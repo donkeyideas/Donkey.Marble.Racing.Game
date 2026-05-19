@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, interpolate } from 'react-native-reanimated';
 import Fireworks from '../components/Fireworks';
 import { Colors, Fonts, MARBLES, Spacing, BorderRadius, MarbleData } from '../theme';
-import { useGameStore } from '../state/gameStore';
+import { useGameStore, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
@@ -360,7 +360,7 @@ export default function TournamentBracketScreen() {
   };
 
   const handleRace = () => {
-    if (!tournaments || currentRound >= 7 || !tournaments.playerPickId) return;
+    if (!tournaments || currentRound >= TOURNAMENT_ROUNDS || !tournaments.playerPickId) return;
     const round = rounds[currentRound];
     selectCourse(round.courseId);
     setActiveMode({
@@ -446,7 +446,7 @@ export default function TournamentBracketScreen() {
               ? 'Your marble is the champion!'
               : status === 'eliminated'
                 ? 'Your marble was eliminated'
-                : `Round ${currentRound + 1} of 7 · ${marblesInRound} marbles racing · Prize: ${prizePool.toLocaleString()}`}
+                : `Round ${currentRound + 1} of ${TOURNAMENT_ROUNDS} · ${marblesInRound} marbles racing · Prize: ${prizePool.toLocaleString()}`}
           </Text>
 
           {/* Status banners — animated. Champion gets confetti + pulse +

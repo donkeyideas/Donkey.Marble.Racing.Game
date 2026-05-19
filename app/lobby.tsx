@@ -137,10 +137,16 @@ export default function LobbyScreen() {
           passXp: s.passXp,
         },
         (serverState) => {
-          // Counters that are pure server-side state always pull down.
+          // Race / win counters: pull max(local, server), not just server.
+          // The server count includes everything that's been synced, but a
+          // race played offline (or one whose sync is still queued in
+          // raceSyncQueue) hasn't reached the server yet. Snapping straight
+          // to server would visually undo that race in the lobby until the
+          // queue drains. Daily streak is always server-authoritative.
+          const local = useGameStore.getState();
           useGameStore.setState({
-            totalRaces: serverState.totalRaces,
-            totalWins: serverState.totalWins,
+            totalRaces: Math.max(local.totalRaces, serverState.totalRaces),
+            totalWins: Math.max(local.totalWins, serverState.totalWins),
             dailyStreak: serverState.dailyStreak,
           });
 
