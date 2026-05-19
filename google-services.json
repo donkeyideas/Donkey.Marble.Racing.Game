@@ -15,6 +15,30 @@
       },
       "oauth_client": [
         {
+          "client_id": "791385622060-3uk4q9rtr7liso16g1qfpmnhv3jghgfv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.donkeymarble.racing",
+            "certificate_hash": "ac3085b980aabd7dbea704d6cd1cd6f8add10baf"
+          }
+        },
+        {
+          "client_id": "791385622060-aqdmov296jpujqjjrterk2emh6743r1j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.donkeymarble.racing",
+            "certificate_hash": "964a18f7a446d4862df6627e5c138e508f0101f5"
+          }
+        },
+        {
+          "client_id": "791385622060-d8kcph2mapm8p5e9eu4pb5rgd8a143u8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.donkeymarble.racing",
+            "certificate_hash": "8a94df4a93346228c7c3fdf74960150b4fcc63fe"
+          }
+        },
+        {
           "client_id": "791385622060-tutdr5lldpl3rme6bo1cgqnn70ogdi4j.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
