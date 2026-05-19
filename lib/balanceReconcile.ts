@@ -1,90 +1,101 @@
 /**
- * One-time mobile→server coin balance reconciliation.
+ * Mobile→server coin balance reconciliation.
  *
- * Why this exists: before the challenge-claim and season-starter-bonus
- * paths were wired through applyEconomyAction (commits 1ed5184 + earlier),
- * those grants only updated local Zustand state. The server never saw
- * them, so player.coins on the server drifted lower than what the player
- * actually has on their phone. Admin dashboards showed the stale value.
+ * Why this exists: pre-fix, several coin-affecting actions (challenge
+ * claims, season-starter bonuses, lost /sync/race calls, etc.) updated
+ * local Zustand state without telling the server. Admin dashboards
+ * showed stale low values while the phone showed higher real balances.
  *
- * The fix forward: those paths now sync. But existing accounts have
- * historical drift that won't auto-correct because the original local
- * grants didn't carry idempotency keys we can replay.
+ * v4 ships with three hard-won fixes:
+ *   1. Bypass Zustand hydration entirely — read coins straight from the
+ *      raw AsyncStorage entry. v2 and v3 BOTH silently no-op'd because
+ *      the auth listener fires before Zustand persist finishes its async
+ *      read, and even with `waitForHydration` v3 still hit the default
+ *      value on some installs. Reading the persisted blob directly
+ *      sidesteps every hydration-timing concern.
+ *   2. Don't mark DONE_KEY when the server returns no_gap (credit = 0).
+ *      Previously a single misread (e.g. reading 1000 default before
+ *      hydration) would lock the reconciliation forever, even after
+ *      restarting with correct data. Now we only mark done after an
+ *      actual credit, so misreads retry next launch.
+ *   3. Version bump from v3 → v4 frees any account that got falsely
+ *      DONE-marked at v3 (which is everyone who tested earlier).
  *
- * This module runs ONCE per app install (gated by AsyncStorage flag) the
- * first time the user is signed in after launching the patched build.
- * It compares local coins to server coins, and if local is higher, POSTs
- * a client_balance_reconciliation action. The server caps the credit at
- * 50,000 so a tampered client can't claim millions. Once the action
- * succeeds the local flag is set and the reconciliation never re-runs.
+ * Server-side natural key (`balance_reconcile:{playerId}:v4`) still
+ * enforces one credit per player per version, so multiple retry attempts
+ * cannot double-credit even if the client retries 100 times.
  *
- * Bumping the RECONCILE_VERSION in BOTH client and server allows a new
- * one-time backfill in the future if needed.
+ * Bumping the RECONCILE_VERSION in BOTH client and server triggers a
+ * one-time backfill for existing installs.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGameStore } from '../state/gameStore';
 import { applyEconomyAction } from './economy';
 
-/* v3 bump: v2 went out but Firebase's auth listener fires before Zustand
- * persist finishes its AsyncStorage hydration, so reconcileLocalBalanceOnce
- * was reading the DEFAULT coins (1000) instead of the actual persisted
- * value (e.g. 5,162). Server saw "1000 < 5,375" → no gap → returned
- * success → client marked v2 as done. v2 reconciliation got silently
- * locked on every account with no real reconciliation happening.
- *
- * v3 ships with two fixes:
- *   1. Wait for store hydration before reading coins (see waitForHydration)
- *   2. The version bump unlocks every account that got falsely-marked v2 */
-const RECONCILE_VERSION = 'v3';
+const RECONCILE_VERSION = 'v4';
 const DONE_KEY = `dmr-balance-reconcile-done-${RECONCILE_VERSION}`;
-const MIN_GAP_TO_RECONCILE = 1; // ignore drift of 0 coins
+const STORE_KEY = 'dmr-game-state';
+const MIN_GAP_TO_RECONCILE = 1;
 
-/* Resolve once Zustand's persist middleware has finished reading
- * dmr-game-state from AsyncStorage. If already hydrated, returns
- * immediately. */
-function waitForHydration(): Promise<void> {
-  const persist = (useGameStore as any).persist;
-  if (!persist || typeof persist.hasHydrated !== 'function') return Promise.resolve();
-  if (persist.hasHydrated()) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const unsub = persist.onFinishHydration(() => {
-      if (typeof unsub === 'function') unsub();
-      resolve();
-    });
-    // Safety cap — don't wait forever if onFinishHydration never fires
-    // (e.g. on a fresh install where there's nothing to hydrate). Zustand
-    // typically resolves within tens of ms, so 3s is a generous ceiling.
-    setTimeout(resolve, 3000);
-  });
+/**
+ * Read the persisted coin balance from AsyncStorage directly, bypassing
+ * Zustand entirely. Zustand stores under STORE_KEY with shape
+ * `{ state: {...slice}, version: N }` (the persist middleware wrap).
+ *
+ * Returns null if no persisted entry exists (fresh install) — we still
+ * fall back to useGameStore.getState() in that case so we don't miss
+ * day-zero local-only grants.
+ */
+async function readPersistedCoins(): Promise<number | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const candidate = parsed?.state?.coins;
+    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Idempotent. Safe to call on every sign-in — bails immediately if the
- * AsyncStorage flag says we've already reconciled for this version.
- * Best-effort: any failure is swallowed so a flaky network doesn't
- * permanently block the player.
+ * Idempotent at the version level. Safe to call on every app launch —
+ * server natural-key idempotency prevents double-credit even under
+ * aggressive retries. The DONE_KEY here just shortcuts the network call
+ * once we know the reconciliation has succeeded.
  */
 export async function reconcileLocalBalanceOnce(): Promise<void> {
   try {
     const done = await AsyncStorage.getItem(DONE_KEY);
     if (done === '1') return;
 
-    // CRITICAL: wait for Zustand's persist hydration before reading coins.
-    // The Firebase auth listener fires inside _layout.tsx as soon as the
-    // listener is registered (synchronous if there's a cached user), which
-    // is typically BEFORE the persist middleware finishes its async
-    // AsyncStorage read. Reading too early returns the initial-state
-    // default (1000), not the persisted balance — v2 of this module shipped
-    // without this guard and silently no-op'd reconciliation on every
-    // user. v3 above bumped the version to unlock those accounts.
-    await waitForHydration();
+    // Read coins from AsyncStorage directly — bypasses Zustand hydration
+    // entirely so we can't accidentally read the default 1000.
+    const persisted = await readPersistedCoins();
+    const fallback = useGameStore.getState().coins;
+    const localBalance =
+      persisted !== null
+        ? persisted
+        : Number.isFinite(fallback)
+          ? fallback
+          : 0;
 
-    const localBalance = useGameStore.getState().coins;
-    if (!Number.isFinite(localBalance) || localBalance < MIN_GAP_TO_RECONCILE) {
-      // Nothing meaningful to reconcile; mark done so we don't keep checking.
+    if (localBalance < MIN_GAP_TO_RECONCILE) {
+      // Fresh install with no persisted coins — nothing to reconcile.
+      // Mark done so we don't keep retrying for empty accounts.
       await AsyncStorage.setItem(DONE_KEY, '1');
       return;
+    }
+
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[balanceReconcile:v4] localBalance=${localBalance} (persisted=${persisted}, fallback=${fallback})`,
+      );
     }
 
     const res = await applyEconomyAction({
@@ -97,19 +108,37 @@ export async function reconcileLocalBalanceOnce(): Promise<void> {
       // the full delta, local stays the same. If the server capped, local
       // drops to the capped server value — that's intentional.
       useGameStore.setState({ coins: res.balance });
-      await AsyncStorage.setItem(DONE_KEY, '1');
+
+      // Only mark DONE if the server actually credited something. If it
+      // returned no_gap (local <= server.coins), there's a chance our
+      // localBalance read was stale — let the next launch retry.
+      const credited =
+        (res.result?.credited as number | undefined) ?? res.transaction?.amount ?? 0;
+      if (typeof credited === 'number' && credited > 0) {
+        await AsyncStorage.setItem(DONE_KEY, '1');
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(`[balanceReconcile:v4] credited ${credited}, new balance ${res.balance}`);
+        }
+      } else if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(`[balanceReconcile:v4] no_gap — retry next launch (balance ${res.balance})`);
+      }
     } else if (res.status === 401) {
-      // Not signed in yet — don't mark done; will retry on next sign-in.
+      // Not signed in yet — don't mark done; will retry on next launch.
       return;
     } else {
       // 4xx (validation) or 5xx — log in dev, don't mark done so we can
       // try again on a future launch.
       if (__DEV__) {
         // eslint-disable-next-line no-console
-        console.warn('[balanceReconcile] failed', res.status, res.message);
+        console.warn('[balanceReconcile:v4] failed', res.status, res.message);
       }
     }
-  } catch {
-    // best-effort
+  } catch (err: any) {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.warn('[balanceReconcile:v4] threw', err?.message ?? err);
+    }
   }
 }
