@@ -1843,7 +1843,7 @@ export const useGameStore = create<GameState>()(
         customTracks: state.customTracks,
         challenges: state.challenges,
       }),
-      version: 6,
+      version: 7,
       migrate: (persisted: any, version: number) => {
         if (version < 3 && persisted?.season) {
           persisted.season = null;
@@ -1862,6 +1862,40 @@ export const useGameStore = create<GameState>()(
         if (version < 6) {
           /* Existing installs have already played, so they skip the intro. */
           persisted.hasSeenIntroRace = persisted.hasSeenIntroRace ?? true;
+        }
+        if (version < 7) {
+          /* ====================================================================
+           * PRE-LAUNCH CLEAN WIPE — coordinated with server-side TRUNCATE.
+           * ====================================================================
+           * Resets ALL economy / race state to defaults so the phone matches
+           * the server's wiped state on first launch after install. Without
+           * this, the phone would carry its drifted optimistic balance
+           * (e.g. 9,144 coins) into a fresh server (1,000 coins) and the
+           * next race sync would snap coins DOWN dramatically — bad UX.
+           *
+           * Keeps:
+           *   - playerName, hasSeenIntroRace, passTrack
+           *   - achievements (purely client-side, no server analog)
+           *   - equippedSkins, customTracks (player customization)
+           *
+           * Resets to defaults (omitted from return → falls back to initial
+           * state in the store factory):
+           *   - coins, totalRaces, totalWins
+           *   - currentStreak, bestStreak, marbleStats, seasonStandings
+           *   - dailyStreak, lastPlayedDate, lastBetDate, raceHistory
+           *   - passLevel, passXp, coinHistory
+           *   - season, nationalRaces, tournaments
+           *   - storePurchasesToday, storeCoinsPurchasedToday, storeLastPurchaseDate
+           *   - challenges (will refresh from server)
+           */
+          return {
+            playerName: persisted?.playerName ?? '',
+            hasSeenIntroRace: true,
+            passTrack: persisted?.passTrack ?? 'free',
+            achievements: persisted?.achievements ?? {},
+            equippedSkins: persisted?.equippedSkins ?? {},
+            customTracks: persisted?.customTracks ?? [],
+          };
         }
         return persisted;
       },
