@@ -34,9 +34,14 @@ import { useGameStore } from '../state/gameStore';
 import { applyEconomyAction } from './economy';
 
 const RECONCILE_VERSION = 'v4';
-const DONE_KEY = `dmr-balance-reconcile-done-${RECONCILE_VERSION}`;
 const STORE_KEY = 'dmr-game-state';
 const MIN_GAP_TO_RECONCILE = 1;
+const LAST_RUN_KEY = 'dmr-balance-reconcile-last-run-v4';
+/** Once a reconciliation has credited a positive amount we stop pinging on
+ *  every launch — but we ALWAYS retry on cold start if the last attempt
+ *  didn't credit. Server-side natural-key lock (balance_reconcile:{player}:v4)
+ *  guarantees we can't double-credit no matter how many times we retry. */
+const SUCCESS_KEY = 'dmr-balance-reconcile-credited-v4';
 
 /**
  * Read the persisted coin balance from AsyncStorage directly, bypassing
@@ -47,17 +52,37 @@ const MIN_GAP_TO_RECONCILE = 1;
  * fall back to useGameStore.getState() in that case so we don't miss
  * day-zero local-only grants.
  */
+/** Read coins from AsyncStorage. Tries multiple envelope shapes because
+ *  Zustand persist's exact wrap format has shifted across versions. Returns
+ *  null only when nothing usable is found. */
 async function readPersistedCoins(): Promise<number | null> {
   try {
     const raw = await AsyncStorage.getItem(STORE_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      if (__DEV__) console.log('[balanceReconcile] AsyncStorage has no entry for', STORE_KEY);
+      return null;
+    }
+    if (__DEV__) console.log('[balanceReconcile] raw AsyncStorage entry length:', raw.length);
     const parsed = JSON.parse(raw);
-    const candidate = parsed?.state?.coins;
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return candidate;
+    // Try every reasonable shape Zustand persist might use
+    const candidates: unknown[] = [
+      parsed?.state?.coins,
+      parsed?.coins,
+      parsed?.data?.coins,
+      parsed?.[0]?.state?.coins,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'number' && Number.isFinite(c) && c >= 0) {
+        if (__DEV__) console.log('[balanceReconcile] read coins from AsyncStorage:', c);
+        return c;
+      }
+    }
+    if (__DEV__) {
+      console.log('[balanceReconcile] no coins field in persisted state. Top-level keys:', Object.keys(parsed));
     }
     return null;
-  } catch {
+  } catch (err: any) {
+    if (__DEV__) console.warn('[balanceReconcile] readPersistedCoins threw:', err?.message ?? err);
     return null;
   }
 }
@@ -70,13 +95,20 @@ async function readPersistedCoins(): Promise<number | null> {
  */
 export async function reconcileLocalBalanceOnce(): Promise<void> {
   try {
-    const done = await AsyncStorage.getItem(DONE_KEY);
-    if (done === '1') return;
+    // No early-exit gate anymore — we ALWAYS attempt reconciliation on
+    // launch. Server-side natural key (balance_reconcile:{playerId}:v4)
+    // prevents double-credit. The cost of one extra HTTP call per launch
+    // is worth the bullet-proofing: any previous bug that wrongly marked
+    // DONE before crediting now self-heals on the next launch.
 
-    // Read coins from AsyncStorage directly — bypasses Zustand hydration
-    // entirely so we can't accidentally read the default 1000.
+    await AsyncStorage.setItem(LAST_RUN_KEY, new Date().toISOString());
+
     const persisted = await readPersistedCoins();
     const fallback = useGameStore.getState().coins;
+    // Prefer the AsyncStorage-persisted value (race-condition-free) over
+    // the live Zustand state (which can be the default 1000 if hydration
+    // hasn't completed yet). Fall back to Zustand only when AsyncStorage
+    // has no entry (fresh install).
     const localBalance =
       persisted !== null
         ? persisted
@@ -84,18 +116,15 @@ export async function reconcileLocalBalanceOnce(): Promise<void> {
           ? fallback
           : 0;
 
-    if (localBalance < MIN_GAP_TO_RECONCILE) {
-      // Fresh install with no persisted coins — nothing to reconcile.
-      // Mark done so we don't keep retrying for empty accounts.
-      await AsyncStorage.setItem(DONE_KEY, '1');
-      return;
+    if (__DEV__) {
+      console.log(
+        `[balanceReconcile:v4] sending localBalance=${localBalance} (persisted=${persisted}, zustand=${fallback})`,
+      );
     }
 
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[balanceReconcile:v4] localBalance=${localBalance} (persisted=${persisted}, fallback=${fallback})`,
-      );
+    if (localBalance < MIN_GAP_TO_RECONCILE) {
+      if (__DEV__) console.log('[balanceReconcile:v4] localBalance too low, skipping');
+      return;
     }
 
     const res = await applyEconomyAction({
@@ -104,40 +133,33 @@ export async function reconcileLocalBalanceOnce(): Promise<void> {
     });
 
     if (res.ok) {
-      // Snap local to whatever the server returned. If the server credited
-      // the full delta, local stays the same. If the server capped, local
-      // drops to the capped server value — that's intentional.
       useGameStore.setState({ coins: res.balance });
-
-      // Only mark DONE if the server actually credited something. If it
-      // returned no_gap (local <= server.coins), there's a chance our
-      // localBalance read was stale — let the next launch retry.
       const credited =
         (res.result?.credited as number | undefined) ?? res.transaction?.amount ?? 0;
       if (typeof credited === 'number' && credited > 0) {
-        await AsyncStorage.setItem(DONE_KEY, '1');
+        await AsyncStorage.setItem(SUCCESS_KEY, JSON.stringify({
+          credited,
+          balance: res.balance,
+          at: new Date().toISOString(),
+        }));
         if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log(`[balanceReconcile:v4] credited ${credited}, new balance ${res.balance}`);
+          console.log(`[balanceReconcile:v4] ✓ credited ${credited}, new balance ${res.balance}`);
         }
       } else if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log(`[balanceReconcile:v4] no_gap — retry next launch (balance ${res.balance})`);
+        const reason = (res.result?.reason as string | undefined) ?? 'unknown';
+        console.log(
+          `[balanceReconcile:v4] no credit (reason=${reason}, server balance=${res.balance}, sent=${localBalance})`,
+        );
       }
     } else if (res.status === 401) {
-      // Not signed in yet — don't mark done; will retry on next launch.
-      return;
+      if (__DEV__) console.log('[balanceReconcile:v4] not signed in — retry next launch');
     } else {
-      // 4xx (validation) or 5xx — log in dev, don't mark done so we can
-      // try again on a future launch.
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.warn('[balanceReconcile:v4] failed', res.status, res.message);
       }
     }
   } catch (err: any) {
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.warn('[balanceReconcile:v4] threw', err?.message ?? err);
     }
   }
