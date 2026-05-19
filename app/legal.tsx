@@ -10,8 +10,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
+import { getConfig } from '../lib/remoteConfig';
 
-const LEGAL_CONTENT: Record<string, { title: string; sections: { heading: string; body: string }[] }> = {
+/* Build legal content at render time so daily purchase limits are sourced
+ * from remote config instead of hardcoded strings. Without this, raising
+ * the cap from 3→5 server-side would leave the legal page lying to the
+ * user about the safeguards in effect (an App Store compliance risk).
+ *
+ * The function is called once per render — cheap, and falls back to
+ * DEFAULT_CONFIG when remote config hasn't loaded. */
+function buildLegalContent(): Record<string, { title: string; sections: { heading: string; body: string }[] }> {
+  const cfg = getConfig();
+  const maxPurchases = cfg.maxDailyPurchases;
+  const maxCoins = cfg.maxDailyCoins.toLocaleString();
+  return {
   privacy: {
     title: 'Privacy Policy',
     sections: [
@@ -103,7 +115,7 @@ const LEGAL_CONTENT: Record<string, { title: string; sections: { heading: string
       },
       {
         heading: 'Built-In Safeguards',
-        body: 'We have implemented safeguards to promote responsible play:\n\n\u2022 Daily purchase limits (3 transactions per day)\n\u2022 Daily coin cap (25,000 coins per day from purchases)\n\u2022 No credit/debt system \u2014 you can only bet coins you have\n\u2022 No pressure to spend real money \u2014 coins are earned through gameplay',
+        body: `We have implemented safeguards to promote responsible play:\n\n\u2022 Daily purchase limits (${maxPurchases} transactions per day)\n\u2022 Daily coin cap (${maxCoins} coins per day from purchases)\n\u2022 No credit/debt system \u2014 you can only bet coins you have\n\u2022 No pressure to spend real money \u2014 coins are earned through gameplay`,
       },
       {
         heading: 'Healthy Play Habits',
@@ -144,7 +156,7 @@ const LEGAL_CONTENT: Record<string, { title: string; sections: { heading: string
       },
       {
         heading: 'How do seasons work?',
-        body: 'Each season consists of 10 weeks with 5 races per week. Marbles earn points based on their finishing position. The top 6 marbles advance to playoffs, culminating in a championship series.',
+        body: 'Each season runs 10 weeks · 1 race per week (10 total). Marbles earn points based on their finishing position. The top 6 marbles advance to playoffs, culminating in a championship series.',
       },
       {
         heading: 'What is Franchise mode?',
@@ -164,12 +176,14 @@ const LEGAL_CONTENT: Record<string, { title: string; sections: { heading: string
       },
     ],
   },
-};
+  };
+}
+
 
 export default function LegalScreen() {
   const router = useRouter();
   const { page } = useLocalSearchParams<{ page: string }>();
-  const content = LEGAL_CONTENT[page || 'privacy'];
+  const content = buildLegalContent()[page || 'privacy'];
 
   if (!content) {
     return (

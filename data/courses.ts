@@ -1,3 +1,6 @@
+import { MARBLES } from '../theme';
+import { getETDateString } from './nationalRaces';
+
 export type CourseTheme =
   | 'meadow' | 'volcano' | 'frozen' | 'cyber'
   | 'beach' | 'forest' | 'desert' | 'sunset' | 'night'
@@ -119,7 +122,12 @@ const SUFFIXES = [
   'Ravine', 'Summit', 'Hollow', 'Abyss',
 ];
 
-const MARBLE_IDS = ['dash', 'spike', 'rocky', 'lucky', 'frosty', 'nova', 'shadow', 'aqua'];
+/* Derived from theme/index.ts so adding a new marble there auto-flows
+ * into procedural course generation. Previously this hardcoded list
+ * would silently drift if a marble was added/removed in theme without
+ * updating courses — generated tracks would point at non-existent
+ * marble ids. Mirrors what data/seasonSchedule.ts already does. */
+const MARBLE_IDS = MARBLES.map((m) => m.id);
 
 const FAVORED_STATS = ['Speed', 'Power', 'Bounce', 'Luck', 'Speed', 'Wild card', 'Dark horse', 'Speed'];
 
@@ -249,13 +257,22 @@ const extraGenerated = getGeneratedCourses().filter(c => !featuredIds.has(c.id))
 const gpGenerated = getGeneratedGPCourses();
 export const ALL_COURSES: CourseData[] = [...COURSES, ...extraGenerated, ...gpGenerated];
 
-/** Deterministic Track of the Day — picks one course per calendar date */
+/** Deterministic Track of the Day — picks one course per ET calendar date.
+ *
+ * Uses Eastern Time so the day-rollover matches the national-race / daily-
+ * bonus schedule. Previously this used local device time, which meant a
+ * player in PT saw a different Track of the Day than a player in ET at the
+ * 3-hour overlap each evening. Mirroring getETDateString() keeps the
+ * "Track of the Day" globally consistent. */
 export function getTrackOfTheDay(): CourseData {
-  const today = new Date();
-  // Simple date seed: YYYYMMDD as number
-  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  // getETDateString returns 'YYYY-MM-DD' — parse back into a numeric seed
+  // (YYYYMMDD) for the existing mulberry32 hash. Stripping the dashes is
+  // the simplest path and preserves the hash distribution that was tuned
+  // against the previous getFullYear()*10000+... seed shape.
+  const dateStr = getETDateString();
+  const seed = parseInt(dateStr.replace(/-/g, ''), 10) | 0;
   // mulberry32-style hash for good distribution
-  let h = seed | 0;
+  let h = seed;
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
   h = Math.imul(h ^ (h >>> 13), 0x45d9f3b);
   h = (h ^ (h >>> 16)) >>> 0;

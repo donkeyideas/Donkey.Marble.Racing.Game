@@ -69,11 +69,16 @@ async function clearOpenSession(): Promise<void> {
   }
 }
 
-async function sendSession(startedAt: Date, endedAt: Date): Promise<void> {
+/**
+ * Returns true on successful send, false on network/server failure. Used
+ * by the stale-session-finalisation path to decide whether it's safe to
+ * clear the persisted row.
+ */
+async function sendSession(startedAt: Date, endedAt: Date): Promise<boolean> {
   const platform = platformOrNull();
-  if (!platform) return;
+  if (!platform) return false;
   const durationSecs = Math.max(0, Math.round((endedAt.getTime() - startedAt.getTime()) / 1000));
-  if (durationSecs < MIN_LOG_SECONDS) return;
+  if (durationSecs < MIN_LOG_SECONDS) return true; // nothing to send is "ok"
   try {
     await api.recordAppSession({
       startedAt: startedAt.toISOString(),
@@ -81,9 +86,9 @@ async function sendSession(startedAt: Date, endedAt: Date): Promise<void> {
       durationSecs,
       platform,
     });
+    return true;
   } catch {
-    // Network failure — drop. We'd prefer to never retry from a stale
-    // open-session row (could double-count on flaky networks).
+    return false;
   }
 }
 
@@ -104,13 +109,24 @@ export function initSessionTracker(signedIn: boolean): void {
     if (!open) return;
     const startedAt = new Date(open.startedAt);
     if (Number.isNaN(startedAt.getTime())) {
+      // Corrupt row — safe to clear.
       await clearOpenSession();
       return;
     }
     const fourHoursLater = new Date(startedAt.getTime() + 4 * 60 * 60 * 1000);
     const endedAt = new Date(Math.min(Date.now(), fourHoursLater.getTime()));
-    await sendSession(startedAt, endedAt);
-    await clearOpenSession();
+    /* Only clear the persisted row on a successful send. If the network
+     * is down (or the server returns 5xx), KEEP the row so the next
+     * launch can retry. Previously this unconditionally cleared, which
+     * meant any launch with the API offline silently lost the stale
+     * session telemetry — exactly the data point we needed to detect
+     * crashes-on-foreground from analytics. */
+    const sent = await sendSession(startedAt, endedAt);
+    if (sent) {
+      await clearOpenSession();
+    } else if (__DEV__) {
+      console.log('[sessionTracker] stale session send failed, keeping row for next launch');
+    }
   }).catch(() => {});
 
   if (signedIn) {

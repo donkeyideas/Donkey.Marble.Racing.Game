@@ -495,7 +495,6 @@ export default function RaceScreen() {
   const selectedMarble = useGameStore(s => s.selectedMarble);
   const betAmount = useGameStore(s => s.betAmount);
   const setLastResult = useGameStore(s => s.setLastResult);
-  const addCoins = useGameStore(s => s.addCoins);
   const getOdds = useGameStore(s => s.getOdds);
   const selectedCourseId = useGameStore(s => s.selectedCourseId);
 
@@ -650,7 +649,7 @@ export default function RaceScreen() {
     setRaceOver(true);
     if (selectedMarble) { won ? raceHaptics.playerWin() : raceHaptics.playerLose(); }
     setTimeout(() => router.replace('/results'), 800);
-  }, [selectedMarble, betAmount, setLastResult, addCoins, getOdds, router, activeMode]);
+  }, [selectedMarble, betAmount, setLastResult, getOdds, router, activeMode]);
 
   // Countdown timer
   useEffect(() => {

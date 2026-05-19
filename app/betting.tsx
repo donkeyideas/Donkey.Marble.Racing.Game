@@ -306,7 +306,7 @@ export default function BettingScreen() {
     }
   }, [betType, exactaPicks, selectMarble, setExactaPicks]);
 
-  const handleLockIn = () => {
+  const handleLockIn = async () => {
     if (betType === 'exacta' && exactaPicks.length < 2) return;
     if (betType === 'trifecta' && exactaPicks.length < 3) return;
     if (betType === 'win' && !selectedMarble) return;
@@ -315,7 +315,12 @@ export default function BettingScreen() {
     if (currentMode.type !== 'season' && currentMode.type !== 'national_race' && currentMode.type !== 'tournament' && currentMode.type !== 'playoff') {
       useGameStore.getState().setActiveMode({ type: 'bet' });
     }
-    const success = placeBet();
+    /* placeBet is now async because the coin debit goes through the
+     * server's /economy/transaction endpoint. Await before navigating —
+     * if the server rejects (e.g. insufficient balance on the server
+     * side, even when the client thinks it has enough), we stay on the
+     * betting screen so the user can adjust. */
+    const success = await placeBet();
     if (success) {
       raceHaptics.betPlaced();
       router.push('/race');

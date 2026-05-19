@@ -119,9 +119,13 @@ export async function syncPurchase(data: {
     await api.post<PurchaseSyncResponse>('/sync/purchase', data);
     return { ok: true };
   } catch (err: any) {
-    const status: number = err?.response?.status ?? 0;
-    const message: string =
-      err?.response?.data?.error?.message ?? err?.message ?? 'Purchase sync failed';
+    /* api.post throws ApiError (lib/api.ts), which exposes `.status` and
+     * `.message` directly — NOT an axios-style { response: { status, data } }
+     * envelope. The old code read err.response.status which was always
+     * undefined, falling through to status 0 and treating every failure as
+     * a network error. Read the flat ApiError shape instead. */
+    const status: number = err?.status ?? 0;
+    const message: string = err?.message ?? 'Purchase sync failed';
     return { ok: false, status, message };
   }
 }

@@ -37,6 +37,19 @@ const RECONCILE_VERSION = 'v4';
 const STORE_KEY = 'dmr-game-state';
 const MIN_GAP_TO_RECONCILE = 1;
 const LAST_RUN_KEY = 'dmr-balance-reconcile-last-run-v4';
+
+/* Module-level in-flight guard.
+ *
+ * reconcileLocalBalanceOnce is invoked from multiple lifecycle hooks
+ * (auth listener fires, sign-in success, hydration-complete, etc.) which
+ * can all happen in close succession on cold start. Without this guard
+ * each call independently issued an HTTP POST, and at worst the server
+ * would see N parallel reconciliation requests racing against the same
+ * natural-key lock — wasteful at best, contention bugs at worst.
+ *
+ * The lock is process-local; we don't persist it. Server-side natural
+ * key (balance_reconcile:{playerId}:v4) remains the ultimate safety net. */
+let inFlight = false;
 /** Once a reconciliation has credited a positive amount we stop pinging on
  *  every launch — but we ALWAYS retry on cold start if the last attempt
  *  didn't credit. Server-side natural-key lock (balance_reconcile:{player}:v4)
@@ -94,6 +107,11 @@ async function readPersistedCoins(): Promise<number | null> {
  * once we know the reconciliation has succeeded.
  */
 export async function reconcileLocalBalanceOnce(): Promise<void> {
+  if (inFlight) {
+    if (__DEV__) console.log('[balanceReconcile:v4] already in-flight, skipping');
+    return;
+  }
+  inFlight = true;
   try {
     // No early-exit gate anymore — we ALWAYS attempt reconciliation on
     // launch. Server-side natural key (balance_reconcile:{playerId}:v4)
@@ -162,5 +180,7 @@ export async function reconcileLocalBalanceOnce(): Promise<void> {
     if (__DEV__) {
       console.warn('[balanceReconcile:v4] threw', err?.message ?? err);
     }
+  } finally {
+    inFlight = false;
   }
 }

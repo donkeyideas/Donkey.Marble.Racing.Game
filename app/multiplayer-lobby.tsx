@@ -181,15 +181,27 @@ export default function MultiplayerLobbyScreen() {
         useGameStore.setState({ coins: res.balance });
         return true;
       }
-      // 401 = signed-out anon path (already enqueued by economy.ts) — let the
-      // user continue and the retry queue will settle it once auth is back.
+      /* 401 = signed-out anon path. economy.ts already enqueued the action
+       * for retry on sign-in, AND the server's natural-key idempotency
+       * (mp_entry:{playerId}:{lobbyId}) prevents a duplicate charge when
+       * the queued action eventually replays.
+       *
+       * Previously we ALSO called removeCoins(entryFee) here, which
+       * double-charged the user: once locally now, and again server-side
+       * when the queue drained. The natural key blocked the server-side
+       * dup but the LOCAL debit had already happened, so the player
+       * effectively paid twice for one entry.
+       *
+       * Fix: don't touch local coins. Let the optimistic UX proceed
+       * (returning true), and the server-side debit lands when the queue
+       * settles. The user briefly sees their pre-entry balance until the
+       * queue drains, which is the correct behavior. */
       if (res.status === 401) {
-        useGameStore.getState().removeCoins(tierConfig.entryFee);
         return true;
       }
       return false;
     },
-    [tierConfig.entryFee],
+    [],
   );
 
   // ---------------------------------------------------------------------------
@@ -691,7 +703,7 @@ export default function MultiplayerLobbyScreen() {
               <Text style={styles.howItWorksStep}>1. Lobby fills with 8 players. Empty slots are filled after 60s.</Text>
               <Text style={styles.howItWorksStep}>2. Snake draft: each player picks one marble.</Text>
               <Text style={styles.howItWorksStep}>3. All 8 marbles race together. Last place is eliminated each round.</Text>
-              <Text style={styles.howItWorksStep}>4. Survive 7 rounds to win the prize pool.</Text>
+              <Text style={styles.howItWorksStep}>{`4. Survive ${TOURNAMENT_ROUNDS} rounds to win the prize pool.`}</Text>
             </View>
           )}
 

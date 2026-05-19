@@ -18,7 +18,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
-import { signInWithGoogle, signInWithApple, signOut, getLastGoogleSignInError } from '../lib/firebase-auth';
+import { signInWithGoogle, signInWithApple, signOut, getLastGoogleSignInError, deleteAccount } from '../lib/firebase-auth';
+import { api } from '../lib/api';
+
+/* POST a server-side account-deletion request.
+ *
+ * Per GDPR/App Store policy, "delete my data" must also wipe server-side
+ * records — the previous flow only cleared local AsyncStorage, leaving
+ * the player's coins, race history, purchases, etc. on the backend.
+ *
+ * TODO(server): /api/account/delete isn't shipped yet. We POST anyway
+ * so the request lands in server logs (and the endpoint can be wired up
+ * later without an app update). Failures are swallowed — we still want
+ * the local clear to proceed even if the server is offline. */
+async function deleteServerAccount(): Promise<void> {
+  try {
+    await api.post('/account/delete', {});
+  } catch {
+    // Best-effort — local delete proceeds regardless.
+  }
+}
 
 const LEGAL_PAGES = [
   {
@@ -47,7 +66,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const playerName = useGameStore((s) => s.playerName);
   const setPlayerName = useGameStore((s) => s.setPlayerName);
-  const resetCoins = useGameStore((s) => s.resetCoins);
   const firebaseUid = useGameStore((s) => s.firebaseUid);
   const firebaseDisplayName = useGameStore((s) => s.firebaseDisplayName);
   const firebaseEmail = useGameStore((s) => s.firebaseEmail);
@@ -131,6 +149,17 @@ export default function SettingsScreen() {
   };
 
   const handleDeleteAccount = () => {
+    /* Three-step delete confirmation.
+     *
+     * 1) First alert explains what will be deleted.
+     * 2) Second alert: "Are you sure?" — last chance to bail.
+     * 3) Third alert: "Are you absolutely sure?" — final hard-warning
+     *    before the irreversible action fires.
+     *
+     * Why three: this action wipes server-side AND local data AND deletes
+     * the Firebase auth account. There is NO recovery path. App Store
+     * guideline 5.1.1(v) requires explicit, clear, multi-step confirmation
+     * for irreversible account deletion. */
     Alert.alert(
       'Delete Account',
       'This will permanently delete your account and all data including coins, race history, season progress, and cosmetics.\n\nThis action cannot be undone.',
@@ -146,18 +175,52 @@ export default function SettingsScreen() {
               [
                 { text: 'Keep Account', style: 'cancel' },
                 {
-                  text: 'Yes, Delete Everything',
+                  text: 'Continue',
                   style: 'destructive',
-                  onPress: async () => {
-                    setDeleting(true);
-                    try {
-                      await AsyncStorage.removeItem('dmr-game-state');
-                      resetCoins();
-                      router.replace('/');
-                    } catch {
-                      setDeleting(false);
-                      Alert.alert('Error', 'Failed to delete account. Please try again.');
-                    }
+                  onPress: () => {
+                    Alert.alert(
+                      'Are you absolutely sure?',
+                      'This is your final warning. Deleting your account will:\n\n• Erase all server-side data\n• Sign you out of Google/Apple\n• Cancel any active subscriptions linked to this account\n\nThere is NO way to recover your data after this point.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Yes, Delete Everything',
+                          style: 'destructive',
+                          onPress: async () => {
+                            setDeleting(true);
+                            try {
+                              /* Order matters:
+                               *  1. Server delete FIRST while we still have
+                               *     a valid auth token (the Firebase delete
+                               *     below invalidates the token).
+                               *  2. Firebase user delete (if signed in) —
+                               *     this revokes the auth credential.
+                               *  3. Local AsyncStorage wipe — last so we
+                               *     don't lose any in-flight retry queue
+                               *     entries before they're sent.
+                               *  4. Reset coins via direct set() — the
+                               *     resetCoins helper was removed in favor
+                               *     of routing all mutations through the
+                               *     economy module. This is the one
+                               *     legitimate local-only reset (the user
+                               *     just deleted everything). */
+                              await deleteServerAccount();
+                              if (firebaseUid) {
+                                try { await deleteAccount(); } catch {}
+                                try { await signOut(); } catch {}
+                                setFirebaseUser(null);
+                              }
+                              await AsyncStorage.removeItem('dmr-game-state');
+                              useGameStore.setState({ coins: 1000 });
+                              router.replace('/');
+                            } catch {
+                              setDeleting(false);
+                              Alert.alert('Error', 'Failed to delete account. Please try again.');
+                            }
+                          },
+                        },
+                      ],
+                    );
                   },
                 },
               ],

@@ -7,7 +7,7 @@ import { ALL_COURSES as COURSES } from '../data/courses';
 import {
   SeasonSchedule, SeasonWeek, SeasonRace,
   generateSeasonSchedule, advanceSchedule, isSeasonComplete,
-  RACES_PER_WEEK, WEEKS_PER_SEASON,
+  WEEKS_PER_SEASON,
   SEASON_POINTS,
 } from '../data/seasonSchedule';
 import {
@@ -16,7 +16,29 @@ import {
   getETDateString,
 } from '../data/nationalRaces';
 import { syncRaceResult, syncPurchase } from '../lib/sync';
-import { applyEconomyAction } from '../lib/economy';
+import { applyEconomyAction, EconomyAction, EconomyResult } from '../lib/economy';
+
+/**
+ * Wrap applyEconomyAction so that 4xx (non-401) failures roll back any
+ * optimistic local mutation the caller made before firing the action.
+ *
+ * Why: the syncQueue only re-tries retriable failures (network/5xx/401).
+ * Permanent client errors (400/403/409) are silently dropped, leaving the
+ * client with an optimistic credit/debit that will never be reconciled.
+ * Callers pass a `rollback` closure that undoes their optimistic change,
+ * which we invoke only on a permanent rejection. 401 = queued, so we leave
+ * the optimistic state in place and let the queue settle it later.
+ */
+async function applyEconomyActionWithRollback(
+  opts: { action: EconomyAction; payload?: Record<string, unknown> },
+  rollback: () => void,
+): Promise<EconomyResult> {
+  const res = await applyEconomyAction(opts);
+  if (!res.ok && res.status !== 401) {
+    rollback();
+  }
+  return res;
+}
 import { getConfig, fetchRemoteConfig, loadCachedConfig, getXpPerLevel } from '../lib/remoteConfig';
 import { getPromoMultiplier } from '../lib/liveOps';
 import { ACHIEVEMENTS, AchievementCheckState } from '../data/achievements';
@@ -223,9 +245,14 @@ interface GameState {
 
   // Economy
   coins: number;
-  addCoins: (amount: number) => void;
-  removeCoins: (amount: number) => void;
-  resetCoins: () => void;
+  /**
+   * Canonical id of the currently in-flight bet, set by placeBet() and
+   * cleared by settleBet(). The server returns this in the place_bet
+   * ledger row; settle_bet REQUIRES the betId in its payload because
+   * the canonical bet amount is looked up from the ledger (not trusted
+   * from the client). NEVER mutate from the UI layer.
+   */
+  currentBetId: string | null;
   coinHistory: CoinTransaction[];
 
   // Betting
@@ -376,7 +403,14 @@ interface GameState {
   claimChallengeReward: (challengeId: string) => void;
 
   // Actions
-  placeBet: () => boolean;
+  placeBet: () => Promise<boolean>;
+  /**
+   * Server-authoritative bet settlement. Uses currentBetId (set by
+   * placeBet()) so the server can look up the canonical bet amount from
+   * its ledger rather than trusting a client-supplied amount. Called by
+   * setLastResult after a race finishes with a positive payout.
+   */
+  settleBet: (payout: number) => Promise<void>;
   resetBet: () => void;
   /**
    * Optimistic check — returns null if already checked today, otherwise marks
@@ -467,9 +501,7 @@ export const useGameStore = create<GameState>()(
   setHasSeenIntroRace: (v) => set({ hasSeenIntroRace: v }),
 
   coins: 1000,
-  addCoins: (amount) => set((s) => ({ coins: s.coins + amount })),
-  removeCoins: (amount) => set((s) => ({ coins: Math.max(0, s.coins - amount) })),
-  resetCoins: () => set({ coins: 1000 }),
+  currentBetId: null,
   coinHistory: [],
 
   activeMode: { type: 'bet' } as GameMode,
@@ -561,27 +593,20 @@ export const useGameStore = create<GameState>()(
         newStreak = 0;
       }
 
-      /* Season-week advance.
+      /* Season-week advance — STRICTLY scoped to season-mode races.
        *
-       * Previously: `Math.min(12, Math.floor(newTotalRaces / 5) + 1)` — the
-       * formula used LIFETIME races across every mode (bet/season/national/
-       * tournament/playoff) and capped at 12, even though a season only
-       * has 10 weeks of 1 race each (data/seasonSchedule.ts). So a player
-       * who'd raced 50 times in tournaments would land at "Week 11" on a
-       * fresh season they hadn't even started.
-       *
-       * Now: only season-mode races count, the cap matches WEEKS_PER_SEASON,
-       * and we advance via the explicit season.weekIndex when a SeasonState
-       * is present — falling back to a totalRaces-derived value only when
-       * the player is in a bet/free-play context that still surfaces a
-       * decorative "week" indicator. */
+       * Old fallback for non-season modes derived seasonWeek from lifetime
+       * totalRaces / RACES_PER_WEEK, which surfaced a decorative-but-wrong
+       * "week" indicator in bet/national/tournament contexts. The variable
+       * is only meaningful for actual season races, so we simply leave it
+       * unchanged from the current value in every other mode. */
       const seasonState = get().season;
       if (activeMode.type === 'season' && seasonState) {
         const curIdx = seasonState.schedule.findIndex(w => w.status === 'current');
         newWeek = Math.min(WEEKS_PER_SEASON, (curIdx >= 0 ? curIdx + 1 : 1));
-      } else if (activeMode.type !== 'quick_race') {
-        newWeek = Math.min(WEEKS_PER_SEASON, Math.floor(newTotalRaces / RACES_PER_WEEK) + 1);
       }
+      // All other modes: newWeek already initialized to get().seasonWeek
+      // above — leave it alone.
 
       // Coin transaction ledger
       if (result.payout > 0) {
@@ -596,8 +621,24 @@ export const useGameStore = create<GameState>()(
       while (newCoinHistory.length > 200) newCoinHistory.shift();
     }
 
-    // Atomic payout: add coins in same state update as result
-    const newCoins = get().coins + (result.payout > 0 ? result.payout : 0);
+    /* Coin payout routing.
+     *
+     * Bet wins (activeMode.type === 'bet') go through settleBet() so the
+     * server is authoritative. Other modes (season, national, tournament,
+     * playoff) have their own server payout calls dispatched in the
+     * mode-specific post-processing below.
+     *
+     * For bet mode we DO NOT credit coins locally — settleBet awaits the
+     * server response and snaps coins to the authoritative balance. This
+     * prevents the place_bet→settle_bet "double credit" window where the
+     * client and server briefly disagree.
+     *
+     * For all other modes, we keep the existing optimistic local credit
+     * (computed below) because the mode handler still owns the post-race
+     * server reconciliation. */
+    const isBetMode = activeMode.type === 'bet';
+    const localPayoutCredit = (!isBetMode && result.payout > 0) ? result.payout : 0;
+    const newCoins = get().coins + localPayoutCredit;
 
     set({
       lastResult: result,
@@ -614,6 +655,13 @@ export const useGameStore = create<GameState>()(
       seasonWeek: newWeek,
       coinHistory: newCoinHistory,
     });
+
+    // Fire bet-mode settlement against the server — payout 0 still settles
+    // (closes the bet row even on a loss). settleBet is safe to call with
+    // no currentBetId; it short-circuits.
+    if (isBetMode) {
+      get().settleBet(result.payout).catch(() => {});
+    }
 
     // --- Sync race to server (fire-and-forget); reconcile coins from server ---
     const course = COURSES.find(c => c.id === get().selectedCourseId);
@@ -915,48 +963,25 @@ export const useGameStore = create<GameState>()(
     });
   },
 
-  trainMarble: (stat) => {
-    // TODO(economy): this deducts coins LOCALLY only — server isn't told.
-    // Wire to applyEconomyAction('train_marble', { stat }) once that server
-    // action exists. Until then, franchise-mode training drift is recovered
-    // by the periodic local↔server coin reconciliation in lobby.tsx (which
-    // pulls server↑ when server > local, so the server's authoritative
-    // lower-by-training balance eventually wins out).
-    const { season, coins } = get();
-    if (!season || season.seasonMode !== 'franchise' || !season.seasonMarbleId) {
-      return { success: false, gain: 0, cost: 0 };
-    }
-    if (season.trainedThisWeek) {
-      return { success: false, gain: 0, cost: 0 };
-    }
-    // Cost escalates: 200 for first, +100 each
-    const sessionCount = season.trainingHistory.length;
-    const cost = 200 + sessionCount * 100;
-    if (coins < cost) {
-      return { success: false, gain: 0, cost };
-    }
-    // Gain is randomized: 0.10 to 0.30
-    const gain = +(0.10 + Math.random() * 0.20).toFixed(2);
-    const marbleId = season.seasonMarbleId;
-    const prev = season.seasonStats[marbleId] ?? { speed: 0, power: 0, bounce: 0, luck: 0 };
-    const newVal = Math.min(MAX_STAT_GROWTH, prev[stat] + gain);
-
-    const currentWeek = season.schedule.findIndex(w => w.status === 'current') + 1;
-    const session: TrainingSession = { stat, cost, gain, weekNumber: currentWeek };
-
-    set({
-      coins: coins - cost,
-      season: {
-        ...season,
-        seasonStats: {
-          ...season.seasonStats,
-          [marbleId]: { ...prev, [stat]: newVal },
-        },
-        trainingHistory: [...season.trainingHistory, session],
-        trainedThisWeek: true,
-      },
-    });
-    return { success: true, gain, cost };
+  trainMarble: (_stat) => {
+    /* DISABLED until server economy support ships.
+     *
+     * Previously this deducted coins LOCALLY only — the server was never
+     * told, leaving the franchise-mode training path as an open coin
+     * exploit (tap "Train" → free local credit drift). Until the server
+     * adds a `train_marble` EconomyAction with canonical cost validation,
+     * we hard-refuse all training attempts at the store layer.
+     *
+     * Callers (app/season.tsx) already handle a falsy `success` by showing
+     * a "couldn't train" toast / button-disabled state, so the UX
+     * degradation is minimal.
+     *
+     * TODO(economy): wire to applyEconomyAction('train_marble', { stat })
+     * once that endpoint exists. Keep the gain/cost calc + season state
+     * mutation; reinstate the set() block after the server response with
+     * res.balance instead of `coins - cost`. */
+    if (__DEV__) console.warn('trainMarble disabled until server economy support ships');
+    return { success: false, gain: 0, cost: 0 };
   },
 
   restMarble: (marbleId) => {
@@ -972,9 +997,20 @@ export const useGameStore = create<GameState>()(
     const { season } = get();
     if (!season) return;
 
-    // Top 6 marbles by points
+    /* Top 6 marbles by points → wins → alphabetical id (deterministic).
+     *
+     * The alphabetical-id tiebreaker is the important new addition: without
+     * it Array.prototype.sort behavior on equally-ranked entries is engine-
+     * dependent (V8 vs Hermes vs JSC differ), which could produce a
+     * different bracket between server replay and client display. Sorting
+     * by id last guarantees the same six seeds in the same order every
+     * time, on every JS runtime. */
     const sorted = Object.entries(season.standings)
-      .sort(([, a], [, b]) => b.points - a.points || b.wins - a.wins)
+      .sort(([idA, a], [idB, b]) =>
+        b.points - a.points ||
+        b.wins - a.wins ||
+        idA.localeCompare(idB),
+      )
       .map(([id]) => id);
     const seeds = sorted.slice(0, 6);
 
@@ -1059,14 +1095,27 @@ export const useGameStore = create<GameState>()(
         // allEliminated[N-1] is the last marble eliminated before the champion = runner-up (2nd).
         // Placement formula: N - index + 1 → first_out maps to (N+1) (worst), last_out maps to 2 (runner-up).
         const allEliminated = [...playoffs.eliminatedIds];
+        const eliminationIdx = allEliminated.indexOf(playerMarbleId);
+        const madePlayoffs = playerMarbleId === stillAlive[0] || eliminationIdx >= 0;
         const placement = playerMarbleId === stillAlive[0]
           ? 1
-          : allEliminated.length - allEliminated.indexOf(playerMarbleId) + 1;
+          : allEliminated.length - eliminationIdx + 1;
 
-        // Reward tiers: 1st=5000, 2nd=2500, 3rd=1000
-        if (placement === 1) { playoffPayout = 5000; playoffDesc = 'Playoff Champion'; }
-        else if (placement === 2) { playoffPayout = 2500; playoffDesc = 'Playoff Runner-Up'; }
-        else if (placement === 3) { playoffPayout = 1000; playoffDesc = 'Playoff Top 3'; }
+        if (!madePlayoffs) {
+          /* Franchise marble didn't qualify for playoffs (finished outside
+           * the top 6 seeds). Without this branch the player would get
+           * zero for finishing the season as their marble — a brutal
+           * "you played 10 races for nothing" UX. Fall through to the
+           * bettor-mode flat completion bonus: a smaller (1,500) but
+           * non-zero "season complete" payout that acknowledges the run. */
+          playoffPayout = 1500;
+          playoffDesc = 'Season Complete (consolation)';
+        } else {
+          // Reward tiers: 1st=5000, 2nd=2500, 3rd=1000
+          if (placement === 1) { playoffPayout = 5000; playoffDesc = 'Playoff Champion'; }
+          else if (placement === 2) { playoffPayout = 2500; playoffDesc = 'Playoff Runner-Up'; }
+          else if (placement === 3) { playoffPayout = 1000; playoffDesc = 'Playoff Top 3'; }
+        }
       } else {
         // Bettor mode: flat 1,500 coin bonus for completing the full season.
         // Bumped from 500 — bettor mode players were essentially shut out of
@@ -1078,13 +1127,19 @@ export const useGameStore = create<GameState>()(
         playoffDesc = 'Season Complete';
       }
 
-      const { coins, coinHistory } = get();
+      const { coins: prevCoins, coinHistory } = get();
       if (playoffPayout > 0) {
-        // Fire server-authoritative payout; reconcile balance on response.
-        applyEconomyAction({
-          action: 'playoff_payout',
-          payload: { amount: playoffPayout, description: playoffDesc },
-        }).then((res) => {
+        /* Server-authoritative payout with rollback on permanent rejection.
+         * The optimistic credit lands in the set() below; if the server
+         * refuses (e.g. season already finalized), the rollback restores
+         * prevCoins so the player doesn't keep phantom playoff coins. */
+        applyEconomyActionWithRollback(
+          {
+            action: 'playoff_payout',
+            payload: { amount: playoffPayout, description: playoffDesc },
+          },
+          () => useGameStore.setState({ coins: prevCoins }),
+        ).then((res) => {
           if (res.ok) {
             useGameStore.setState({ coins: res.balance });
           } else if (__DEV__) {
@@ -1093,7 +1148,7 @@ export const useGameStore = create<GameState>()(
         });
       }
       set({
-        coins: coins + playoffPayout,
+        coins: prevCoins + playoffPayout,
         coinHistory: playoffPayout > 0 ? [
           { type: 'payout' as const, amount: playoffPayout, description: playoffDesc, timestamp: Date.now() },
           ...coinHistory,
@@ -1142,11 +1197,29 @@ export const useGameStore = create<GameState>()(
   refreshNationalEvents: () => {
     const courseMap = generateEventCourses();
     const current = get().nationalRaces ?? {};
+    const today = getETDateString();
     const updated: Record<string, NationalEventState> = {};
     NATIONAL_EVENTS.forEach((event) => {
       const existing = current[event.id];
-      // Keep state if already entered
-      if (existing?.entered) {
+
+      /* Stale-entry detection.
+       *
+       * If an event is still flagged `entered: true` but the `completedDate`
+       * is from a previous day AND there's no in-flight `seriesProgress`,
+       * it means the player abandoned a single-race entry mid-flow (closed
+       * the app between enter and finish) and the daily reset rolled past
+       * them. Without this branch they'd be locked out of entering today,
+       * even though no race actually ran yesterday. Reset to a fresh entry
+       * slot. We DO NOT touch series-format events with active
+       * seriesProgress — those represent a real in-flight Grand Prix
+       * series that should persist across days. */
+      const isStaleEntry =
+        existing?.entered &&
+        existing.completedDate !== today &&
+        !existing.seriesProgress;
+
+      if (existing?.entered && !isStaleEntry) {
+        // Genuinely in-flight (today, or has series progress) — preserve.
         updated[event.id] = existing;
       } else {
         updated[event.id] = {
@@ -1171,21 +1244,29 @@ export const useGameStore = create<GameState>()(
     if (!state) return { ok: false, reason: 'Event not loaded — try again.' };
     if (state.entered) return { ok: false, reason: 'Already entered this event today.' };
 
-    // Try the server first for cross-device sync, but fall back to a local
-    // deduction if the server is unreachable or returns 5xx — the user
-    // shouldn't be locked out of single-device play when the backend hiccups.
-    // We still block on 401 so signed-out devices can't desync the economy.
-    const res = await applyEconomyAction({
-      action: 'national_entry',
-      payload: { eventId },
-    });
+    /* Optimistic debit + rollback on permanent rejection. See
+     * enterTournament for the rationale — the old "silent local fallback"
+     * path let the client enter for free when the server refused. */
+    const prevCoins = coins;
+    const optimisticBalance = coins - event.entryFee;
+    set({ coins: optimisticBalance });
+
+    const res = await applyEconomyActionWithRollback(
+      {
+        action: 'national_entry',
+        payload: { eventId },
+      },
+      () => useGameStore.setState({ coins: prevCoins }),
+    );
 
     let newBalance: number;
     if (res.ok) {
       newBalance = res.balance;
+    } else if (res.status === 401) {
+      newBalance = optimisticBalance;
     } else {
-      if (__DEV__) console.warn('[enterNationalRace] server failed, local fallback', res.status, res.message);
-      newBalance = coins - event.entryFee;
+      if (__DEV__) console.warn('[enterNationalRace] server rejected', res.status, res.message);
+      return { ok: false, reason: res.message || 'Server rejected entry.' };
     }
 
     const newCoinHistory = [...coinHistory, {
@@ -1234,6 +1315,7 @@ export const useGameStore = create<GameState>()(
         const payout = calculateNationalPayout(placement, event.entryFee, event.multiplier);
 
         if (payout > 0) {
+          const prevCoins = coins;
           const newCoinHistory = [...coinHistory, {
             type: 'payout' as const,
             amount: payout,
@@ -1241,14 +1323,19 @@ export const useGameStore = create<GameState>()(
             timestamp: Date.now(),
           }];
           while (newCoinHistory.length > 200) newCoinHistory.shift();
-          set({ coins: coins + payout, coinHistory: newCoinHistory });
+          set({ coins: prevCoins + payout, coinHistory: newCoinHistory });
 
-          // Fire server-authoritative payout; reconcile balance on response.
-          // `placement` is 0-indexed locally but the server expects 1-indexed.
-          applyEconomyAction({
-            action: 'national_payout',
-            payload: { eventId: event.id, placement: placement + 1 },
-          }).then((res) => {
+          /* Fire server-authoritative payout. Rolls back the optimistic
+           * +payout on permanent rejection (e.g. event already paid out,
+           * wrong eventId). `placement` is 0-indexed locally but the
+           * server expects 1-indexed. */
+          applyEconomyActionWithRollback(
+            {
+              action: 'national_payout',
+              payload: { eventId: event.id, placement: placement + 1 },
+            },
+            () => useGameStore.setState({ coins: prevCoins }),
+          ).then((res) => {
             if (res.ok) {
               useGameStore.setState({ coins: res.balance });
             } else if (__DEV__) {
@@ -1281,6 +1368,7 @@ export const useGameStore = create<GameState>()(
         const playerPick = progress.playerPick;
         if (playerPick && seriesWinnerId === playerPick) {
           const payout = Math.round(event.entryFee * event.multiplier);
+          const prevCoins = coins;
           const newCoinHistory = [...coinHistory, {
             type: 'payout' as const,
             amount: payout,
@@ -1288,13 +1376,17 @@ export const useGameStore = create<GameState>()(
             timestamp: Date.now(),
           }];
           while (newCoinHistory.length > 200) newCoinHistory.shift();
-          set({ coins: coins + payout, coinHistory: newCoinHistory });
+          set({ coins: prevCoins + payout, coinHistory: newCoinHistory });
 
-          // Server-authoritative series-winner payout: placement 1 (1st).
-          applyEconomyAction({
-            action: 'national_payout',
-            payload: { eventId: event.id, placement: 1 },
-          }).then((res) => {
+          /* Server-authoritative series-winner payout (placement 1).
+           * Rolls back optimistic +payout on permanent rejection. */
+          applyEconomyActionWithRollback(
+            {
+              action: 'national_payout',
+              payload: { eventId: event.id, placement: 1 },
+            },
+            () => useGameStore.setState({ coins: prevCoins }),
+          ).then((res) => {
             if (res.ok) {
               useGameStore.setState({ coins: res.balance });
             } else if (__DEV__) {
@@ -1333,7 +1425,7 @@ export const useGameStore = create<GameState>()(
   setMpSurvivingMarbleIds: (ids) => set({ mpSurvivingMarbleIds: ids }),
   setMpLobbyId: (lobbyId) => set({ mpLobbyId: lobbyId }),
   setMpResult: (placement, payout, tier) => {
-    const { coins, coinHistory, mpLobbyId } = get();
+    const { coins: prevCoins, coinHistory, mpLobbyId } = get();
     if (payout > 0) {
       // Optimistic local credit so the FINISHED screen shows the new
       // balance immediately. The server payout below reconciles to the
@@ -1341,23 +1433,26 @@ export const useGameStore = create<GameState>()(
       set({
         mpPlacement: placement,
         mpPayout: payout,
-        coins: coins + payout,
+        coins: prevCoins + payout,
         coinHistory: [
           { type: 'payout' as const, amount: payout, description: `MP Tournament ${placement === 1 ? 'Champion' : `#${placement}`}`, timestamp: Date.now() },
           ...coinHistory,
         ].slice(0, 200),
       });
 
-      // Fire server-authoritative payout. The server now validates tier
-      // against MP_TIER_CONFIGS and caps the payout at the tier's prize
-      // pool — without `tier` in the payload the request is rejected with
-      // 400 "Unknown MP tier", so callers MUST pass tier. The optimistic
-      // credit stays in place on failure; the next /sync/state reconcile
-      // straightens it out.
-      applyEconomyAction({
-        action: 'mp_payout',
-        payload: { lobbyId: mpLobbyId, placement, amount: payout, tier },
-      }).then((res) => {
+      /* Server-authoritative payout. Rolls back the optimistic +payout
+       * credit on any permanent (non-401) rejection — previously the
+       * client kept the optimistic balance even when the server refused
+       * (e.g. tier-cap violation, replayed lobbyId), creating phantom
+       * coins that didn't exist server-side. 401 stays optimistic and
+       * relies on the syncQueue to reconcile on sign-in. */
+      applyEconomyActionWithRollback(
+        {
+          action: 'mp_payout',
+          payload: { lobbyId: mpLobbyId, placement, amount: payout, tier },
+        },
+        () => useGameStore.setState({ coins: prevCoins }),
+      ).then((res) => {
         if (res.ok) {
           useGameStore.setState({ coins: res.balance });
         } else if (__DEV__) {
@@ -1388,19 +1483,35 @@ export const useGameStore = create<GameState>()(
     if (!config) return { ok: false, reason: 'Unknown tournament.' };
     if (coins < config.entryFee) return { ok: false, reason: `Need ${config.entryFee} coins, you have ${coins}.` };
 
-    // Try the server first, fall back to local deduction on network/5xx so
-    // tournaments stay playable when the backend hiccups.
-    const res = await applyEconomyAction({
-      action: 'tournament_entry',
-      payload: { tournamentId },
-    });
+    /* Tournament entry: optimistically debit then call server. Rollback
+     * on permanent failure (e.g. server-side balance < entryFee). 401 /
+     * 5xx keep the optimistic debit and let the syncQueue settle once
+     * connectivity returns. Previously the "local fallback" branch
+     * silently swallowed 4xx errors and let the player enter for free —
+     * the server never recorded the entry, but local state was debited
+     * anyway. The new flow refuses the entry on permanent rejection. */
+    const prevCoins = coins;
+    const optimisticBalance = coins - config.entryFee;
+    set({ coins: optimisticBalance });
+
+    const res = await applyEconomyActionWithRollback(
+      {
+        action: 'tournament_entry',
+        payload: { tournamentId },
+      },
+      () => useGameStore.setState({ coins: prevCoins }),
+    );
 
     let newBalance: number;
     if (res.ok) {
       newBalance = res.balance;
+    } else if (res.status === 401) {
+      // Queued — keep optimistic debit; queue will settle on sign-in.
+      newBalance = optimisticBalance;
     } else {
-      if (__DEV__) console.warn('[enterTournament] server failed, local fallback', res.status, res.message);
-      newBalance = coins - config.entryFee;
+      // Permanent rejection — rollback already restored prevCoins.
+      if (__DEV__) console.warn('[enterTournament] server rejected', res.status, res.message);
+      return { ok: false, reason: res.message || 'Server rejected tournament entry.' };
     }
 
     // Shuffle marbles (Fisher-Yates)
@@ -1726,7 +1837,7 @@ export const useGameStore = create<GameState>()(
   },
 
   claimChallengeReward: (challengeId) => {
-    const { challenges, coins, coinHistory } = get();
+    const { challenges, coins: prevCoins, coinHistory } = get();
     const allChallenges = [...challenges.daily, ...challenges.weekly];
     const challenge = allChallenges.find(c => c.id === challengeId);
     if (!challenge || !challenge.completed || challenge.claimed) return;
@@ -1748,22 +1859,27 @@ export const useGameStore = create<GameState>()(
 
     // Optimistic local update so the UI shows the new balance immediately
     set({
-      coins: coins + challenge.reward,
+      coins: prevCoins + challenge.reward,
       coinHistory: newCoinHistory,
       challenges: { ...challenges, daily: updatedDaily, weekly: updatedWeekly },
     });
 
-    // Server-authoritative claim. Previously this was local-only, which is
-    // exactly the silent-drain bug that caused mobile/server coin drift
-    // (mobile said 6,112, admin said 1,688). The server validates the
-    // challenge by id, looks up the canonical reward, and returns the
-    // new balance which we snap to. If the POST fails (offline, 5xx), the
-    // retry queue in lib/syncQueue.ts holds the action and replays it on
-    // the next foreground / sign-in / successful action.
-    applyEconomyAction({
-      action: 'claim_challenge',
-      payload: { challengeId },
-    }).then((res) => {
+    /* Server-authoritative claim. Rolls back the optimistic +reward on
+     * permanent (non-401) rejection — without rollback a server-side
+     * "already claimed" (409) or invalid-challenge (404) would leave the
+     * client showing a phantom balance forever. The challenge-claimed
+     * flag stays set either way (the optimistic UI state remains useful
+     * for "you already claimed this") — only the coin total rolls back.
+     *
+     * 401 (signed-out) keeps the optimistic credit; the queued action
+     * settles on sign-in via the server's natural-key idempotency. */
+    applyEconomyActionWithRollback(
+      {
+        action: 'claim_challenge',
+        payload: { challengeId },
+      },
+      () => useGameStore.setState({ coins: prevCoins }),
+    ).then((res) => {
       if (res.ok) {
         useGameStore.setState({ coins: res.balance });
       } else if (__DEV__) {
@@ -1774,7 +1890,7 @@ export const useGameStore = create<GameState>()(
 
   getOdds: () => currentOdds,
 
-  placeBet: () => {
+  placeBet: async () => {
     const { coins, betAmount, selectedMarble, betsToday, lastBetDate, coinHistory, activeMode, selectedCourseId, betType, exactaPicks } = get();
     // For exacta need 2 picks, trifecta need 3, win needs selectedMarble
     if (betType === 'exacta' && exactaPicks.length < 2) return false;
@@ -1791,7 +1907,8 @@ export const useGameStore = create<GameState>()(
       ? COURSES[Math.floor(Math.random() * COURSES.length)].id
       : selectedCourseId;
 
-    // Log the bet transaction
+    // Log the bet transaction locally so it appears in coin history regardless
+    // of server outcome. The actual coin debit is server-driven.
     const newCoinHistory = [...coinHistory, {
       type: 'bet' as const,
       amount: -betAmount,
@@ -1802,15 +1919,68 @@ export const useGameStore = create<GameState>()(
     }];
     while (newCoinHistory.length > 200) newCoinHistory.shift();
 
-    set({
-      coins: coins - betAmount,
-      betsToday: todayBets + 1,
-      lastBetDate: today,
-      selectedCourseId: courseId,
-      screen: 'race',
-      coinHistory: newCoinHistory,
+    // Server-authoritative bet placement. The server validates the bet,
+    // deducts coins, and returns the new balance + betId. We persist the
+    // betId so settle_bet (after the race) can reference the canonical
+    // bet amount from the ledger row instead of trusting the client.
+    const marbleId = betType === 'win' ? selectedMarble?.id : exactaPicks[0]?.id;
+    const res = await applyEconomyAction({
+      action: 'place_bet',
+      payload: { amount: betAmount, marbleId, courseId, betType },
     });
-    return true;
+
+    if (res.ok) {
+      const betId = (res.result?.betId as string | undefined) ?? null;
+      set({
+        coins: res.balance,
+        currentBetId: betId,
+        betsToday: todayBets + 1,
+        lastBetDate: today,
+        selectedCourseId: courseId,
+        screen: 'race',
+        coinHistory: newCoinHistory,
+      });
+      return true;
+    }
+
+    // 401 = signed-out / queued — proceed optimistically with local debit so
+    // the user can play offline. The queued action will reconcile on sign-in.
+    if (res.status === 401) {
+      set({
+        coins: coins - betAmount,
+        currentBetId: null,
+        betsToday: todayBets + 1,
+        lastBetDate: today,
+        selectedCourseId: courseId,
+        screen: 'race',
+        coinHistory: newCoinHistory,
+      });
+      return true;
+    }
+
+    // Permanent failure (4xx other than 401, or refused). Do NOT deduct
+    // locally — the server didn't take the bet. Surface a warning so the
+    // user knows why they're still on the betting screen.
+    if (__DEV__) console.warn('[placeBet] server rejected', res.status, res.message);
+    return false;
+  },
+
+  settleBet: async (payout: number) => {
+    const { currentBetId } = get();
+    if (!currentBetId) {
+      // No in-flight bet to settle — happens in quick race / tournament /
+      // playoff modes where no place_bet was issued. Nothing to do.
+      return;
+    }
+    const res = await applyEconomyAction({
+      action: 'settle_bet',
+      payload: { betId: currentBetId, payout },
+    });
+    if (res.ok) {
+      set({ coins: res.balance, currentBetId: null });
+    } else if (__DEV__) {
+      console.warn('[settleBet]', res.status, res.message);
+    }
   },
 
   resetBet: () => {
@@ -1824,9 +1994,13 @@ export const useGameStore = create<GameState>()(
     const today = new Date().toISOString().slice(0, 10);
     if (lastPlayedDate === today) return null; // Already checked today
 
-    // Optimistic placeholder — actual reward comes from the server.
-    // Caller should `await claimDailyBonus()` for the authoritative result.
-    set({ lastPlayedDate: today });
+    /* Do NOT mark lastPlayedDate yet — we used to set it here optimistically
+     * which meant a failed claimDailyBonus (offline / 5xx) silently burned
+     * the user's daily bonus: the next checkDailyStreak call saw today's
+     * date and returned null, so the bonus was never retried. Now we only
+     * mark lastPlayedDate inside claimDailyBonus AFTER the server response
+     * confirms the bonus was credited (or the natural-key idempotency
+     * server-side rejects a true replay). */
     return { reward: 0, streak: 0, pendingServer: true };
   },
 
@@ -1837,10 +2011,17 @@ export const useGameStore = create<GameState>()(
    */
   claimDailyBonus: async () => {
     const { coinHistory } = get();
+    const today = new Date().toISOString().slice(0, 10);
     const res = await applyEconomyAction({ action: 'claim_daily' });
     if (!res.ok) {
-      // 409 = already claimed today — silently swallow, normal state
-      if (res.status === 409) return null;
+      // 409 = already claimed today — server has the canonical "claimed today"
+      // signal, so we trust it: mark lastPlayedDate locally so we stop pinging.
+      if (res.status === 409) {
+        set({ lastPlayedDate: today });
+        return null;
+      }
+      // Network / 5xx / 401 — don't mark today as claimed; let the user retry
+      // on next foreground / sign-in.
       console.warn('[claimDailyBonus]', res.message);
       return null;
     }
@@ -1857,6 +2038,7 @@ export const useGameStore = create<GameState>()(
       coins: res.balance,
       dailyStreak: streak,
       bestStreak: Math.max(get().bestStreak, streak),
+      lastPlayedDate: today,
       coinHistory: newCoinHistory,
     });
     return { reward: bonus, streak };
@@ -1925,28 +2107,49 @@ export const useGameStore = create<GameState>()(
            * (e.g. 9,144 coins) into a fresh server (1,000 coins) and the
            * next race sync would snap coins DOWN dramatically — bad UX.
            *
+           * Previously this returned a partial object and relied on Zustand
+           * persist's shallow merge with the factory defaults. That worked
+           * by accident but is fragile: any future change to the factory's
+           * initial values would silently change what migrated installs
+           * see. Now we enumerate every persisted field explicitly.
+           *
            * Keeps:
            *   - playerName, hasSeenIntroRace, passTrack
            *   - achievements (purely client-side, no server analog)
            *   - equippedSkins, customTracks (player customization)
-           *
-           * Resets to defaults (omitted from return → falls back to initial
-           * state in the store factory):
-           *   - coins, totalRaces, totalWins
-           *   - currentStreak, bestStreak, marbleStats, seasonStandings
-           *   - dailyStreak, lastPlayedDate, lastBetDate, raceHistory
-           *   - passLevel, passXp, coinHistory
-           *   - season, nationalRaces, tournaments
-           *   - storePurchasesToday, storeCoinsPurchasedToday, storeLastPurchaseDate
-           *   - challenges (will refresh from server)
            */
           return {
+            // Preserve client-side / identity fields
             playerName: persisted?.playerName ?? '',
             hasSeenIntroRace: true,
             passTrack: persisted?.passTrack ?? 'free',
             achievements: persisted?.achievements ?? {},
             equippedSkins: persisted?.equippedSkins ?? {},
             customTracks: persisted?.customTracks ?? [],
+
+            // Explicit reset of everything else to defaults
+            coins: 1000,
+            totalRaces: 0,
+            totalWins: 0,
+            currentStreak: 0,
+            bestStreak: 0,
+            dailyStreak: 0,
+            marbleStats: {},
+            seasonStandings: {},
+            seasonWeek: 1,
+            lastPlayedDate: null,
+            lastBetDate: '',
+            raceHistory: [],
+            passLevel: 1,
+            passXp: 0,
+            coinHistory: [],
+            season: null,
+            nationalRaces: {},
+            tournaments: null,
+            storePurchasesToday: 0,
+            storeCoinsPurchasedToday: 0,
+            storeLastPurchaseDate: '',
+            challenges: { daily: [], weekly: [], lastDailyReset: '', lastWeeklyReset: '' },
           };
         }
         return persisted;

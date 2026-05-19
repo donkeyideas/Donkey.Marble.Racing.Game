@@ -13,7 +13,7 @@ export const FAQ_ITEMS = [
   },
   {
     question: 'How do seasons work?',
-    answer: 'Each season consists of 10 weeks with 5 races per week. Marbles earn points based on their finishing position. The top 6 marbles advance to playoffs, culminating in a championship series.',
+    answer: 'Each season runs 10 weeks · 1 race per week (10 total). Marbles earn points based on their finishing position. The top 6 marbles advance to playoffs, culminating in a championship series.',
   },
   {
     question: 'What is Franchise mode?',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,42 +16,72 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { showModal } from '../components/GameModal';
 import { MP_TIERS } from '../lib/multiplayer';
+import { getConfig } from '../lib/remoteConfig';
 
-const TOURNAMENTS_LIST = [
-  {
-    id: 'daily-blitz',
-    name: 'DAILY BLITZ',
-    subtitle: '8 marbles · Last place eliminated each round',
-    prizePool: '5,000',
-    entryFee: 100,
-    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-    payoutPreview: 'R4: 50 · R5: 100 · R6: 250 · R7: 4,600',
-    colors: ['#00b4d8', '#0077b6'] as [string, string],
-    minLevel: 0,
-  },
-  {
-    id: 'weekly-cup',
-    name: 'WEEKLY CUP',
-    subtitle: 'Higher stakes · King of the Hill elimination',
-    prizePool: '25,000',
-    entryFee: 500,
-    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-    payoutPreview: 'R4: 250 · R5: 500 · R6: 1,250 · R7: 23K',
-    colors: ['#ffc220', '#e6a800'] as [string, string],
-    minLevel: 0,
-  },
-  {
-    id: 'champion-invitational',
-    name: 'CHAMPION INVITATIONAL',
-    subtitle: 'Top stakes · Winner takes all',
-    prizePool: '50,000',
-    entryFee: 1000,
-    format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-    payoutPreview: 'R4: 500 · R5: 1K · R6: 2,500 · R7: 46K',
-    colors: ['#e74c3c', '#c0392b'] as [string, string],
-    minLevel: 10,
-  },
-];
+interface TournamentListEntry {
+  id: 'daily-blitz' | 'weekly-cup' | 'champion-invitational';
+  name: string;
+  subtitle: string;
+  prizePool: string;
+  entryFee: number;
+  format: string;
+  payoutPreview: string;
+  colors: [string, string];
+  minLevel: number;
+}
+
+/* Build the tournaments list from remote config so live-ops can re-balance
+ * entry fees and prize pools without an app update.
+ *
+ * Previously the prizes ("5,000" / "25,000" / "50,000") and entry fees were
+ * hardcoded here AND the gameStore enterTournament action — when the server
+ * raised the daily prize to 6,000 the bracket UI would advertise 5,000 but
+ * the actual payout was 6,000, confusing players. Now both surfaces read
+ * from getConfig().tournamentPrizes / tournamentEntryFees so they stay in
+ * sync with the server's TOURNAMENT_CONFIGS. */
+function buildTournamentsList(): TournamentListEntry[] {
+  const cfg = getConfig();
+  const fees = cfg.tournamentEntryFees ?? { daily: 100, weekly: 500, champion: 1000 };
+  const prizes = cfg.tournamentPrizes ?? { daily: 4600, weekly: 23000, champion: 46000 };
+  const fmt = (n: number) => n.toLocaleString();
+  /* Round payouts mirror getTournamentPayouts in gameStore. Listed here for
+   * the marketing preview only; the canonical payouts come from the store. */
+  return [
+    {
+      id: 'daily-blitz',
+      name: 'DAILY BLITZ',
+      subtitle: '8 marbles · Last place eliminated each round',
+      prizePool: fmt(prizes.daily),
+      entryFee: fees.daily,
+      format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
+      payoutPreview: `R4: 50 · R5: 100 · R6: 250 · R7: ${fmt(prizes.daily)}`,
+      colors: ['#00b4d8', '#0077b6'],
+      minLevel: 0,
+    },
+    {
+      id: 'weekly-cup',
+      name: 'WEEKLY CUP',
+      subtitle: 'Higher stakes · King of the Hill elimination',
+      prizePool: fmt(prizes.weekly),
+      entryFee: fees.weekly,
+      format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
+      payoutPreview: `R4: 250 · R5: 500 · R6: 1,250 · R7: ${fmt(prizes.weekly)}`,
+      colors: ['#ffc220', '#e6a800'],
+      minLevel: 0,
+    },
+    {
+      id: 'champion-invitational',
+      name: 'CHAMPION INVITATIONAL',
+      subtitle: 'Top stakes · Winner takes all',
+      prizePool: fmt(prizes.champion),
+      entryFee: fees.champion,
+      format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
+      payoutPreview: `R4: 500 · R5: 1K · R6: 2,500 · R7: ${fmt(prizes.champion)}`,
+      colors: ['#e74c3c', '#c0392b'],
+      minLevel: 10,
+    },
+  ];
+}
 
 export default function TournamentsScreen() {
   const router = useRouter();
@@ -59,6 +89,12 @@ export default function TournamentsScreen() {
   const passLevel = useGameStore((s) => s.passLevel);
   const tournaments = useGameStore((s) => s.tournaments);
   const enterTournament = useGameStore((s) => s.enterTournament);
+
+  /* Memoize so re-renders don't rebuild the array every frame; remote
+   * config changes infrequently enough that an empty dep array is fine.
+   * If we later want hot-reload on config push, swap to a live config
+   * subscription hook. */
+  const TOURNAMENTS_LIST = useMemo(() => buildTournamentsList(), []);
 
   const handleEnter = (tourneyId: string) => {
     // If already in a tournament, jump straight to the bracket — no re-charge.

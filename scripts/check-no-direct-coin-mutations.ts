@@ -29,11 +29,32 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
 const ROOT = process.cwd();
+/* Files that legitimately reconcile coins from server-authoritative state.
+ *
+ *  - state/gameStore.ts: the store itself, applies res.balance from every
+ *    /economy/transaction response.
+ *  - app/lobby.tsx, app/_layout.tsx: heartbeat reconciliation + auth
+ *    listener that snap to server balance after sign-in.
+ *  - app/settings.tsx: account-delete flow resets local coins to default
+ *    AFTER server delete + Firebase signout (the one legitimate local
+ *    reset path).
+ *  - app/multiplayer-lobby.tsx: mp_entry response snaps coins to the
+ *    server-confirmed post-entry balance.
+ *  - lib/economy.ts: race-sync queue drain reconciles to server balance.
+ *  - lib/balanceReconcile.ts: client_balance_reconciliation response.
+ *  - lib/sessionTracker.ts: race-queue drain on app foreground reconciles
+ *    coins to the server's post-drain balance.
+ *
+ * Anywhere not in this list is a code smell. */
 const ALLOWED_FILES = new Set([
   'state/gameStore.ts',
   'app/lobby.tsx',
   'app/_layout.tsx',
+  'app/settings.tsx',
+  'app/multiplayer-lobby.tsx',
   'lib/economy.ts',
+  'lib/balanceReconcile.ts',
+  'lib/sessionTracker.ts',
 ]);
 
 // Skip these directories entirely
@@ -46,6 +67,14 @@ const SKIP_DIRS = new Set([
 // for unrelated `coins:` keys in non-store contexts (e.g. an analytics
 // payload), but those are rare and easy to allowlist explicitly.
 const COIN_MUTATION_RE = /\bcoins\s*:/;
+
+/* Match direct calls to the removed store helpers .addCoins() /
+ * .removeCoins() / .resetCoins(). These were deleted from GameState as
+ * part of the server-authoritative economy rollout — any remaining call
+ * site is a regression that bypasses applyEconomyAction. The dot-prefix
+ * ensures we don't false-match comments or string literals containing
+ * the bare word "addCoins". */
+const STORE_HELPER_RE = /\.(addCoins|removeCoins|resetCoins)\(/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -83,6 +112,16 @@ for (const file of files) {
       if (/coins\s*:\s*(number|string|boolean|\{|Record|Array)/.test(line)) continue;
       // Filter `coins: coins,` (object shorthand-ish forwarding)
       // Real mutations look like `coins: <expression>` where expression is a value
+      violations.push({ file: rel, line: i + 1, text: line.trim() });
+    }
+    /* Direct calls to the removed addCoins/removeCoins/resetCoins helpers.
+     * These signal a regression: the helpers were deleted from the store
+     * surface to force every coin mutation through applyEconomyAction. If
+     * this check trips, port the caller to the appropriate EconomyAction
+     * (or, for the rare legitimate local-only reset case, use
+     * `useGameStore.setState({ coins: ... })` from within an allowlisted
+     * file). */
+    if (STORE_HELPER_RE.test(line)) {
       violations.push({ file: rel, line: i + 1, text: line.trim() });
     }
   }
