@@ -25,12 +25,13 @@ import { api } from '../lib/api';
  *
  * Per GDPR/App Store policy, "delete my data" must also wipe server-side
  * records — the previous flow only cleared local AsyncStorage, leaving
- * the player's coins, race history, purchases, etc. on the backend.
- *
- * TODO(server): /api/account/delete isn't shipped yet. We POST anyway
- * so the request lands in server logs (and the endpoint can be wired up
- * later without an app update). Failures are swallowed — we still want
- * the local clear to proceed even if the server is offline. */
+ * the player's coins, race history, purchases, etc. on the backend. The
+ * server endpoint cascade-deletes everything tied to the player (see
+ * apps/dashboard/.../account/delete/route.ts). Failures are swallowed
+ * so the local clear still proceeds when the server is offline — the
+ * user's intent ("get me out of here") matters more than perfect
+ * server-side cleanup, and a re-login on the same device would re-link
+ * an orphan account that ops can clean up later. */
 async function deleteServerAccount(): Promise<void> {
   try {
     await api.post('/account/delete', {});
