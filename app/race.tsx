@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { View, Text, Image, StyleSheet, Dimensions, Animated } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions, Animated, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
 import { getSkinnedMarble } from '../data/skins';
@@ -13,6 +13,7 @@ import RaceCanvas from '../rendering/RaceCanvas';
 import { useRaceSharedState } from '../rendering/raceSharedState';
 import { preloadRaceSounds, unloadRaceSounds, playSound } from '../utils/audioManager';
 import { getConfig, fetchRemoteConfig } from '../lib/remoteConfig';
+import { useRaceRecorder } from '../lib/useRaceRecorder';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
 const USE_SPRITE_RENDERING = true;
@@ -497,6 +498,7 @@ export default function RaceScreen() {
   const setLastResult = useGameStore(s => s.setLastResult);
   const getOdds = useGameStore(s => s.getOdds);
   const selectedCourseId = useGameStore(s => s.selectedCourseId);
+  const setRaceVideoUri = useGameStore(s => s.setRaceVideoUri);
 
   // Build track from selected course
   const trackConfig = useMemo(() => {
@@ -545,6 +547,17 @@ export default function RaceScreen() {
   });
   const [countdown, setCountdown] = useState(3);
   const [raceOver, setRaceOver] = useState(false);
+
+  /* Optional screen-recording of this race (video-only, no mic). The
+   * REC button starts it; it auto-stops at race end (see onFinish). */
+  const recorder = useRaceRecorder();
+  // Keep a stable ref so the memoized onFinish callback can stop the
+  // recording without listing the recorder in its dep array.
+  const recorderRef = useRef(recorder);
+  recorderRef.current = recorder;
+  // Clear any video from a previous race the moment this screen mounts,
+  // so the results share button never offers a stale clip.
+  useEffect(() => { setRaceVideoUri(null); }, [setRaceVideoUri]);
   /* Outcome flag for the race-over overlay. Used to swap the generic
    * "RACE OVER" caption for an outcome-specific treatment (green WIN
    * vs red LOST + red screen tint). Players said the generic overlay
@@ -654,6 +667,11 @@ export default function RaceScreen() {
     setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
+    /* Auto-stop the screen recording at race end. stopAndSave is a
+     * no-op if the user wasn't recording. It finalizes the .mp4 async
+     * and writes the URI to the store; the results screen's share
+     * button reads it reactively, so a slightly-late finalize is fine. */
+    recorderRef.current.stopAndSave();
     /* Set outcome BEFORE haptics so the overlay renders the right
      * treatment on the same frame the haptic fires. `won` is the
      * "successful round" flag (placement-based for tournaments, bet-hit
@@ -1101,6 +1119,24 @@ export default function RaceScreen() {
 
   return (
     <View style={[st.container, { backgroundColor: containerBg }]}>
+
+      {/* REC button — opt-in screen recording of this race. Hidden when
+          the native recorder module isn't in the build. Auto-stops at
+          race end; hidden once the race is over. */}
+      {recorder.available && !raceOver && (
+        <Pressable
+          onPress={recorder.toggle}
+          hitSlop={10}
+          style={({ pressed }) => [
+            st.recBtn,
+            recorder.isRecording && st.recBtnActive,
+            pressed && { opacity: 0.8 },
+          ]}
+        >
+          <View style={[st.recDot, recorder.isRecording && st.recDotActive]} />
+          <Text style={st.recLabel}>{recorder.isRecording ? 'RECORDING' : 'REC'}</Text>
+        </Pressable>
+      )}
 
       {/* Custom remote background — tiled behind the Skia canvas when the
           admin has set a per-track image URL for the current course. The
@@ -1680,6 +1716,29 @@ export default function RaceScreen() {
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#4a8f28' },
   clip: { flex: 1, overflow: 'hidden' },
+
+  // REC button — top-right, above the HUD (zIndex 30 > hud's 21).
+  recBtn: {
+    position: 'absolute', top: 50, right: 14, zIndex: 30,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6, paddingHorizontal: 11,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  recBtnActive: {
+    backgroundColor: 'rgba(231,76,60,0.85)',
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  recDot: {
+    width: 9, height: 9, borderRadius: 5,
+    backgroundColor: '#e74c3c',
+  },
+  recDotActive: { backgroundColor: '#fff' },
+  recLabel: {
+    fontFamily: Fonts.bodyBold, fontSize: 11,
+    color: '#fff', letterSpacing: 0.8,
+  },
   hud: {
     position: 'absolute', top: 0, left: 0, right: 0, zIndex: 21,
     paddingTop: 50, paddingHorizontal: 16,

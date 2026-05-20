@@ -33,6 +33,9 @@ export default function ShareRaceButton() {
   const lastResult = useGameStore((s) => s.lastResult);
   const selectedCourseId = useGameStore((s) => s.selectedCourseId);
   const playerName = useGameStore((s) => s.playerName);
+  // Set by the race screen when the user recorded the race. When present
+  // the button shares the actual video clip instead of the image card.
+  const raceVideoUri = useGameStore((s) => s.raceVideoUri);
 
   const cardRef = useRef<View>(null);
   const [sharing, setSharing] = useState(false);
@@ -55,8 +58,16 @@ export default function ShareRaceButton() {
     if (sharing) return;
     setSharing(true);
     try {
-      const uri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' });
-      if (await Sharing.isAvailableAsync()) {
+      if (!(await Sharing.isAvailableAsync())) return;
+      if (raceVideoUri) {
+        // User recorded the race — share the actual video clip.
+        await Sharing.shareAsync(raceVideoUri, {
+          mimeType: 'video/mp4',
+          dialogTitle: 'Share your race',
+        });
+      } else {
+        // No recording — share the static results card image instead.
+        const uri = await captureRef(cardRef, { format: 'png', quality: 1, result: 'tmpfile' });
         await Sharing.shareAsync(uri, {
           mimeType: 'image/png',
           dialogTitle: 'Share your race',
@@ -71,6 +82,10 @@ export default function ShareRaceButton() {
     }
   };
 
+  const buttonLabel = sharing
+    ? 'PREPARING…'
+    : raceVideoUri ? 'SHARE VIDEO' : 'SHARE RACE';
+
   return (
     <>
       {/* Visible button */}
@@ -83,7 +98,7 @@ export default function ShareRaceButton() {
           sharing && { opacity: 0.6 },
         ]}
       >
-        <Text style={styles.buttonText}>{sharing ? 'PREPARING…' : 'SHARE RACE'}</Text>
+        <Text style={styles.buttonText}>{buttonLabel}</Text>
       </Pressable>
 
       {/* Off-screen capture target. Positioned far off-screen so it's
@@ -125,20 +140,25 @@ export default function ShareRaceButton() {
 }
 
 const styles = StyleSheet.create({
+  /* Matches the results-screen ghost buttons (RACE AGAIN / BACK TO
+   * LOBBY): full-width, 50-radius pill, 16 vertical padding. Was a
+   * narrower 13-pad pill that looked like an afterthought next to them. */
   button: {
+    width: '100%',
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: BorderRadius.pill,
-    paddingVertical: 13,
+    borderRadius: 50,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 10,
+    justifyContent: 'center',
+    marginBottom: 16,
   },
   buttonText: {
     fontFamily: Fonts.display,
-    fontSize: 15,
+    fontSize: 17,
     color: Colors.white,
-    letterSpacing: 1.5,
+    letterSpacing: 1,
   },
 
   // Off-screen host — laid out, never seen.

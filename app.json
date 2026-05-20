@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
-      "buildNumber": "81",
+      "buildNumber": "82",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.donkeymarble.racing",
-      "versionCode": 47,
+      "versionCode": 48,
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
