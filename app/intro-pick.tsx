@@ -33,6 +33,7 @@ export default function IntroPickScreen() {
   const setActiveMode = useGameStore((s) => s.setActiveMode);
   const selectCourse = useGameStore((s) => s.selectCourse);
   const setHasSeenIntroRace = useGameStore((s) => s.setHasSeenIntroRace);
+  const setIntroRacePending = useGameStore((s) => s.setIntroRacePending);
 
   const [picked, setPicked] = useState<MarbleData | null>(null);
 
@@ -44,6 +45,9 @@ export default function IntroPickScreen() {
     selectCourse(course.id);
     setActiveMode({ type: 'quick_race' });
     setHasSeenIntroRace(true);
+    /* Mark this as the tutorial race so the results screen routes the
+     * new player to the main lobby instead of the quick-race loop. */
+    setIntroRacePending(true);
     router.replace('/race');
   };
 

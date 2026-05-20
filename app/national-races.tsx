@@ -125,7 +125,8 @@ export default function NationalRacesScreen() {
     });
     selectMarble(null as any);
     setBetAmount(0);
-    router.push('/betting');
+    // replace — keeps the race-flow stack flat (see betting.tsx back handler)
+    router.replace('/betting');
   }, [nationalRaces]);
 
   const handleModalConfirm = useCallback(() => {

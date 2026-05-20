@@ -323,7 +323,10 @@ export default function BettingScreen() {
     const success = await placeBet();
     if (success) {
       raceHaptics.betPlaced();
-      router.push('/race');
+      /* replace, not push — keeps the race-flow stack flat. With push
+       * the season loop (season→betting→race→results→season) left a
+       * stale betting screen behind every week. */
+      router.replace('/race');
     }
   };
 
@@ -343,7 +346,20 @@ export default function BettingScreen() {
       {/* Top bar */}
       <View style={styles.topBar}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => {
+            /* Mode-aware back. router.back() popped blindly through the
+             * navigation stack — in a long season the stack accumulates
+             * a [betting, season] pair every week, so "back" wandered
+             * into stale prior-week screens instead of the season hub.
+             * Navigate explicitly to the mode's home screen instead. */
+            switch (activeMode.type) {
+              case 'season':        router.replace('/season'); break;
+              case 'playoff':       router.replace('/playoffs'); break;
+              case 'national_race': router.replace('/national-races'); break;
+              case 'tournament':    router.replace('/tournament-bracket'); break;
+              default:              router.replace('/lobby'); break;
+            }
+          }}
           hitSlop={12}
           style={({ pressed }) => pressed && styles.pressed}
         >

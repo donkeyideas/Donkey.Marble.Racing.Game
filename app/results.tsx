@@ -316,8 +316,13 @@ function WinScreen() {
   const season = useGameStore((s) => s.season);
 
   const tournaments = useGameStore((s) => s.tournaments);
+  const introRacePending = useGameStore((s) => s.introRacePending);
 
-  const dest = getModeDest(activeMode);
+  /* After the first-launch tutorial race, send the new player to the
+   * main lobby instead of the quick-race "RACE AGAIN → courses" loop. */
+  const dest = introRacePending
+    ? { ...getModeDest(activeMode), primary: '/lobby', primaryLabel: 'ENTER GAME' }
+    : getModeDest(activeMode);
   const isQuickRace = activeMode.type === 'quick_race';
   const isTournament = activeMode.type === 'tournament';
   const isTournamentChampion = isTournament && tournaments?.currentRound !== undefined && tournaments.currentRound >= TOURNAMENT_ROUNDS;
@@ -331,11 +336,13 @@ function WinScreen() {
 
   const handlePrimary = () => {
     resetBet();
+    if (introRacePending) useGameStore.getState().setIntroRacePending(false);
     router.replace(dest.primary as any);
   };
 
   const handleSecondary = () => {
     resetBet();
+    if (introRacePending) useGameStore.getState().setIntroRacePending(false);
     router.replace(dest.secondary as any || '/lobby');
   };
 
@@ -610,7 +617,12 @@ function LossScreen() {
   }, []);
   const shakeX = titleShake.interpolate({ inputRange: [-1, 1], outputRange: [-8, 8] });
 
-  const dest = getModeDest(activeMode);
+  const introRacePending = useGameStore((s) => s.introRacePending);
+  /* New player just finished the tutorial race → route to main lobby,
+   * not the quick-race "RACE AGAIN" loop. */
+  const dest = introRacePending
+    ? { ...getModeDest(activeMode), primary: '/lobby', primaryLabel: 'ENTER GAME' }
+    : getModeDest(activeMode);
   const isQuickRace = activeMode.type === 'quick_race';
   const isTournament = activeMode.type === 'tournament';
   const isFranchise = season?.seasonMode === 'franchise' && (activeMode.type === 'season' || activeMode.type === 'playoff');
@@ -643,11 +655,13 @@ function LossScreen() {
 
   const handlePrimary = () => {
     resetBet();
+    if (introRacePending) useGameStore.getState().setIntroRacePending(false);
     router.replace(dest.primary as any);
   };
 
   const handleSecondary = () => {
     resetBet();
+    if (introRacePending) useGameStore.getState().setIntroRacePending(false);
     router.replace(dest.secondary as any || '/lobby');
   };
 

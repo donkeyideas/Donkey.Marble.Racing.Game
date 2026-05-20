@@ -175,7 +175,10 @@ export default function SeasonScreen() {
       selectMarble(null as any);
     }
     setBetAmount(100);
-    router.push('/betting');
+    /* replace — race flow returns here via results' "BACK TO SEASON".
+     * push accumulated a stale [betting, season] pair on the nav stack
+     * every week, so back-navigation drifted into previous weeks. */
+    router.replace('/betting');
   };
 
   const handleSeedPlayoffs = () => {
