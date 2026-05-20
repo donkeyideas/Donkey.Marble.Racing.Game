@@ -4,6 +4,13 @@ name: Build Android (AAB)
 # Run manually from the Actions tab; the resulting AAB is uploaded as an artifact.
 
 on:
+  # Auto-build when the version is bumped (app.json change) — mirrors
+  # build-ios.yml. Produces the AAB as an artifact; upload to Play
+  # Console is still manual (no auto-submit step in this workflow).
+  push:
+    branches: [master]
+    paths:
+      - app.json
   workflow_dispatch:
     inputs:
       profile:
@@ -17,9 +24,11 @@ on:
 
 jobs:
   build:
-    name: Build Android ${{ github.event.inputs.profile }}
+    name: Build Android ${{ github.event.inputs.profile || 'production' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      PROFILE: ${{ github.event.inputs.profile || 'production' }}
 
     steps:
       - name: Checkout
@@ -86,13 +95,13 @@ jobs:
             --local \
             --non-interactive \
             --platform android \
-            --profile ${{ github.event.inputs.profile }} \
-            --output ./build/donkeymarble-${{ github.event.inputs.profile }}.aab
+            --profile ${{ env.PROFILE }} \
+            --output ./build/donkeymarble-${{ env.PROFILE }}.aab
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: donkeymarble-android-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          name: donkeymarble-android-${{ env.PROFILE }}-${{ github.run_number }}
           path: build/*.aab
           retention-days: 14
 
