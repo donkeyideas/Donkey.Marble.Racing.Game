@@ -670,17 +670,17 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
 
   /* Doomsday bar — sweeps stragglers so the race never drags.
    *
-   * Trigger is ADAPTIVE, not a flat timer. A flat 55s wait felt dead
-   * when the winner crossed at ~18s and one marble was wedged — the
-   * user stared at a stuck marble for half a minute. Now the bar
-   * spawns when EITHER:
-   *   - elapsed >= ABSOLUTE_TRIGGER (40s) — slowest legit tracks run
-   *     ~55s, but by 40s they're down to 1-2 stragglers anyway, and
-   *   - the first marble finished POST_FINISH_GRACE (12s) ago and
-   *     marbles are still out — the "race is decided, stop dragging"
-   *     case, which fires much earlier on a fast track.
-   * Deadline is the hard cutoff that force-finishes everyone. */
-  const DOOMSDAY_ABSOLUTE_TRIGGER_MS = 40000;
+   * The spawn time is always clamped to a 40-50s window:
+   *   - NEVER before MIN (40s) — earlier felt abrupt; a 30s spawn was
+   *     reported as "too early".
+   *   - As soon as the race is decided after the 40s floor (first
+   *     marble finished POST_FINISH_GRACE ago), spawn — don't make the
+   *     player watch a stuck marble.
+   *   - NEVER after MAX (50s) — spawn regardless once 50s is reached.
+   * Net: a decided race gets the bar at 40s; a genuinely close race
+   * gets it by 50s. Deadline is the hard force-finish cutoff. */
+  const DOOMSDAY_MIN_TRIGGER_MS = 40000;  // floor — never spawn before this
+  const DOOMSDAY_MAX_TRIGGER_MS = 50000;  // ceiling — always spawn by this
   const DOOMSDAY_POST_FINISH_GRACE_MS = 12000;
   const DOOMSDAY_SWEEP_MS = 9000;       // fixed sweep time once the bar spawns
   const DOOMSDAY_DEADLINE_MS = 70000;   // hard cutoff — force-finish anyone left
@@ -708,13 +708,15 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
 
     // === DOOMSDAY BAR — spawn check (before physics so collision resolves properly) ===
     const unfinishedMarbles = marbleBodies.filter(({ data }) => !finishTimes[data.id]);
-    /* Adaptive trigger: absolute fallback OR "race decided, stragglers
-     * dragging" (first finish happened POST_FINISH_GRACE ago). */
-    const absoluteTrigger = elapsed >= DOOMSDAY_ABSOLUTE_TRIGGER_MS;
-    const decidedTrigger =
+    /* Spawn window clamped to 40-50s: never before the 40s floor;
+     * once past it, spawn as soon as the race is decided (first finish
+     * + grace) or when the 50s ceiling is hit, whichever comes first. */
+    const pastFloor = elapsed >= DOOMSDAY_MIN_TRIGGER_MS;
+    const pastCeiling = elapsed >= DOOMSDAY_MAX_TRIGGER_MS;
+    const raceDecided =
       firstFinishTime > 0 &&
       elapsed - firstFinishTime >= DOOMSDAY_POST_FINISH_GRACE_MS;
-    const shouldSpawnDoomsday = absoluteTrigger || decidedTrigger;
+    const shouldSpawnDoomsday = pastFloor && (pastCeiling || raceDecided);
     if (!doomsdayBarActive && shouldSpawnDoomsday && unfinishedMarbles.length > 0) {
       let highestY = Infinity;
       for (const { body } of unfinishedMarbles) {
