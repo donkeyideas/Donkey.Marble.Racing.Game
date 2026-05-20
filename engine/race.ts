@@ -668,19 +668,22 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // snap that marble to its numbered slot (1st = bottom slot, 8th = top slot).
   let finishRankCounter = 0;
 
-  /* Doomsday bar — TRUE EMERGENCY ONLY.
+  /* Doomsday bar — sweeps stragglers so the race never drags.
    *
-   * The earlier 1.5s/4px velocity-bump nudge masked geometry problems
-   * instead of fixing them. It was deleted. Marbles now have to flow
-   * naturally through the track; if they don't, that's a track-design
-   * bug to be fixed at the source — not papered over per-frame.
-   *
-   * Trigger at 55s with deadline 70s. The longest legitimately slow
-   * tracks finish in ~45–55s naturally; the bar is purely a safety net
-   * for genuine geometric failures, which should be rare after the
-   * pinch repair + tilted trampolines + restitution rebalance below. */
-  const DOOMSDAY_TRIGGER_MS = 55000;
-  const DOOMSDAY_DEADLINE_MS = 70000;
+   * Trigger is ADAPTIVE, not a flat timer. A flat 55s wait felt dead
+   * when the winner crossed at ~18s and one marble was wedged — the
+   * user stared at a stuck marble for half a minute. Now the bar
+   * spawns when EITHER:
+   *   - elapsed >= ABSOLUTE_TRIGGER (40s) — slowest legit tracks run
+   *     ~55s, but by 40s they're down to 1-2 stragglers anyway, and
+   *   - the first marble finished POST_FINISH_GRACE (12s) ago and
+   *     marbles are still out — the "race is decided, stop dragging"
+   *     case, which fires much earlier on a fast track.
+   * Deadline is the hard cutoff that force-finishes everyone. */
+  const DOOMSDAY_ABSOLUTE_TRIGGER_MS = 40000;
+  const DOOMSDAY_POST_FINISH_GRACE_MS = 12000;
+  const DOOMSDAY_SWEEP_MS = 9000;       // fixed sweep time once the bar spawns
+  const DOOMSDAY_DEADLINE_MS = 70000;   // hard cutoff — force-finish anyone left
   const DOOMSDAY_BAR_HEIGHT = 20;
   const DOOMSDAY_FILTER = { category: CAT_DOOMSDAY, mask: CAT_MARBLE };
   let doomsdayBar: Matter.Body | null = null;
@@ -705,7 +708,14 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
 
     // === DOOMSDAY BAR — spawn check (before physics so collision resolves properly) ===
     const unfinishedMarbles = marbleBodies.filter(({ data }) => !finishTimes[data.id]);
-    if (!doomsdayBarActive && elapsed >= DOOMSDAY_TRIGGER_MS && unfinishedMarbles.length > 0) {
+    /* Adaptive trigger: absolute fallback OR "race decided, stragglers
+     * dragging" (first finish happened POST_FINISH_GRACE ago). */
+    const absoluteTrigger = elapsed >= DOOMSDAY_ABSOLUTE_TRIGGER_MS;
+    const decidedTrigger =
+      firstFinishTime > 0 &&
+      elapsed - firstFinishTime >= DOOMSDAY_POST_FINISH_GRACE_MS;
+    const shouldSpawnDoomsday = absoluteTrigger || decidedTrigger;
+    if (!doomsdayBarActive && shouldSpawnDoomsday && unfinishedMarbles.length > 0) {
       let highestY = Infinity;
       for (const { body } of unfinishedMarbles) {
         if (body.position.y < highestY) highestY = body.position.y;
@@ -713,7 +723,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       doomsdayBarStartY = highestY - 100;
       doomsdayBarStartTime = elapsed;
       doomsdayBarEndY = track.finishY + 50;
-      doomsdayBarDuration = DOOMSDAY_DEADLINE_MS - elapsed;
+      /* Fixed sweep duration, NOT (deadline - elapsed). Tying it to the
+       * deadline meant an early-spawned bar crept down over 30-40s —
+       * defeating the point. A fixed ~9s sweep wraps the race up
+       * promptly no matter when the bar appears. */
+      doomsdayBarDuration = DOOMSDAY_SWEEP_MS;
 
       doomsdayBar = Matter.Bodies.rectangle(W / 2, doomsdayBarStartY, W + 100, DOOMSDAY_BAR_HEIGHT, {
         isStatic: true,

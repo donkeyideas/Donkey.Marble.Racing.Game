@@ -816,24 +816,33 @@ export default function RaceScreen() {
       let followY = 0;
       let leaderY = 0;
       let leaderMarble: typeof st.marbles[0] | null = null;
+      /* Track the leader among marbles STILL RACING separately from the
+       * global leader. Once your marble finishes, the camera should
+       * follow the live race for 2nd/3rd/etc — not jump to a finished
+       * marble sitting at the bottom. */
+      let racingLeaderY = -Infinity;
       for (let i = 0; i < st.marbles.length; i++) {
         const m = st.marbles[i];
         if (m.y > leaderY) { leaderY = m.y; leaderMarble = m; }
+        if (!m.finished && m.y > racingLeaderY) racingLeaderY = m.y;
       }
+      // Everyone finished → racingLeaderY stays -Infinity; fall back to leaderY.
+      const raceFollowY = racingLeaderY > -Infinity ? racingLeaderY : leaderY;
 
       if (playerPickId) {
         const playerMarble = st.marbles.find(m => m.data.id === playerPickId);
         if (playerMarble && !playerMarble.finished) {
-          followY = playerMarble.y; // Follow player's marble
+          followY = playerMarble.y; // Follow player's marble while it races
         } else {
-          // Player finished or not found — follow leader
+          // Player finished or not found — follow the front of the
+          // still-racing pack so the user keeps seeing live competition.
           if (playerMarble?.finished && !playerPickFinished.current) {
             playerPickFinished.current = true;
           }
-          followY = leaderY;
+          followY = raceFollowY;
         }
       } else {
-        followY = leaderY; // Quick race: follow leader
+        followY = raceFollowY; // Quick race: follow the live race front
       }
 
       // When doomsday bar is active, camera follows the bar so the user can see it sweeping
@@ -842,25 +851,18 @@ export default function RaceScreen() {
       }
       /* Snap-to-podium behavior at race end.
        *
-       * Default: as soon as ANY marble crosses the finish line, snap the
-       * camera to the bottom (maxCam) so all 8 finish slots are visible.
-       * This is the "show the podium" fix for tracks where slot 1 / slot 2
-       * fell below the screen.
+       * Snap the camera to the bottom (maxCam, all 8 finish slots
+       * visible) ONLY when the race is actually over — every marble
+       * finished. Previously it snapped the instant ANY marble crossed,
+       * which yanked the view to the podium while 7 marbles were still
+       * racing offscreen above. If you won, you'd see nothing but the
+       * finish line while the real race continued out of frame.
        *
-       * Season mode override: if the player has a franchise marble and
-       * it hasn't finished yet, stay locked on the player's marble.
-       * Players said the snap-to-bottom yanked the camera away from
-       * their marble mid-race the moment a rival crossed — they wanted
-       * to watch their own marble compete all the way to the line. The
-       * snap still happens once the player's own marble finishes. */
-      const playerMarbleForCam = playerPickId
-        ? st.marbles.find((m) => m.data.id === playerPickId)
-        : null;
-      const isSeasonRace = activeMode.type === 'season' || activeMode.type === 'playoff';
-      const playerStillRacing = !!playerMarbleForCam && !playerMarbleForCam.finished;
-      const anyFinished = st.marbles.some((m) => m.finished);
+       * Until then the camera follows the still-racing pack (raceFollowY
+       * above), so there's always live competition on screen. */
+      const allFinished = st.marbles.every((m) => m.finished);
       const maxCam = totalH - SH / SCALE;
-      const shouldSnapToPodium = anyFinished && !(isSeasonRace && playerStillRacing);
+      const shouldSnapToPodium = allFinished;
       const target = shouldSnapToPodium
         ? maxCam
         : Math.min(maxCam, Math.max(0, followY - SH * 0.35 / SCALE));
