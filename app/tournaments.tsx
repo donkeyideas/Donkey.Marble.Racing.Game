@@ -58,8 +58,13 @@ function buildTournamentsList(): TournamentListEntry[] {
   return [
     {
       id: 'daily-blitz',
-      name: 'DAILY BLITZ',
-      subtitle: '8 marbles · Last place eliminated each round',
+      /* Display name only — the `id` stays 'daily-blitz' because it's
+       * wired into gameStore payouts, admin config keys, and remote
+       * config. Renamed away from "Daily Blitz" because the name
+       * implied a daily schedule the game never enforced; these are
+       * really three stake tiers (low/mid/high entry + prize). */
+      name: 'BRONZE CUP',
+      subtitle: 'Low stakes · Last place eliminated each round',
       prizePool: fmt(prizes.daily),
       entryFee: fees.daily,
       format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
@@ -69,7 +74,7 @@ function buildTournamentsList(): TournamentListEntry[] {
     },
     {
       id: 'weekly-cup',
-      name: 'WEEKLY CUP',
+      name: 'SILVER CUP',
       subtitle: 'Higher stakes · King of the Hill elimination',
       prizePool: fmt(prizes.weekly),
       entryFee: fees.weekly,
@@ -80,8 +85,8 @@ function buildTournamentsList(): TournamentListEntry[] {
     },
     {
       id: 'champion-invitational',
-      name: 'CHAMPION INVITATIONAL',
-      subtitle: 'Top stakes · Winner takes all',
+      name: 'GOLD CUP',
+      subtitle: 'Top stakes · Level 10+ · Winner takes all',
       prizePool: fmt(prizes.champion),
       entryFee: fees.champion,
       format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
