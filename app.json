@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
-      "buildNumber": "83",
+      "buildNumber": "84",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.donkeymarble.racing",
-      "versionCode": 49,
+      "versionCode": 50,
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
@@ -66,8 +66,7 @@
           "iosUrlScheme": "com.googleusercontent.apps.791385622060-goted95ii4ea0emlb046qeni65icb8a1"
         }
       ],
-      "expo-apple-authentication",
-      "expo-sharing"
+      "expo-apple-authentication"
     ],
     "extra": {
       "router": {},

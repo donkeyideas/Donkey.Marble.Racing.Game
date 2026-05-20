@@ -15,7 +15,6 @@ import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
 import { useGameStore, GameMode, SeasonMarbleStats, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
-import ShareRaceButton from '../components/ShareRaceButton';
 import { ALL_COURSES as COURSES } from '../data/courses';
 import { getNextAvailableRace } from '../data/seasonSchedule';
 
@@ -578,8 +577,6 @@ function WinScreen() {
             </Pressable>
           )}
 
-          <ShareRaceButton />
-
           <Text style={styles.breakTextWin}>Take a break?</Text>
         </View>
       </ScrollView>
@@ -798,8 +795,6 @@ function LossScreen() {
               <Text style={styles.ghostBtnLossText}>{dest.secondaryLabel}</Text>
             </Pressable>
           )}
-
-          <ShareRaceButton />
 
           <Text style={styles.breakTextLoss}>Take a break?</Text>
         </View>

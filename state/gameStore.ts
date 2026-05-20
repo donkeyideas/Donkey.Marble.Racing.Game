@@ -329,18 +329,6 @@ interface GameState {
   introRacePending: boolean;
   setIntroRacePending: (v: boolean) => void;
 
-  /**
-   * Transient — local file URI of the screen-recording captured for the
-   * most recent race, or null. Set by the race screen when the user
-   * recorded the race and the recording is finalized; read by the
-   * results-screen share button so "Share Race" sends the video instead
-   * of the static image card. Not persisted — a recording is only
-   * relevant to the race that just finished, and the temp file is gone
-   * after the OS/app clears its cache.
-   */
-  raceVideoUri: string | null;
-  setRaceVideoUri: (uri: string | null) => void;
-
   // Stats
   totalRaces: number;
   totalWins: number;
@@ -561,9 +549,6 @@ export const useGameStore = create<GameState>()(
 
   introRacePending: false,
   setIntroRacePending: (v) => set({ introRacePending: v }),
-
-  raceVideoUri: null,
-  setRaceVideoUri: (uri) => set({ raceVideoUri: uri }),
 
   coins: 1000,
   currentBetId: null,
