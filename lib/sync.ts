@@ -213,17 +213,22 @@ let sessionExpiredHandled = false;
 async function handleAccountDeletedRemotely(): Promise<void> {
   if (sessionExpiredHandled) return; // dedup repeated 401s within a session
   sessionExpiredHandled = true;
+  /* Lazy require to avoid a circular import:
+   *   lib/sync ← lib/accountReset ← state/gameStore ← lib/sync (some
+   *   modules pull sync transitively). The lazy require breaks the
+   *   cycle at evaluation time without changing call sites. */
   try {
-    await clearToken();
-    await AsyncStorage.removeItem('dmr-game-state');
-  } catch {
-    // Best-effort — even if storage fails, the in-memory state will reset
-    // on next app launch.
+    const { resetAccountLocally } = require('./accountReset');
+    await resetAccountLocally();
+  } catch (err) {
+    console.warn('[sync/state] resetAccountLocally failed, falling back to minimal cleanup', err);
+    try { await clearToken(); } catch {}
+    try { await AsyncStorage.removeItem('dmr-game-state'); } catch {}
   }
   if (__DEV__) {
     console.warn(
-      '[sync/state] 401 with token present — treating as account-deleted-remotely. ' +
-      'Local state + token cleared. Restart the app for a fresh registration.',
+      '[sync/state] 401 with token present — account deleted server-side. ' +
+      'Local state, token, and in-memory store cleared. UI will route to splash.',
     );
   }
 }

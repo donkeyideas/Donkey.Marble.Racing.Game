@@ -95,15 +95,23 @@ export interface LobbyData {
   maxPlayers: number;
 }
 
-/** Fraction of the pot the house keeps as a rake. The rest is paid out to
- *  placements. Keeps coins from inflating unbounded as players churn. */
+/** Fraction of the pot the house keeps as a rake. Historically 0.10
+ *  but the spec docs and admin UI use 0.20; canonical source is now
+ *  remote config (mp_rake). Kept as a back-compat export. */
 export const MP_RAKE = 0.10;
+
+/** Live MP rake from remote config, falls back to MP_RAKE. */
+export function getMpRake(): number {
+  // Lazy require to avoid circular imports during module init.
+  const { getConfig } = require('./remoteConfig');
+  return getConfig().multiplayer?.rake ?? MP_RAKE;
+}
 
 /** Live pool = (entry × number of paid-in players) × (1 − rake). Called from
  *  the lobby UI to show the pot growing as humans join, and from the payout
  *  calc at finish time. */
 export function computePool(entryFee: number, paidInPlayers: number): number {
-  return Math.floor(entryFee * paidInPlayers * (1 - MP_RAKE));
+  return Math.floor(entryFee * paidInPlayers * (1 - getMpRake()));
 }
 
 // ---------------------------------------------------------------------------
@@ -114,11 +122,27 @@ export const MAX_PLAYERS = 8;
 export const AI_BACKFILL_DELAY_MS = 60_000;  // 60s window for humans before AI fills empty slots
 export const LOBBY_EXPIRY_MS = 30 * 60_000;  // 30 min stale lobby cleanup
 
+/* Tier metadata. entryFee + prizePool are baseline defaults; call
+ * getMpTiers() to get the live values from remote config. minLevel +
+ * label stay baked (not economy-tunable). */
 export const MP_TIERS = {
   daily:    { label: 'Daily Blitz',           entryFee: 100,  prizePool: 5_000,  minLevel: 1  },
   weekly:   { label: 'Weekly Cup',            entryFee: 500,  prizePool: 25_000, minLevel: 5  },
   champion: { label: 'Champion Invitational', entryFee: 1000, prizePool: 50_000, minLevel: 10 },
 } as const;
+
+export type MpTierKey = keyof typeof MP_TIERS;
+
+export function getMpTiers() {
+  const { getConfig } = require('./remoteConfig');
+  const live = getConfig().multiplayer;
+  if (!live) return MP_TIERS;
+  return {
+    daily:    { ...MP_TIERS.daily,    entryFee: live.blitz.entry,        prizePool: live.blitz.pool },
+    weekly:   { ...MP_TIERS.weekly,   entryFee: live.cup.entry,          prizePool: live.cup.pool },
+    champion: { ...MP_TIERS.champion, entryFee: live.invitational.entry, prizePool: live.invitational.pool },
+  };
+}
 
 // Bot display names are meant to feel like opponents, not obvious AI.
 // "Bot" / "AI" stripped out so the lobby doesn't look like you're racing
@@ -154,7 +178,7 @@ export async function createLobby(
 ): Promise<string> {
   const newRef = push(activeLobbiesRef());
   const lobbyId = newRef.key!;
-  const tierConfig = MP_TIERS[tier];
+  const tierConfig = getMpTiers()[tier];
 
   // Pick 7 random courses for elimination rounds
   const seed = Date.now();
@@ -210,7 +234,7 @@ export async function createPrivateLobby(
 ): Promise<{ lobbyId: string; code: string }> {
   const newRef = push(activeLobbiesRef());
   const lobbyId = newRef.key!;
-  const tierConfig = MP_TIERS[tier];
+  const tierConfig = getMpTiers()[tier];
 
   const seed = Date.now();
   const shuffled = [...ALL_COURSES].sort(() => Math.random() - 0.5);
@@ -770,14 +794,19 @@ export function calculateMPPayout(
       }
 
     case 'standard':
-    default:
-      // 50 / 30 / 20 to top 3; 4-8 lose their entry.
+    default: {
+      /* Standard mode ratios are admin-configurable via remote config
+       * (mp_first_ratio / mp_second_ratio / mp_third_ratio). Falls back
+       * to historical 50/30/20 when remote config isn't loaded. */
+      const { getConfig } = require('./remoteConfig');
+      const ratios = getConfig().multiplayer?.placementRatios ?? { first: 0.50, second: 0.30, third: 0.20 };
       switch (placement) {
-        case 1: return Math.floor(pool * 0.50);
-        case 2: return Math.floor(pool * 0.30);
-        case 3: return Math.floor(pool * 0.20);
+        case 1: return Math.floor(pool * ratios.first);
+        case 2: return Math.floor(pool * ratios.second);
+        case 3: return Math.floor(pool * ratios.third);
         default: return 0;
       }
+    }
   }
 }
 

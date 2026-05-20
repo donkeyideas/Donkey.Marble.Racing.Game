@@ -7,7 +7,7 @@ import { Colors, Fonts, BorderRadius } from '../theme';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
-import { COIN_PACKS, CoinPack } from '../state/gameStore';
+import { COIN_PACKS, CoinPack, getCoinPacks } from '../state/gameStore';
 import { getConfig } from '../lib/remoteConfig';
 let IAP: typeof import('react-native-iap') | null = null;
 try {
@@ -321,7 +321,7 @@ export default function StoreScreen() {
           {/* Coin Packs */}
           <Text style={styles.sectionTitle}>COIN PACKS</Text>
 
-          {COIN_PACKS.map((pack) => {
+          {getCoinPacks().map((pack) => {
             const style = PACK_STYLES[pack.id];
             const isSuccess = successPack === pack.id;
             const isPurchasing = purchasing === pack.id;

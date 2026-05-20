@@ -1,5 +1,6 @@
 import { MARBLES } from '../theme';
 import { ALL_COURSES } from './courses';
+import { getConfig } from '../lib/remoteConfig';
 
 // ── Seeded PRNG (mulberry32, same as trackGenerator) ──
 
@@ -69,13 +70,22 @@ export function generateDailyChallenges(dateStr: string): ChallengeProgress[] {
   const challenges: ChallengeProgress[] = [];
   const usedTypes = new Set<string>();
 
+  /* Reward values pulled from remote config so ops can rebalance daily
+   * challenge economy without an app build. Fallback defaults mirror the
+   * historical hardcoded values. */
+  const cd = getConfig().challenges?.daily;
+  const rWin     = cd?.win     ?? 300;
+  const rTop3    = cd?.top3    ?? 200;
+  const rStreak2 = cd?.streak2 ?? 400;
+  const rWins3   = cd?.wins3   ?? 500;
+
   // Template pool for daily challenges
   const templates = [
     () => {
       const mid = pickRandom(MARBLE_IDS, rng);
       return {
         description: `Win a race with ${MARBLE_NAMES[mid]}`,
-        target: 1, reward: 300,
+        target: 1, reward: rWin,
         criteria: { kind: 'win_with_marble' as const, marbleId: mid },
       };
     },
@@ -83,18 +93,18 @@ export function generateDailyChallenges(dateStr: string): ChallengeProgress[] {
       const mid = pickRandom(MARBLE_IDS, rng);
       return {
         description: `Finish top 3 with ${MARBLE_NAMES[mid]}`,
-        target: 1, reward: 200,
+        target: 1, reward: rTop3,
         criteria: { kind: 'top3_with_marble' as const, marbleId: mid },
       };
     },
     () => ({
       description: 'Win 2 races in a row',
-      target: 2, reward: 400,
+      target: 2, reward: rStreak2,
       criteria: { kind: 'win_streak' as const, count: 2 },
     }),
     () => ({
       description: 'Win 3 races today',
-      target: 3, reward: 500,
+      target: 3, reward: rWins3,
       criteria: { kind: 'win_count' as const, count: 3 },
     }),
   ];
@@ -123,25 +133,31 @@ export function generateWeeklyChallenges(weekStartDate: string): ChallengeProgre
   const rng = createRNG(dateToSeed(weekStartDate) + 7777);
   const challenges: ChallengeProgress[] = [];
 
+  const cw = getConfig().challenges?.weekly;
+  const rRaces5   = cw?.races5   ?? 1500;
+  const rMarbles3 = cw?.marbles3 ?? 2000;
+  const rRaces10  = cw?.races10  ?? 2000;
+  const rMarbles5 = cw?.marbles5 ?? 2500;
+
   const templates = [
     () => ({
       description: 'Win 5 races this week',
-      target: 5, reward: 1500,
+      target: 5, reward: rRaces5,
       criteria: { kind: 'win_count' as const, count: 5 },
     }),
     () => ({
       description: 'Win with 3 different marbles',
-      target: 3, reward: 2000,
+      target: 3, reward: rMarbles3,
       criteria: { kind: 'win_different_marbles' as const, count: 3, marbleIds: [] as string[] },
     }),
     () => ({
       description: 'Win 10 races this week',
-      target: 10, reward: 2000,
+      target: 10, reward: rRaces10,
       criteria: { kind: 'win_count' as const, count: 10 },
     }),
     () => ({
       description: 'Win with 5 different marbles',
-      target: 5, reward: 2500,
+      target: 5, reward: rMarbles5,
       criteria: { kind: 'win_different_marbles' as const, count: 5, marbleIds: [] as string[] },
     }),
   ];

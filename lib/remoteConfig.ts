@@ -27,11 +27,65 @@ export interface RemoteConfig {
   tournamentEntryFees?: { daily: number; weekly: number; champion: number };
   /* Per-tier 2nd and 3rd place placement bonuses. Awarded when the
    * player's marble is eliminated in the final round (2nd place) or the
-   * semi-final (3rd place). Distinct from per-round survival payouts.
-   * Optional for back-compat with old admin API responses; absent →
-   * DEFAULT_CONFIG values are used. */
+   * semi-final (3rd place). Distinct from per-round survival payouts. */
   tournamentSecondPrizes?: { daily: number; weekly: number; champion: number };
   tournamentThirdPrizes?: { daily: number; weekly: number; champion: number };
+  /* Per-tier round-by-round survival payouts. 7-element array, index =
+   * round number (0-based). Rounds 0-2 are typically 0 (free play),
+   * 3-5 are escalating survival rewards, index 6 is the champion prize.
+   * Falls back to a hardcoded matrix in DEFAULT_CONFIG when absent. */
+  tournamentRoundPayouts?: { daily: number[]; weekly: number[]; champion: number[] };
+  /* Season playoff placement payouts (franchise mode) + season-complete
+   * consolation for both modes. */
+  playoffPayouts?: {
+    champion: number;
+    runnerUp: number;
+    top3: number;
+    qualified: number;
+    bettorComplete: number;
+  };
+  /* Season starter bonus: base + increment × (seasonNum - 2), capped. */
+  seasonStarterBonus?: { base: number; increment: number; cap: number };
+  /* National race economy. entry = coin cost to play; firstMult = 1st
+   * place payout = entry × firstMult; secondRatio/thirdRatio applied to
+   * the 1st place payout. */
+  nationalRaces?: {
+    grandPrix:  { entry: number; firstMult: number };
+    marbleMile: { entry: number; firstMult: number };
+    speedDemon: { entry: number; firstMult: number };
+    chaosCup:   { entry: number; firstMult: number };
+    secondRatio: number;
+    thirdRatio:  number;
+  };
+  /* Multiplayer tournament economy. Pool is the displayed prize pool;
+   * placementRatios distributes pool × (1 - rake). */
+  multiplayer?: {
+    blitz:        { entry: number; pool: number };
+    cup:          { entry: number; pool: number };
+    invitational: { entry: number; pool: number };
+    rake: number;
+    placementRatios: { first: number; second: number; third: number };
+  };
+  /* Challenge coin rewards. Mirror data/challenges.ts shape. */
+  challenges?: {
+    daily:  { win: number; top3: number; streak2: number; wins3: number };
+    weekly: { races5: number; marbles3: number; races10: number; marbles5: number };
+  };
+  /* Season Pass milestone coin rewards at fixed levels. */
+  passMilestones?: {
+    level2: number; level5: number; level10: number; level15: number; level20: number;
+  };
+  /* In-app coin pack grants. IAP price is set in App Store / Play Store
+   * — only the coin grant + promo multiplier are tunable here. */
+  storePacks?: {
+    starter: { coins: number };
+    popular: { coins: number; promo: number };
+    big:     { coins: number; promo: number };
+    whale:   { coins: number; promo: number };
+  };
+  /* Bet house edge — proportion of fair odds the house keeps. 0.10 =
+   * payouts use 90% of fair odds. */
+  betHouseEdge?: number;
   xpPerLevel: number;
   /**
    * Per-track custom background images. Maps a course id (e.g.
@@ -72,11 +126,48 @@ export const DEFAULT_CONFIG: RemoteConfig = {
    * the server validates against canonical values from
    * apps/dashboard/.../economy-config.ts so this is just a UI hint. */
   tournamentEntryFees: { daily: 100, weekly: 500, champion: 1000 },
-  /* 2nd/3rd placement bonuses — must mirror admin SEED_CONFIGS defaults
-   * so a client that boots without remote config (offline first run)
-   * sees the same payout structure as the live server. */
-  tournamentSecondPrizes: { daily: 1200, weekly: 6000, champion: 12000 },
-  tournamentThirdPrizes: { daily: 600, weekly: 3000, champion: 6000 },
+  /* All defaults below mirror admin SEED so an offline first-run client
+   * sees the same payouts as the live server. */
+  tournamentSecondPrizes: { daily: 1150, weekly: 5750, champion: 11500 },
+  tournamentThirdPrizes:  { daily: 460,  weekly: 2300, champion: 4600 },
+  tournamentRoundPayouts: {
+    daily:    [0, 0, 0, 50,  100,  250,  4600],
+    weekly:   [0, 0, 0, 250, 500,  1250, 23000],
+    champion: [0, 0, 0, 500, 1000, 2500, 46000],
+  },
+  playoffPayouts: {
+    champion: 5000, runnerUp: 2500, top3: 1000,
+    qualified: 1500, bettorComplete: 1500,
+  },
+  seasonStarterBonus: { base: 500, increment: 250, cap: 2500 },
+  nationalRaces: {
+    grandPrix:  { entry: 500, firstMult: 5 },
+    marbleMile: { entry: 300, firstMult: 3 },
+    speedDemon: { entry: 200, firstMult: 2 },
+    chaosCup:   { entry: 400, firstMult: 4 },
+    secondRatio: 0.5, thirdRatio: 0.25,
+  },
+  multiplayer: {
+    blitz:        { entry: 100,  pool: 5000 },
+    cup:          { entry: 500,  pool: 25000 },
+    invitational: { entry: 1000, pool: 50000 },
+    rake: 0.20,
+    placementRatios: { first: 0.60, second: 0.20, third: 0.10 },
+  },
+  challenges: {
+    daily:  { win: 300, top3: 200, streak2: 400, wins3: 500 },
+    weekly: { races5: 1500, marbles3: 2000, races10: 2000, marbles5: 2500 },
+  },
+  passMilestones: {
+    level2: 200, level5: 500, level10: 1000, level15: 2000, level20: 1500,
+  },
+  storePacks: {
+    starter: { coins: 1000 },
+    popular: { coins: 6000,  promo: 0.20 },
+    big:     { coins: 15000, promo: 0.50 },
+    whale:   { coins: 40000, promo: 0.60 },
+  },
+  betHouseEdge: 0.10,
   trackBgImages: {},
 };
 

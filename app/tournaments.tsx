@@ -290,24 +290,36 @@ export default function TournamentsScreen() {
               <Text style={styles.tourneySub}>
                 8 real players · Draft marbles · Last place eliminated
               </Text>
-              <View style={styles.tourneyStats}>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
-                  <Text style={styles.tourneyStatValue}>5,000</Text>
-                </View>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>ENTRY</Text>
-                  <Text style={styles.tourneyStatValue}>100</Text>
-                </View>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
-                  <Text style={styles.tourneyStatValue}>8</Text>
-                </View>
-              </View>
-              <View style={styles.payoutPreviewRow}>
-                <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
-                <Text style={styles.payoutPreviewText}>1st: 3K · 2nd: 1K · 3rd: 500</Text>
-              </View>
+              {(() => {
+                const mpCfg = getConfig().multiplayer;
+                const blitz = mpCfg?.blitz ?? { entry: 100, pool: 5000 };
+                const ratios = mpCfg?.placementRatios ?? { first: 0.60, second: 0.20, third: 0.10 };
+                const fmtK = (n: number) => n >= 1000 ? `${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `${n}`;
+                return (
+                  <>
+                    <View style={styles.tourneyStats}>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
+                        <Text style={styles.tourneyStatValue}>{fmt(blitz.pool)}</Text>
+                      </View>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>ENTRY</Text>
+                        <Text style={styles.tourneyStatValue}>{fmt(blitz.entry)}</Text>
+                      </View>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
+                        <Text style={styles.tourneyStatValue}>8</Text>
+                      </View>
+                    </View>
+                    <View style={styles.payoutPreviewRow}>
+                      <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
+                      <Text style={styles.payoutPreviewText}>
+                        1st: {fmtK(Math.floor(blitz.pool * ratios.first))} · 2nd: {fmtK(Math.floor(blitz.pool * ratios.second))} · 3rd: {fmtK(Math.floor(blitz.pool * ratios.third))}
+                      </Text>
+                    </View>
+                  </>
+                );
+              })()}
             </LinearGradient>
           </Pressable>
 
@@ -352,24 +364,36 @@ export default function TournamentsScreen() {
               <Text style={styles.tourneySub}>
                 Top stakes · 8 players · Winner takes all
               </Text>
-              <View style={styles.tourneyStats}>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
-                  <Text style={styles.tourneyStatValue}>50,000</Text>
-                </View>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>ENTRY</Text>
-                  <Text style={styles.tourneyStatValue}>1,000</Text>
-                </View>
-                <View style={styles.tourneyStat}>
-                  <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
-                  <Text style={styles.tourneyStatValue}>8</Text>
-                </View>
-              </View>
-              <View style={styles.payoutPreviewRow}>
-                <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
-                <Text style={styles.payoutPreviewText}>1st: 30K · 2nd: 10K · 3rd: 5K</Text>
-              </View>
+              {(() => {
+                const mpCfg = getConfig().multiplayer;
+                const champ = mpCfg?.invitational ?? { entry: 1000, pool: 50000 };
+                const ratios = mpCfg?.placementRatios ?? { first: 0.60, second: 0.20, third: 0.10 };
+                const fmtK = (n: number) => n >= 1000 ? `${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `${n}`;
+                return (
+                  <>
+                    <View style={styles.tourneyStats}>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>PRIZE POOL</Text>
+                        <Text style={styles.tourneyStatValue}>{fmt(champ.pool)}</Text>
+                      </View>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>ENTRY</Text>
+                        <Text style={styles.tourneyStatValue}>{fmt(champ.entry)}</Text>
+                      </View>
+                      <View style={styles.tourneyStat}>
+                        <Text style={styles.tourneyStatLabel}>PLAYERS</Text>
+                        <Text style={styles.tourneyStatValue}>8</Text>
+                      </View>
+                    </View>
+                    <View style={styles.payoutPreviewRow}>
+                      <Text style={styles.payoutPreviewLabel}>PAYOUTS</Text>
+                      <Text style={styles.payoutPreviewText}>
+                        1st: {fmtK(Math.floor(champ.pool * ratios.first))} · 2nd: {fmtK(Math.floor(champ.pool * ratios.second))} · 3rd: {fmtK(Math.floor(champ.pool * ratios.third))}
+                      </Text>
+                    </View>
+                  </>
+                );
+              })()}
             </LinearGradient>
           </Pressable>
 

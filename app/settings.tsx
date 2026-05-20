@@ -14,12 +14,12 @@ import {
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
 import { signInWithGoogle, signInWithApple, signOut, getLastGoogleSignInError, deleteAccount } from '../lib/firebase-auth';
 import { api } from '../lib/api';
+import { resetAccountLocally } from '../lib/accountReset';
 
 /* POST a server-side account-deletion request.
  *
@@ -189,35 +189,62 @@ export default function SettingsScreen() {
                           style: 'destructive',
                           onPress: async () => {
                             setDeleting(true);
+                            /* Track non-fatal failures so we can surface
+                             * them at the end without trapping the user
+                             * mid-flow. Previous versions silently
+                             * swallowed Firebase errors, which is how
+                             * "delete" stopped actually deleting. */
+                            const warnings: string[] = [];
+
+                            // 1. Server delete FIRST while the auth token
+                            //    is still valid. Firebase user delete
+                            //    below invalidates the token.
                             try {
-                              /* Order matters:
-                               *  1. Server delete FIRST while we still have
-                               *     a valid auth token (the Firebase delete
-                               *     below invalidates the token).
-                               *  2. Firebase user delete (if signed in) —
-                               *     this revokes the auth credential.
-                               *  3. Local AsyncStorage wipe — last so we
-                               *     don't lose any in-flight retry queue
-                               *     entries before they're sent.
-                               *  4. Reset coins via direct set() — the
-                               *     resetCoins helper was removed in favor
-                               *     of routing all mutations through the
-                               *     economy module. This is the one
-                               *     legitimate local-only reset (the user
-                               *     just deleted everything). */
                               await deleteServerAccount();
-                              if (firebaseUid) {
-                                try { await deleteAccount(); } catch {}
-                                try { await signOut(); } catch {}
-                                setFirebaseUser(null);
-                              }
-                              await AsyncStorage.removeItem('dmr-game-state');
-                              useGameStore.setState({ coins: 1000 });
-                              router.replace('/');
-                            } catch {
-                              setDeleting(false);
-                              Alert.alert('Error', 'Failed to delete account. Please try again.');
+                            } catch (err) {
+                              console.warn('[delete-account] server delete failed', err);
+                              warnings.push('server data');
                             }
+
+                            // 2. Firebase: delete the auth user, then sign
+                            //    out. Log failures — don't bail.
+                            if (firebaseUid) {
+                              try {
+                                await deleteAccount();
+                              } catch (err) {
+                                console.warn('[delete-account] firebase delete failed', err);
+                                warnings.push('cloud identity');
+                              }
+                              try {
+                                await signOut();
+                              } catch (err) {
+                                console.warn('[delete-account] firebase signOut failed', err);
+                              }
+                              setFirebaseUser(null);
+                            }
+
+                            // 3. Wipe ALL local persistence + reset the
+                            //    in-memory Zustand store. Shared helper
+                            //    is also called from lib/sync.ts when
+                            //    the server signals the account was
+                            //    deleted remotely (admin action /
+                            //    sibling device), so both delete paths
+                            //    leave the device in the same
+                            //    "fresh-install" shape.
+                            try {
+                              await resetAccountLocally();
+                            } catch (err) {
+                              console.warn('[delete-account] resetAccountLocally failed', err);
+                            }
+
+                            setDeleting(false);
+                            if (warnings.length > 0) {
+                              Alert.alert(
+                                'Account Deleted (with warnings)',
+                                `Your local data was cleared, but the following may not have been fully removed and may need ops cleanup: ${warnings.join(', ')}.`,
+                              );
+                            }
+                            router.replace('/');
                           },
                         },
                       ],

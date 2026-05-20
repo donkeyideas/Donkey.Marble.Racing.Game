@@ -11,7 +11,7 @@ import {
   SEASON_POINTS,
 } from '../data/seasonSchedule';
 import {
-  NATIONAL_EVENTS, NationalEventState,
+  NATIONAL_EVENTS, getNationalEvents, NationalEventState,
   generateEventCourses, calculateNationalPayout, SERIES_POINTS,
   getETDateString,
 } from '../data/nationalRaces';
@@ -187,9 +187,21 @@ export interface TournamentState {
   totalEarned: number;      // cumulative coins earned so far
 }
 
-// Per-round payout schedules: rounds 1-3 free, round 4 = break even, escalates to champion
+/* Per-round payout schedules. Reads from remote config so live-ops can
+ * rebalance survival rewards without an app build. Falls back to the
+ * legacy hardcoded matrix (with the champion prize patched in from
+ * tournamentPrizes) when the new tournamentRoundPayouts field is
+ * absent — protects against an old admin API that doesn't emit it. */
 function getTournamentPayouts(): Record<string, number[]> {
   const cfg = getConfig();
+  const live = cfg.tournamentRoundPayouts;
+  if (live) {
+    return {
+      'daily-blitz':           live.daily,
+      'weekly-cup':            live.weekly,
+      'champion-invitational': live.champion,
+    };
+  }
   return {
     'daily-blitz':           [0, 0, 0, 50,  100,  250,  cfg.tournamentPrizes.daily],
     'weekly-cup':            [0, 0, 0, 250, 500,  1250, cfg.tournamentPrizes.weekly],
@@ -211,12 +223,30 @@ export interface CoinPack {
   badge: string | null;
 }
 
+/* Static defaults used when remote config hasn't loaded yet. The
+ * canonical source for grants + promo % is remote config — use
+ * getCoinPacks() at render time so the user always sees the live
+ * value. Price stays hardcoded because it's tied to the IAP product
+ * registered with Apple/Google and can't be changed live. */
 export const COIN_PACKS: CoinPack[] = [
   { id: 'starter',  coins: 1000,  price: '$0.99',  bonus: null,    badge: null },
   { id: 'popular',  coins: 6000,  price: '$4.99',  bonus: '+20%',  badge: 'MOST POPULAR' },
   { id: 'big',      coins: 15000, price: '$9.99',  bonus: '+50%',  badge: null },
   { id: 'whale',    coins: 40000, price: '$24.99', bonus: '+60%',  badge: 'BEST VALUE' },
 ];
+
+export function getCoinPacks(): CoinPack[] {
+  const cfg = getConfig();
+  const live = cfg.storePacks;
+  if (!live) return COIN_PACKS;
+  const pct = (m?: number) => m && m > 0 ? `+${Math.round(m * 100)}%` : null;
+  return [
+    { id: 'starter',  coins: live.starter.coins,   price: '$0.99',  bonus: null,                       badge: null },
+    { id: 'popular',  coins: live.popular.coins,   price: '$4.99',  bonus: pct(live.popular.promo),    badge: 'MOST POPULAR' },
+    { id: 'big',      coins: live.big.coins,       price: '$9.99',  bonus: pct(live.big.promo),        badge: null },
+    { id: 'whale',    coins: live.whale.coins,     price: '$24.99', bonus: pct(live.whale.promo),      badge: 'BEST VALUE' },
+  ];
+}
 
 /* Number of single-elimination rounds in a tournament.
  *
@@ -449,9 +479,14 @@ function calculateOdds(standings?: Record<string, { wins: number; losses: number
   const total = boosted.reduce((s, e) => s + e.p, 0);
 
   const odds: Record<string, number> = {};
+  /* House edge: payouts pay 1-edge of the fair odds. 0.10 = 10% house
+   * edge → payout multiplier 0.9. Lives in remote config so live-ops
+   * can tighten / loosen margin without an app build. */
+  const edge = getConfig().betHouseEdge ?? 0.10;
+  const payoutMultiplier = Math.max(0, Math.min(1, 1 - edge));
   boosted.forEach((e) => {
     const prob = e.p / total;
-    const raw = (1 / prob) * 0.9; // 10% house edge
+    const raw = (1 / prob) * payoutMultiplier;
     odds[e.id] = Math.round(Math.max(1.5, Math.min(12, raw)) * 10) / 10;
   });
   return odds;
@@ -789,10 +824,12 @@ export const useGameStore = create<GameState>()(
     }
 
     // Season starter bonus — returning players get coins for starting a new season
-    // Season 1: no bonus (fresh start). Season 2+: 500 + 250 per season (caps at 2500)
+    // Season 1: no bonus (fresh start). Season 2+: base + increment per season, capped.
+    // Values live in remote config so live-ops can tune season-over-season retention.
     if (num >= 2) {
       const { coins, coinHistory } = get();
-      const bonus = Math.min(2500, 500 + (num - 2) * 250);
+      const sb = getConfig().seasonStarterBonus ?? { base: 500, increment: 250, cap: 2500 };
+      const bonus = Math.min(sb.cap, sb.base + (num - 2) * sb.increment);
       // Optimistic local credit so the season-hub UI shows the new balance
       // immediately. The server call below reconciles to the authoritative
       // value, and the natural idempotency key (season_starter:{playerId}:
@@ -1101,29 +1138,30 @@ export const useGameStore = create<GameState>()(
           ? 1
           : allEliminated.length - eliminationIdx + 1;
 
+        const remote = getConfig();
+        const po = remote.playoffPayouts;
+        const championPrize = po?.champion  ?? 5000;
+        const runnerUpPrize = po?.runnerUp  ?? 2500;
+        const top3Prize     = po?.top3      ?? 1000;
+        const qualifiedPrize = po?.qualified ?? 1500;
+
         if (!madePlayoffs) {
           /* Franchise marble didn't qualify for playoffs (finished outside
            * the top 6 seeds). Without this branch the player would get
            * zero for finishing the season as their marble — a brutal
-           * "you played 10 races for nothing" UX. Fall through to the
-           * bettor-mode flat completion bonus: a smaller (1,500) but
-           * non-zero "season complete" payout that acknowledges the run. */
-          playoffPayout = 1500;
+           * "you played 10 races for nothing" UX. */
+          playoffPayout = qualifiedPrize;
           playoffDesc = 'Season Complete (consolation)';
         } else {
-          // Reward tiers: 1st=5000, 2nd=2500, 3rd=1000
-          if (placement === 1) { playoffPayout = 5000; playoffDesc = 'Playoff Champion'; }
-          else if (placement === 2) { playoffPayout = 2500; playoffDesc = 'Playoff Runner-Up'; }
-          else if (placement === 3) { playoffPayout = 1000; playoffDesc = 'Playoff Top 3'; }
+          if (placement === 1) { playoffPayout = championPrize; playoffDesc = 'Playoff Champion'; }
+          else if (placement === 2) { playoffPayout = runnerUpPrize; playoffDesc = 'Playoff Runner-Up'; }
+          else if (placement === 3) { playoffPayout = top3Prize; playoffDesc = 'Playoff Top 3'; }
         }
       } else {
-        // Bettor mode: flat 1,500 coin bonus for completing the full season.
-        // Bumped from 500 — bettor mode players were essentially shut out of
-        // any season-end reward because they don't have a single marble to
-        // place in the top 3. 1,500 sits between franchise's 2nd-place (2,500)
-        // and 3rd-place (1,000) rewards so it feels like a legitimate finish
-        // bonus rather than a participation trophy.
-        playoffPayout = 1500;
+        // Bettor mode: flat completion bonus for finishing the season.
+        // Bumped historically from 500 because bettor players have no single
+        // marble to medal with. Now live-config driven so ops can tune.
+        playoffPayout = getConfig().playoffPayouts?.bettorComplete ?? 1500;
         playoffDesc = 'Season Complete';
       }
 
@@ -1199,7 +1237,7 @@ export const useGameStore = create<GameState>()(
     const current = get().nationalRaces ?? {};
     const today = getETDateString();
     const updated: Record<string, NationalEventState> = {};
-    NATIONAL_EVENTS.forEach((event) => {
+    getNationalEvents().forEach((event) => {
       const existing = current[event.id];
 
       /* Stale-entry detection.
@@ -1234,7 +1272,7 @@ export const useGameStore = create<GameState>()(
   },
 
   enterNationalRace: async (eventId) => {
-    const event = NATIONAL_EVENTS.find((e) => e.id === eventId);
+    const event = getNationalEvents().find((e) => e.id === eventId);
     if (!event) return { ok: false, reason: 'Unknown event.' };
     const { coins, nationalRaces: nr, coinHistory } = get();
     const nationalRaces = nr ?? {};
@@ -1301,7 +1339,7 @@ export const useGameStore = create<GameState>()(
     const nationalRaces = nr ?? {};
     if (activeMode.type !== 'national_race') return;
 
-    const event = NATIONAL_EVENTS.find((e) => e.id === activeMode.eventId);
+    const event = getNationalEvents().find((e) => e.id === activeMode.eventId);
     if (!event) return;
 
     const state = nationalRaces[activeMode.eventId];

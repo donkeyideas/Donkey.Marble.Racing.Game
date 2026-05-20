@@ -1,4 +1,5 @@
 import { ALL_COURSES } from './courses';
+import { getConfig } from '../lib/remoteConfig';
 
 export interface NationalEvent {
   id: string;
@@ -13,52 +14,33 @@ export interface NationalEvent {
   startHourET: number;
 }
 
+/* Static event metadata. Entry fees + multipliers are intentionally
+ * baseline defaults — call getNationalEvents() at render/payout time
+ * so live admin edits take effect without a rebuild. Keeping the
+ * exported NATIONAL_EVENTS array preserves back-compat for any code
+ * that imports it directly. */
 export const NATIONAL_EVENTS: NationalEvent[] = [
-  {
-    id: 'grand-prix',
-    name: 'THE GRAND PRIX',
-    subtitle: '3-race series · Top finisher wins jackpot',
-    multiplier: 5,
-    entryFee: 500,
-    format: 'series',
-    seriesLength: 3,
-    colors: ['#ffc220', '#ff6b1a'],
-    startHourET: 20,       // 8pm ET daily
-  },
-  {
-    id: 'marble-mile',
-    name: 'THE MARBLE MILE',
-    subtitle: 'Longest track · Endurance test',
-    multiplier: 3,
-    entryFee: 300,
-    format: 'single',
-    seriesLength: 1,
-    colors: ['#e74c3c', '#c0392b'],
-    startHourET: 17,       // 5pm ET daily (afternoon slot)
-  },
-  {
-    id: 'speed-demon',
-    name: 'SPEED DEMON DASH',
-    subtitle: 'Shortest track · Pure speed',
-    multiplier: 2,
-    entryFee: 200,
-    format: 'single',
-    seriesLength: 1,
-    colors: ['#2ecc71', '#1a9c58'],
-    startHourET: 12,       // 12pm ET daily (lunchtime)
-  },
-  {
-    id: 'chaos-cup',
-    name: 'CHAOS CUP',
-    subtitle: 'Random course · Random marbles · Anything goes',
-    multiplier: 4,
-    entryFee: 400,
-    format: 'single',
-    seriesLength: 1,
-    colors: ['#9b59b6', '#7d3c98'],
-    startHourET: 8,        // 8am ET daily (morning slot)
-  },
+  { id: 'grand-prix',  name: 'THE GRAND PRIX',     subtitle: '3-race series · Top finisher wins jackpot', multiplier: 5, entryFee: 500, format: 'series', seriesLength: 3, colors: ['#ffc220', '#ff6b1a'], startHourET: 20 },
+  { id: 'marble-mile', name: 'THE MARBLE MILE',    subtitle: 'Longest track · Endurance test',             multiplier: 3, entryFee: 300, format: 'single', seriesLength: 1, colors: ['#e74c3c', '#c0392b'], startHourET: 17 },
+  { id: 'speed-demon', name: 'SPEED DEMON DASH',   subtitle: 'Shortest track · Pure speed',                multiplier: 2, entryFee: 200, format: 'single', seriesLength: 1, colors: ['#2ecc71', '#1a9c58'], startHourET: 12 },
+  { id: 'chaos-cup',   name: 'CHAOS CUP',          subtitle: 'Random course · Random marbles · Anything goes', multiplier: 4, entryFee: 400, format: 'single', seriesLength: 1, colors: ['#9b59b6', '#7d3c98'], startHourET: 8  },
 ];
+
+/** Live-config view of NATIONAL_EVENTS — entry + multiplier come from
+ *  remote config; cosmetic and timing fields stay baked. Use this
+ *  everywhere players see prices or coins change hands. */
+export function getNationalEvents(): NationalEvent[] {
+  const nat = getConfig().nationalRaces;
+  if (!nat) return NATIONAL_EVENTS;
+  return NATIONAL_EVENTS.map((e) => {
+    const live =
+      e.id === 'grand-prix'  ? nat.grandPrix  :
+      e.id === 'marble-mile' ? nat.marbleMile :
+      e.id === 'speed-demon' ? nat.speedDemon :
+      e.id === 'chaos-cup'   ? nat.chaosCup   : null;
+    return live ? { ...e, entryFee: live.entry, multiplier: live.firstMult } : e;
+  });
+}
 
 export interface NationalEventState {
   courseIds: string[];
@@ -268,14 +250,19 @@ export function generateEventCourses(dateOverride?: string): Record<string, stri
 /** Points for placement in Grand Prix series races */
 export const SERIES_POINTS = [10, 7, 5, 4, 3, 2, 1, 0] as const;
 
-/** Calculate payout for a national race */
+/** Calculate payout for a national race. 2nd/3rd are entry × ratio
+ *  (preserving the original 0.5 / 0.25 hardcoded math), ratios pulled
+ *  from remote config so admin can tune them globally. */
 export function calculateNationalPayout(
   placement: number,
   entryFee: number,
   multiplier: number,
 ): number {
-  if (placement === 0) return Math.round(entryFee * multiplier); // 1st
-  if (placement === 1) return Math.round(entryFee * 0.5);        // 2nd
-  if (placement === 2) return Math.round(entryFee * 0.25);       // 3rd
+  const nat = getConfig().nationalRaces;
+  const secondRatio = nat?.secondRatio ?? 0.5;
+  const thirdRatio  = nat?.thirdRatio  ?? 0.25;
+  if (placement === 0) return Math.round(entryFee * multiplier);  // 1st
+  if (placement === 1) return Math.round(entryFee * secondRatio); // 2nd
+  if (placement === 2) return Math.round(entryFee * thirdRatio);  // 3rd
   return 0;
 }

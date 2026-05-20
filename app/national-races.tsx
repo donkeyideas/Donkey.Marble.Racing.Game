@@ -19,6 +19,7 @@ import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
 import {
   NATIONAL_EVENTS,
+  getNationalEvents,
   NationalEvent,
   EventDaypart,
   getEventDaypart,
@@ -185,7 +186,7 @@ export default function NationalRacesScreen() {
             ];
             const grouped = dayparts.map(dp => ({
               ...dp,
-              events: [...NATIONAL_EVENTS]
+              events: [...getNationalEvents()]
                 .filter(e => getEventDaypart(e) === dp.key)
                 .sort((a, b) => a.startHourET - b.startHourET),
             })).filter(g => g.events.length > 0);
