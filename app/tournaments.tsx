@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import { useGameStore, TOURNAMENT_ROUNDS } from '../state/gameStore';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { showModal } from '../components/GameModal';
-import { MP_TIERS } from '../lib/multiplayer';
 import { getConfig } from '../lib/remoteConfig';
 
 interface TournamentListEntry {
@@ -304,6 +303,7 @@ export default function TournamentsScreen() {
                 const mpCfg = getConfig().multiplayer;
                 const blitz = mpCfg?.blitz ?? { entry: 100, pool: 5000 };
                 const ratios = mpCfg?.placementRatios ?? { first: 0.60, second: 0.20, third: 0.10 };
+                const fmt = (n: number) => n.toLocaleString();
                 const fmtK = (n: number) => n >= 1000 ? `${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `${n}`;
                 return (
                   <>
@@ -378,6 +378,7 @@ export default function TournamentsScreen() {
                 const mpCfg = getConfig().multiplayer;
                 const champ = mpCfg?.invitational ?? { entry: 1000, pool: 50000 };
                 const ratios = mpCfg?.placementRatios ?? { first: 0.60, second: 0.20, third: 0.10 };
+                const fmt = (n: number) => n.toLocaleString();
                 const fmtK = (n: number) => n >= 1000 ? `${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `${n}`;
                 return (
                   <>
