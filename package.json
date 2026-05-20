@@ -38,7 +38,6 @@
     "react-native-gesture-handler": "~2.30.0",
     "react-native-iap": "^15.3.0",
     "react-native-reanimated": "4.2.1",
-    "react-native-record-screen": "^0.6.2",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.23.0",
     "react-native-view-shot": "4.0.3",
