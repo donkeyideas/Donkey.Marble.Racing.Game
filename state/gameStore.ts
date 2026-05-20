@@ -317,6 +317,18 @@ interface GameState {
   hasSeenIntroRace: boolean;
   setHasSeenIntroRace: (v: boolean) => void;
 
+  /**
+   * Transient flag — true while the first-launch tutorial race is in
+   * flight. The intro race runs in `quick_race` mode (same mechanics —
+   * no bet, reduced XP), but a new player finishing it should land on
+   * the main lobby to see the whole game, NOT the quick-race "RACE
+   * AGAIN → courses" destination. The results screen reads this flag to
+   * override its navigation, then clears it. Not persisted — an app
+   * restart naturally resets it, and the intro only runs once anyway.
+   */
+  introRacePending: boolean;
+  setIntroRacePending: (v: boolean) => void;
+
   // Stats
   totalRaces: number;
   totalWins: number;
@@ -534,6 +546,9 @@ export const useGameStore = create<GameState>()(
 
   hasSeenIntroRace: false,
   setHasSeenIntroRace: (v) => set({ hasSeenIntroRace: v }),
+
+  introRacePending: false,
+  setIntroRacePending: (v) => set({ introRacePending: v }),
 
   coins: 1000,
   currentBetId: null,
