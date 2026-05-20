@@ -482,14 +482,17 @@ const styles = StyleSheet.create({
 
   /* Tournament cards */
   tourneyCard: { borderRadius: BorderRadius.lg, padding: 18, marginBottom: 10 },
-  tourneyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  tourneyName: { fontFamily: Fonts.display, fontSize: 18, color: Colors.white, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  /* gap keeps the title and badge apart; the title flexes so a long
+   * name ("CHAMPION INVITATIONAL") wraps/shrinks instead of shoving
+   * the badge outside the card. */
+  tourneyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, gap: 8 },
+  tourneyName: { flex: 1, fontFamily: Fonts.display, fontSize: 18, color: Colors.white, textShadowColor: 'rgba(0,0,0,0.2)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
   tourneySub: { fontFamily: Fonts.body, fontSize: 12, color: 'rgba(255,255,255,0.7)', marginBottom: 12 },
-  openBadge: { backgroundColor: 'rgba(255,255,255,0.25)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
+  openBadge: { flexShrink: 0, backgroundColor: 'rgba(255,255,255,0.25)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
   openText: { fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.white, letterSpacing: 0.5 },
-  activeBadge: { backgroundColor: Colors.yellowAlpha20, paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
+  activeBadge: { flexShrink: 0, backgroundColor: Colors.yellowAlpha20, paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
   activeText: { fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.yellow, letterSpacing: 0.5 },
-  lockedBadge: { backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
+  lockedBadge: { flexShrink: 0, backgroundColor: 'rgba(255,255,255,0.15)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: BorderRadius.pill },
   lockedText: { fontFamily: Fonts.bodyBold, fontSize: 10, color: Colors.whiteAlpha50, letterSpacing: 0.5 },
 
   payoutPreviewRow: {

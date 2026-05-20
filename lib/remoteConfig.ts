@@ -5,7 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 /*  Falls back to hardcoded defaults if offline/error                  */
 /* ------------------------------------------------------------------ */
 
-const CONFIG_URL = __DEV__
+/* __DEV__ is a Metro-injected global — guard the reference so this
+ * module can also be imported by plain-Node tooling (track audit
+ * scripts) without a "ReferenceError: __DEV__ is not defined" at load.
+ * In the app Metro always defines it; in Node it's treated as prod. */
+const IS_DEV = typeof __DEV__ !== 'undefined' && __DEV__;
+const CONFIG_URL = IS_DEV
   ? 'http://localhost:3003/api/game-config'
   : 'https://marble-admin.donkeyideas.com/api/game-config';
 
