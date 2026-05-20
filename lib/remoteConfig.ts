@@ -64,7 +64,9 @@ export interface RemoteConfig {
     cup:          { entry: number; pool: number };
     invitational: { entry: number; pool: number };
     rake: number;
-    placementRatios: { first: number; second: number; third: number };
+    /* first/second/third are used by the 'standard' payout mode;
+     * fourth is consumed by 'survivors' mode (4-place payout). */
+    placementRatios: { first: number; second: number; third: number; fourth?: number };
   };
   /* Challenge coin rewards. Mirror data/challenges.ts shape. */
   challenges?: {
@@ -86,6 +88,8 @@ export interface RemoteConfig {
   /* Bet house edge — proportion of fair odds the house keeps. 0.10 =
    * payouts use 90% of fair odds. */
   betHouseEdge?: number;
+  /* Season-pass XP grants per race mode. */
+  passXp?: { betRace: number; quickRace: number; winBonus: number };
   xpPerLevel: number;
   /**
    * Per-track custom background images. Maps a course id (e.g.
@@ -152,7 +156,7 @@ export const DEFAULT_CONFIG: RemoteConfig = {
     cup:          { entry: 500,  pool: 25000 },
     invitational: { entry: 1000, pool: 50000 },
     rake: 0.20,
-    placementRatios: { first: 0.60, second: 0.20, third: 0.10 },
+    placementRatios: { first: 0.60, second: 0.20, third: 0.10, fourth: 0.05 },
   },
   challenges: {
     daily:  { win: 300, top3: 200, streak2: 400, wins3: 500 },
@@ -168,6 +172,7 @@ export const DEFAULT_CONFIG: RemoteConfig = {
     whale:   { coins: 40000, promo: 0.60 },
   },
   betHouseEdge: 0.10,
+  passXp: { betRace: 250, quickRace: 125, winBonus: 500 },
   trackBgImages: {},
 };
 

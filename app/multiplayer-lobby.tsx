@@ -26,6 +26,7 @@ import {
   LobbyPlayer,
   PayoutMode,
   PAYOUT_BREAKDOWNS,
+  getPayoutBreakdowns,
   PAYOUT_MODE_META,
   computePool,
   MP_RAKE,
@@ -721,7 +722,7 @@ export default function MultiplayerLobbyScreen() {
 
               {(['standard', 'winner_takes_all', 'survivors'] as PayoutMode[]).map((mode) => {
                 const meta = PAYOUT_MODE_META[mode];
-                const breakdown = PAYOUT_BREAKDOWNS[mode];
+                const breakdown = getPayoutBreakdowns()[mode];
                 const top = breakdown[0];
                 const topPayout = Math.floor(maxPool * top.pct / 100);
                 const queued = queueCounts[`${tier}-${mode}` as const] ?? 0;

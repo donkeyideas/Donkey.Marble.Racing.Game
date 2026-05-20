@@ -589,8 +589,12 @@ export const useGameStore = create<GameState>()(
     // constant when remote config hasn't loaded yet.
     const MAX_PASS_LEVEL = 30;
     const xpPerLevel = getXpPerLevel();
-    const xpGain = isQuickRace ? 125 : 250;
-    const xpWinBonus = isQuickRace ? 0 : (result.won ? 500 : 0);
+    /* XP grants are admin-tunable via remote config passXp. Defaults
+     * mirror the historical hardcoded values so existing balance math
+     * is preserved if the remote field is absent. */
+    const xpCfg = getConfig().passXp ?? { betRace: 250, quickRace: 125, winBonus: 500 };
+    const xpGain = isQuickRace ? xpCfg.quickRace : xpCfg.betRace;
+    const xpWinBonus = isQuickRace ? 0 : (result.won ? xpCfg.winBonus : 0);
     let xp = passXp + xpGain + xpWinBonus;
     let lvl = passLevel;
     while (xp >= xpPerLevel && lvl < MAX_PASS_LEVEL) {

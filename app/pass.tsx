@@ -7,8 +7,8 @@ import { Colors, Fonts, BorderRadius } from '../theme';
 import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
-import { PASS_REWARDS, PassTrack } from '../data/seasonPass';
-import { getXpPerLevel } from '../lib/remoteConfig';
+import { getPassRewards, PassTrack } from '../data/seasonPass';
+import { getXpPerLevel, getConfig } from '../lib/remoteConfig';
 
 function getTrackTabs(passTrack: PassTrack): { label: string; sublabel?: string; value: PassTrack }[] {
   return [
@@ -36,14 +36,14 @@ export default function PassScreen() {
   const [activeTrack, setActiveTrack] = useState<PassTrack>('free');
 
   const seasonNum = season?.seasonNumber ?? 1;
-  const earnedFreeCount = PASS_REWARDS.filter((r) => r.track === 'free' && passLevel > r.level).length;
+  const earnedFreeCount = getPassRewards().filter((r) => r.track === 'free' && passLevel > r.level).length;
 
   const xpPerLevel = getXpPerLevel();
   const xpPercent = Math.round((passXp / xpPerLevel) * 100);
 
   const filteredRewards = activeTrack === 'free'
-    ? PASS_REWARDS
-    : PASS_REWARDS.filter((r) => r.track === activeTrack || r.track === 'free');
+    ? getPassRewards()
+    : getPassRewards().filter((r) => r.track === activeTrack || r.track === 'free');
 
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96']} style={styles.fill}>
@@ -78,7 +78,14 @@ export default function PassScreen() {
                 style={[styles.xpBarFill, { width: `${xpPercent}%` }]}
               />
             </View>
-            <Text style={styles.xpHint}>+250 XP per race · +500 XP bonus for wins</Text>
+            {(() => {
+              const x = getConfig().passXp ?? { betRace: 250, winBonus: 500, quickRace: 125 };
+              return (
+                <Text style={styles.xpHint}>
+                  +{x.betRace} XP per race · +{x.winBonus} XP bonus for wins
+                </Text>
+              );
+            })()}
           </View>
 
           {/* Track tabs */}

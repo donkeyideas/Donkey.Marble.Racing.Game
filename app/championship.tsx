@@ -13,6 +13,7 @@ import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
 import { useGameStore } from '../state/gameStore';
+import { getConfig } from '../lib/remoteConfig';
 
 function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
@@ -221,7 +222,11 @@ export default function ChampionshipScreen() {
                     : allEliminated.length > 0 && allEliminated.includes(playerMarbleId)
                       ? allEliminated.length - allEliminated.indexOf(playerMarbleId) + 1
                       : 0;
-                  const reward = placement === 1 ? 5000 : placement === 2 ? 2500 : placement === 3 ? 1000 : 0;
+                  const po = getConfig().playoffPayouts;
+                  const reward = placement === 1 ? (po?.champion ?? 5000)
+                    : placement === 2 ? (po?.runnerUp ?? 2500)
+                    : placement === 3 ? (po?.top3 ?? 1000)
+                    : 0;
                   if (reward <= 0) {
                     return (
                       <View style={styles.rewardBadgeMuted}>
@@ -241,7 +246,9 @@ export default function ChampionshipScreen() {
                 })()}
                 {!isFranchise && (
                   <View style={styles.rewardBadge}>
-                    <Text style={styles.rewardText}>+1,500 coins (Season Complete)</Text>
+                    <Text style={styles.rewardText}>
+                      +{(getConfig().playoffPayouts?.bettorComplete ?? 1500).toLocaleString()} coins (Season Complete)
+                    </Text>
                   </View>
                 )}
               </View>
@@ -342,14 +349,23 @@ export default function ChampionshipScreen() {
                 label={`START SEASON ${(season?.seasonNumber ?? 1) + 1}`}
                 onPress={handleNewSeason}
               />
-              <Text style={styles.newSeasonBonus}>
-                +{Math.min(2500, 500 + ((season?.seasonNumber ?? 1) - 1) * 250).toLocaleString()} free coins on start
-              </Text>
-              <Text style={styles.newSeasonHint}>
-                Returning-player bonus credited to your balance the moment you start
-                the next season. Grows by 250 coins each season (caps at 2,500). No
-                entry fee — starting a season is always free.
-              </Text>
+              {(() => {
+                const sb = getConfig().seasonStarterBonus ?? { base: 500, increment: 250, cap: 2500 };
+                const nextSeason = (season?.seasonNumber ?? 1) + 1;
+                const bonus = Math.min(sb.cap, sb.base + (nextSeason - 2) * sb.increment);
+                return (
+                  <>
+                    <Text style={styles.newSeasonBonus}>
+                      +{bonus.toLocaleString()} free coins on start
+                    </Text>
+                    <Text style={styles.newSeasonHint}>
+                      Returning-player bonus credited to your balance the moment you start
+                      the next season. Grows by {sb.increment.toLocaleString()} coins each season
+                      (caps at {sb.cap.toLocaleString()}). No entry fee — starting a season is always free.
+                    </Text>
+                  </>
+                );
+              })()}
             </>
           ) : (
             // ── Playoffs in progress ──

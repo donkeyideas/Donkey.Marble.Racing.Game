@@ -43,9 +43,19 @@ function buildTournamentsList(): TournamentListEntry[] {
   const cfg = getConfig();
   const fees = cfg.tournamentEntryFees ?? { daily: 100, weekly: 500, champion: 1000 };
   const prizes = cfg.tournamentPrizes ?? { daily: 4600, weekly: 23000, champion: 46000 };
+  /* Round payouts pulled live from remote config so the marketing
+   * preview matches the actual gameStore.handleTournamentResult math.
+   * Was previously a stale hardcoded "R4: 50 · R5: 100 · R6: 250" that
+   * silently lied when admins tuned survival rewards. */
+  const rounds = cfg.tournamentRoundPayouts ?? {
+    daily:    [0, 0, 0, 50,  100,  250,  prizes.daily],
+    weekly:   [0, 0, 0, 250, 500,  1250, prizes.weekly],
+    champion: [0, 0, 0, 500, 1000, 2500, prizes.champion],
+  };
   const fmt = (n: number) => n.toLocaleString();
-  /* Round payouts mirror getTournamentPayouts in gameStore. Listed here for
-   * the marketing preview only; the canonical payouts come from the store. */
+  const fmtK = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `${n}`;
+  const preview = (arr: number[]) =>
+    `R4: ${fmtK(arr[3])} · R5: ${fmtK(arr[4])} · R6: ${fmtK(arr[5])} · R7: ${fmtK(arr[6])}`;
   return [
     {
       id: 'daily-blitz',
@@ -54,7 +64,7 @@ function buildTournamentsList(): TournamentListEntry[] {
       prizePool: fmt(prizes.daily),
       entryFee: fees.daily,
       format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-      payoutPreview: `R4: 50 · R5: 100 · R6: 250 · R7: ${fmt(prizes.daily)}`,
+      payoutPreview: preview(rounds.daily),
       colors: ['#00b4d8', '#0077b6'],
       minLevel: 0,
     },
@@ -65,7 +75,7 @@ function buildTournamentsList(): TournamentListEntry[] {
       prizePool: fmt(prizes.weekly),
       entryFee: fees.weekly,
       format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-      payoutPreview: `R4: 250 · R5: 500 · R6: 1,250 · R7: ${fmt(prizes.weekly)}`,
+      payoutPreview: preview(rounds.weekly),
       colors: ['#ffc220', '#e6a800'],
       minLevel: 0,
     },
@@ -76,7 +86,7 @@ function buildTournamentsList(): TournamentListEntry[] {
       prizePool: fmt(prizes.champion),
       entryFee: fees.champion,
       format: `8 marbles · ${TOURNAMENT_ROUNDS} rounds`,
-      payoutPreview: `R4: 500 · R5: 1K · R6: 2,500 · R7: ${fmt(prizes.champion)}`,
+      payoutPreview: preview(rounds.champion),
       colors: ['#e74c3c', '#c0392b'],
       minLevel: 10,
     },
@@ -90,11 +100,11 @@ export default function TournamentsScreen() {
   const tournaments = useGameStore((s) => s.tournaments);
   const enterTournament = useGameStore((s) => s.enterTournament);
 
-  /* Memoize so re-renders don't rebuild the array every frame; remote
-   * config changes infrequently enough that an empty dep array is fine.
-   * If we later want hot-reload on config push, swap to a live config
-   * subscription hook. */
-  const TOURNAMENTS_LIST = useMemo(() => buildTournamentsList(), []);
+  /* Rebuild every render so live admin config edits show up without a
+   * remount. Cheap — six tiny object literals. Previously memo'd with
+   * empty deps, which froze the displayed payouts to whatever the
+   * config said at first mount (stale after admin tunes). */
+  const TOURNAMENTS_LIST = buildTournamentsList();
 
   const handleEnter = (tourneyId: string) => {
     // If already in a tournament, jump straight to the bracket — no re-charge.

@@ -774,44 +774,43 @@ export function calculateMPPayout(
 
   const mode = lobby.payoutMode || 'standard';
 
+  /* All three modes now read admin-configurable ratios. The "standard"
+   * vs "survivors" distinction is which placements get paid:
+   *   - standard: 1st/2nd/3rd only (4th+ get nothing)
+   *   - survivors: 1st/2nd/3rd/4th (4th paid for surviving to top half)
+   *   - winner_takes_all: 1st gets the whole pool, ignoring ratios
+   * Ratios live under multiplayer.placementRatios in remote config. */
+  const { getConfig } = require('./remoteConfig');
+  const ratios = getConfig().multiplayer?.placementRatios ?? { first: 0.60, second: 0.20, third: 0.10, fourth: 0.05 };
+
   switch (mode) {
     case 'winner_takes_all':
       return placement === 1 ? pool : 0;
 
     case 'survivors':
-      // 8 → 7 → 6 → 5 → 4 → 3 → 2 → 1 eliminations
-      // 4th: 5% (survived R1–R4 eliminations)
-      // 3rd: 10%
-      // 2nd: 25%
-      // 1st: 60%
-      // 5-8th: 0
       switch (placement) {
-        case 1: return Math.floor(pool * 0.60);
-        case 2: return Math.floor(pool * 0.25);
-        case 3: return Math.floor(pool * 0.10);
-        case 4: return Math.floor(pool * 0.05);
+        case 1: return Math.floor(pool * ratios.first);
+        case 2: return Math.floor(pool * ratios.second);
+        case 3: return Math.floor(pool * ratios.third);
+        case 4: return Math.floor(pool * (ratios.fourth ?? 0.05));
         default: return 0;
       }
 
     case 'standard':
-    default: {
-      /* Standard mode ratios are admin-configurable via remote config
-       * (mp_first_ratio / mp_second_ratio / mp_third_ratio). Falls back
-       * to historical 50/30/20 when remote config isn't loaded. */
-      const { getConfig } = require('./remoteConfig');
-      const ratios = getConfig().multiplayer?.placementRatios ?? { first: 0.50, second: 0.30, third: 0.20 };
+    default:
       switch (placement) {
         case 1: return Math.floor(pool * ratios.first);
         case 2: return Math.floor(pool * ratios.second);
         case 3: return Math.floor(pool * ratios.third);
         default: return 0;
       }
-    }
   }
 }
 
 /** Payout structure as percentages, used by the lobby UI to show players
- *  what they're playing for before the match starts. */
+ *  what they're playing for before the match starts. Static fallback —
+ *  prefer getPayoutBreakdowns() at render time so admin edits show up
+ *  without waiting for an app build. */
 export const PAYOUT_BREAKDOWNS: Record<PayoutMode, { placement: string; pct: number }[]> = {
   standard: [
     { placement: '1st', pct: 50 },
@@ -828,6 +827,28 @@ export const PAYOUT_BREAKDOWNS: Record<PayoutMode, { placement: string; pct: num
     { placement: '4th', pct: 5 },
   ],
 };
+
+/** Live payout breakdowns built from admin-configurable placement ratios. */
+export function getPayoutBreakdowns(): Record<PayoutMode, { placement: string; pct: number }[]> {
+  const { getConfig } = require('./remoteConfig');
+  const r = getConfig().multiplayer?.placementRatios;
+  if (!r) return PAYOUT_BREAKDOWNS;
+  const pct = (n: number) => Math.round(n * 100);
+  return {
+    standard: [
+      { placement: '1st', pct: pct(r.first) },
+      { placement: '2nd', pct: pct(r.second) },
+      { placement: '3rd', pct: pct(r.third) },
+    ],
+    winner_takes_all: [{ placement: '1st', pct: 100 }],
+    survivors: [
+      { placement: '1st', pct: pct(r.first) },
+      { placement: '2nd', pct: pct(r.second) },
+      { placement: '3rd', pct: pct(r.third) },
+      { placement: '4th', pct: pct(r.fourth ?? 0.05) },
+    ],
+  };
+}
 
 export const PAYOUT_MODE_META: Record<PayoutMode, { label: string; tagline: string }> = {
   standard:         { label: 'Standard',          tagline: 'Top 3 split the pot. 4–8 lose their entry.' },
