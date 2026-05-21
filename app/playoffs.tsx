@@ -52,9 +52,16 @@ export default function PlayoffsScreen() {
     const randomCourse = COURSES[Math.floor(Math.random() * COURSES.length)];
     selectCourse(randomCourse.id);
     setActiveMode({ type: 'playoff', round: playoffs.currentRound });
-    if (isFranchise && playerMarbleId) {
-      selectMarble(getMarble(playerMarbleId));
-    }
+    // Only pick the player's marble when it's actually still racing the
+    // bracket. If it didn't qualify or was already eliminated, leave the
+    // pick null — the player is a spectator and the results screen shows
+    // the neutral spectator view instead of a false "you won".
+    const playerIsRacing =
+      isFranchise &&
+      !!playerMarbleId &&
+      playerInPlayoffs &&
+      !playoffs.eliminatedIds.includes(playerMarbleId);
+    selectMarble(playerIsRacing ? getMarble(playerMarbleId!) : (null as any));
     setBetAmount(0);
     router.push('/race');
   };

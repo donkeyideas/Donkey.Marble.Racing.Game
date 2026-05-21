@@ -598,9 +598,12 @@ export default function RaceScreen() {
         won = selectedMarble?.id !== lastPlaceId;
       }
     } else if (activeMode.type === 'playoff') {
-      // Playoff KOTH: not last place = survived, last place with lives = saved
+      // Playoff KOTH: not last place = survived, last place with lives = saved.
+      // When selectedMarble is null the player has no marble in the bracket
+      // (didn't qualify / eliminated) — they're a spectator, so `won` stays
+      // false and the neutral spectator results screen is shown.
       const season = useGameStore.getState().season;
-      if (season?.playoffs) {
+      if (season?.playoffs && selectedMarble) {
         const remainingIds = season.playoffs.seeds.filter(id => !season.playoffs!.eliminatedIds.includes(id));
         let lastPlaceId = '';
         for (let i = p.length - 1; i >= 0; i--) {
@@ -651,7 +654,9 @@ export default function RaceScreen() {
     // Unlike `won` (which means "successful round" — survived/podium/payout), this is the
     // unambiguous "did your marble cross the finish line first" check.
     const playerWonRace = playerPlacement === 1;
-    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace });
+    // Playoff race with no player marble in the bracket → pure spectator.
+    const isPlayoffSpectator = activeMode.type === 'playoff' && !selectedMarble;
+    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace, spectator: isPlayoffSpectator });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
     /* Set outcome BEFORE haptics so the overlay renders the right

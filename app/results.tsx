@@ -803,6 +803,88 @@ function LossScreen() {
   );
 }
 
+// ── Spectator Screen ────────────────────────────────────────────────────────
+// Shown for a playoff race the player has no marble in (didn't qualify or was
+// eliminated). Neutral — no confetti, no "you won", no payout, no stat growth.
+function SpectatorScreen() {
+  const router = useRouter();
+  const lastResult = useGameStore((s) => s.lastResult)!;
+  const resetBet = useGameStore((s) => s.resetBet);
+  const activeMode = useGameStore((s) => s.activeMode);
+  const odds = useGameStore((s) => s.getOdds());
+
+  const dest = getModeDest(activeMode);
+  const winner = lastResult.positions[0]?.marble;
+
+  const handlePrimary = () => {
+    resetBet();
+    router.replace(dest.primary as any);
+  };
+  const handleSecondary = () => {
+    resetBet();
+    router.replace((dest.secondary as any) || '/lobby');
+  };
+
+  return (
+    <LinearGradient colors={['#1d56d4', '#0a3a96', '#0a1a3a']} style={styles.fill}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.lossTitle}>RACE COMPLETE</Text>
+        <Text style={styles.lossPlacement}>
+          {winner ? `${winner.name} won the race` : 'The race has finished'}
+        </Text>
+        <Text style={[styles.lossPlacement, { marginBottom: 20 }]}>
+          You&apos;re watching the playoffs — your marble isn&apos;t in this bracket.
+        </Text>
+
+        {/* Results card */}
+        <View style={styles.lossCard}>
+          <Text style={styles.lossCardTitle}>FINISH ORDER</Text>
+          {lastResult.positions.map((entry, index) => (
+            <FinishRow
+              key={entry.marble.id}
+              position={index + 1}
+              marble={entry.marble}
+              odds={odds[entry.marble.id] ?? 2.0}
+              isWinner={index === 0}
+              isPlayerPick={false}
+              variant="loss"
+            />
+          ))}
+        </View>
+
+        {/* Actions */}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={handlePrimary}
+            style={({ pressed }) => [styles.tryAgainBtn, pressed && styles.pressed]}
+          >
+            <LinearGradient
+              colors={[Colors.yellowBright, Colors.yellow]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.tryAgainGradient}
+            >
+              <Text style={styles.tryAgainText}>{dest.primaryLabel}</Text>
+            </LinearGradient>
+          </Pressable>
+          {dest.secondary && (
+            <Pressable
+              onPress={handleSecondary}
+              style={({ pressed }) => [styles.ghostBtnLoss, pressed && styles.pressed]}
+            >
+              <Text style={styles.ghostBtnLossText}>{dest.secondaryLabel}</Text>
+            </Pressable>
+          )}
+        </View>
+      </ScrollView>
+    </LinearGradient>
+  );
+}
+
 // ── Main Export ──────────────────────────────────────────────────────────────
 export default function ResultsScreen() {
   const lastResult = useGameStore((s) => s.lastResult);
@@ -815,6 +897,7 @@ export default function ResultsScreen() {
     );
   }
 
+  if (lastResult.spectator) return <SpectatorScreen />;
   return lastResult.won ? <WinScreen /> : <LossScreen />;
 }
 

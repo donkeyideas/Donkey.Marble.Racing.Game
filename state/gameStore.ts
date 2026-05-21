@@ -69,6 +69,11 @@ export interface RaceResult {
   // Use this for: streak counting, server analytics, "YOU WON!" celebrations.
   // Distinct from `won` because tournament/playoff use "survived = won" semantics.
   playerWonRace: boolean;
+  // True when the player has no stake in the race — currently only a playoff
+  // race the player's franchise marble didn't qualify for (or was eliminated
+  // from). Drives the neutral "spectator" results screen so the player never
+  // sees a false "YOU WON!"/"PODIUM FINISH!" for a race they only watched.
+  spectator?: boolean;
 }
 
 export interface CoinTransaction {
@@ -643,7 +648,9 @@ export const useGameStore = create<GameState>()(
         newTotalWins++;
         newStreak++;
         newBest = Math.max(newBest, newStreak);
-      } else {
+      } else if (!result.spectator) {
+        // A spectated playoff race the player isn't in must not reset their
+        // win streak — they didn't lose, they just watched.
         newStreak = 0;
       }
 
