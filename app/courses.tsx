@@ -8,6 +8,7 @@ import MarbleDot from '../components/MarbleDot';
 import BackButton from '../components/BackButton';
 import { useGameStore } from '../state/gameStore';
 import { ALL_COURSES as COURSES, CourseTheme, THEME_COLORS } from '../data/courses';
+import { showModal } from '../components/GameModal';
 
 const FILTER_TABS: { label: string; value: CourseTheme | 'all' | 'grand-prix' }[] = [
   { label: 'ALL', value: 'all' },
@@ -81,18 +82,44 @@ export default function CoursesScreen() {
 
   const setActiveMode = useGameStore(s => s.setActiveMode);
 
-  const handlePlay = useCallback((courseId: string) => {
+  // Quick Race — just watch the race, no bet (the original behaviour).
+  const startWatch = useCallback((courseId: string) => {
     selectCourse(courseId);
     setActiveMode({ type: 'quick_race' });
     useGameStore.getState().resetBet();
     router.push('/race');
   }, [selectCourse, setActiveMode, router]);
 
+  // Quick Race — place a bet on the chosen course. Routes through the
+  // standard betting screen; that screen owns marble pick, wager, and the
+  // server-validated payout flow, exactly like a normal bet.
+  const startBet = useCallback((courseId: string) => {
+    selectCourse(courseId);
+    useGameStore.getState().resetBet();
+    setActiveMode({ type: 'bet' });
+    router.push('/betting');
+  }, [selectCourse, setActiveMode, router]);
+
+  // Tapping a course asks how to race it: watch for free, or bet to win coins.
+  const handleCoursePress = useCallback((courseId: string) => {
+    const course = COURSES.find((c) => c.id === courseId);
+    showModal({
+      title: 'RACE MODE',
+      message: course
+        ? `${course.name} — just watch, or place a bet on a marble to win coins.`
+        : 'Just watch the race, or place a bet on a marble to win coins.',
+      buttons: [
+        { label: 'Just Watch', variant: 'blue', onPress: () => startWatch(courseId) },
+        { label: 'Place a Bet', variant: 'yellow', onPress: () => startBet(courseId) },
+      ],
+    });
+  }, [startWatch, startBet]);
+
   const handleRandom = useCallback(() => {
     const pool = filteredCourses.length > 0 ? filteredCourses : COURSES;
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    handlePlay(pick.id);
-  }, [filteredCourses, handlePlay]);
+    handleCoursePress(pick.id);
+  }, [filteredCourses, handleCoursePress]);
 
   const ListHeader = useMemo(() => (
     <>
@@ -169,7 +196,7 @@ export default function CoursesScreen() {
           contentContainerStyle={styles.scrollContent}
           data={filteredCourses}
           keyExtractor={(c) => c.id}
-          renderItem={({ item }) => <CourseRow course={item} onPress={handlePlay} />}
+          renderItem={({ item }) => <CourseRow course={item} onPress={handleCoursePress} />}
           ListHeaderComponent={ListHeader}
           showsVerticalScrollIndicator={false}
           initialNumToRender={8}
