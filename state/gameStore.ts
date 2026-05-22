@@ -74,7 +74,113 @@ export interface RaceResult {
   // from). Drives the neutral "spectator" results screen so the player never
   // sees a false "YOU WON!"/"PODIUM FINISH!" for a race they only watched.
   spectator?: boolean;
+  // Per-marble physics/race telemetry captured by the engine this race.
+  // Optional — older callers / replays won't have it; analytics folds it in
+  // when present. See engine/race.ts MarbleTelemetry.
+  telemetry?: MarbleTelemetry[];
 }
+
+/**
+ * Per-marble telemetry shape. Mirrors engine/race.ts MarbleTelemetry; declared
+ * here too so the store has no import cycle with the engine module.
+ */
+export interface MarbleTelemetry {
+  marbleId: string;
+  finishTime: number;
+  finishPlace: number;
+  peakVelocity: number;
+  avgVelocity: number;
+  velocitySampleCount: number;
+  bounces: number;
+  bumperHits: number;
+  pegContacts: number;
+  wallScrapes: number;
+  speedBurstHits: number;
+  posAt25: number;
+  posAt50: number;
+  posAt75: number;
+  posAtFinish: number;
+  overtakes: number;
+  timesPassed: number;
+  wireToWire: boolean;
+  leadTimeFraction: number;
+}
+
+/**
+ * Lifetime accumulated analytics for one marble. All counters are TOTALS so
+ * any average is derived as total / count at read time. Persisted.
+ */
+export interface MarbleAnalytics {
+  races: number;                 // races counted into analytics (non quick-race)
+  // ELO rating — standard Elo, K=32, everyone starts at 1500.
+  elo: number;
+  eloHistory: number[];          // ELO after each counted race (capped at 60)
+  // Finish-position accumulators.
+  finishPositions: number[];     // recent finish places (capped at 60) — for σ
+  podiums: number;               // top-3 finishes
+  finishCounts: number[];        // index 0..7 → count of 1st..8th place finishes
+  totalFinishPosition: number;   // Σ finish place — for average position
+  // Physics telemetry totals (divide by races for averages).
+  peakVelocity: number;          // best single-race peak velocity ever
+  totalAvgVelocity: number;      // Σ per-race avg velocity
+  totalBounces: number;
+  totalBumperHits: number;
+  totalPegContacts: number;
+  totalWallScrapes: number;
+  totalSpeedBurstHits: number;
+  // Race intelligence totals.
+  totalOvertakes: number;
+  totalTimesPassed: number;
+  wireToWireWins: number;
+  totalLeadTimeFraction: number; // Σ per-race lead fraction
+  // Position-by-stage totals (divide by races for the stage line chart).
+  totalPosAt25: number;
+  totalPosAt50: number;
+  totalPosAt75: number;
+  // Clutch — wins/races in close finishes (small finish-time margin).
+  closeRaces: number;
+  closeWins: number;
+  // Per-theme W-L. Keyed by course theme string.
+  themeStats: Record<string, { wins: number; races: number; totalPos: number }>;
+}
+
+/* One invited friend's referral record. These are SERVER-issued — the
+ * client never fabricates them, because referral attribution + the +500
+ * reward must be verified server-side. */
+export interface Referral {
+  /** Display name of the invited friend (server-provided). */
+  name: string;
+  /** pending = signed up, not racing yet · racing = 1-2 of 3 races done ·
+   *  earned = completed 3 races, +500 granted server-side. */
+  status: 'pending' | 'racing' | 'earned';
+  /** Races the invited friend has completed (0-3). */
+  racesCompleted: number;
+  /** Epoch ms when the invite was recorded. */
+  invitedAt: number;
+}
+
+/* User-facing toggle settings shown on the Settings screen.
+ * The first four are notification preferences (persisted only — there is
+ * no scheduler yet). The last three gate gameplay subsystems. */
+export interface GameSettings {
+  raceReminders: boolean;
+  primeTimeAlerts: boolean;
+  nightCapAlerts: boolean;
+  dailyBonusReminder: boolean;
+  sound: boolean;
+  vibration: boolean;
+  cameraShake: boolean;
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  raceReminders: true,
+  primeTimeAlerts: true,
+  nightCapAlerts: true,
+  dailyBonusReminder: true,
+  sound: true,
+  vibration: true,
+  cameraShake: true,
+};
 
 export interface CoinTransaction {
   type: 'bet' | 'payout' | 'daily_bonus' | 'purchase';
@@ -340,6 +446,30 @@ interface GameState {
   currentStreak: number;
   marbleStats: Record<string, { wins: number; losses: number; betCount: number }>;
 
+  // Deep analytics — lifetime physics/race telemetry per marble + ELO.
+  marbleAnalytics: Record<string, MarbleAnalytics>;
+
+  /* User-facing toggle settings (Settings screen). All default to true.
+   * Notification flags are persisted only (no scheduler yet). Sound,
+   * vibration and camera-shake gate their respective subsystems. */
+  settings: GameSettings;
+  setSetting: (key: keyof GameSettings, value: boolean) => void;
+
+  /* Referral / invite-friends state.
+   *
+   * `referralCode` is a stable, human-readable code derived once from the
+   * Firebase uid (or a random-once seed) and never changes afterwards.
+   *
+   * `referrals` is populated by the SERVER — real referral attribution
+   * (who used your code, whether they finished 3 races) cannot be trusted
+   * client-side, so this stays empty until a server pushes confirmed
+   * referral records. The +500 reward is granted server-side; the client
+   * never self-credits coins for referrals. */
+  referralCode: string;
+  referrals: Referral[];
+  /** Idempotently derive + persist the referral code if it isn't set yet. */
+  ensureReferralCode: () => string;
+
   // Season
   seasonWeek: number;
   seasonStandings: Record<string, { wins: number; losses: number }>;
@@ -517,6 +647,170 @@ MARBLES.forEach((m) => {
   initialStandings[m.id] = { wins: 0, losses: 0 };
 });
 
+// ── Deep analytics helpers ──
+
+const ELO_START = 1500;
+const ELO_K = 32;
+const ELO_HISTORY_CAP = 60;
+
+/** A fresh, zeroed analytics record for one marble. */
+function emptyAnalytics(): MarbleAnalytics {
+  return {
+    races: 0,
+    elo: ELO_START,
+    eloHistory: [],
+    finishPositions: [],
+    podiums: 0,
+    finishCounts: [0, 0, 0, 0, 0, 0, 0, 0],
+    totalFinishPosition: 0,
+    peakVelocity: 0,
+    totalAvgVelocity: 0,
+    totalBounces: 0,
+    totalBumperHits: 0,
+    totalPegContacts: 0,
+    totalWallScrapes: 0,
+    totalSpeedBurstHits: 0,
+    totalOvertakes: 0,
+    totalTimesPassed: 0,
+    wireToWireWins: 0,
+    totalLeadTimeFraction: 0,
+    totalPosAt25: 0,
+    totalPosAt50: 0,
+    totalPosAt75: 0,
+    closeRaces: 0,
+    closeWins: 0,
+    themeStats: {},
+  };
+}
+
+/**
+ * Fold one race's results + telemetry into the lifetime marbleAnalytics map.
+ * PURE — returns a new map, mutates nothing. ELO is standard Elo (K=32,
+ * start 1500): each marble is scored pairwise against every other marble in
+ * the race (win = finished ahead). The per-marble net Elo delta is the sum
+ * of pairwise (actual − expected) deltas, applied once.
+ *
+ * `finishOrder` is the array of marble ids in finishing order (index 0 = 1st).
+ * `times` maps marbleId → finish time; used to flag close races for Clutch.
+ */
+function foldRaceAnalytics(
+  prev: Record<string, MarbleAnalytics>,
+  finishOrder: string[],
+  times: Record<string, number>,
+  telemetry: MarbleTelemetry[] | undefined,
+  courseTheme: string,
+): Record<string, MarbleAnalytics> {
+  const next: Record<string, MarbleAnalytics> = { ...prev };
+  const n = finishOrder.length;
+  if (n < 2) return next;
+
+  // Pre-race ELO snapshot for every racer (used by every pairwise calc).
+  const preElo: Record<string, number> = {};
+  finishOrder.forEach(id => { preElo[id] = (prev[id] ?? emptyAnalytics()).elo; });
+
+  // Pairwise Elo deltas — each marble vs every other marble.
+  const eloDelta: Record<string, number> = {};
+  finishOrder.forEach(id => { eloDelta[id] = 0; });
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = finishOrder[i], b = finishOrder[j]; // a finished ahead of b
+      const ea = 1 / (1 + Math.pow(10, (preElo[b] - preElo[a]) / 400));
+      const eb = 1 - ea;
+      eloDelta[a] += ELO_K * (1 - ea); // a "won" this pairing
+      eloDelta[b] += ELO_K * (0 - eb); // b "lost" this pairing
+    }
+  }
+
+  // Telemetry indexed by marble id for quick lookup.
+  const telById: Record<string, MarbleTelemetry> = {};
+  (telemetry ?? []).forEach(t => { telById[t.marbleId] = t; });
+
+  // Close-race detection: winner's margin over 2nd place is "small".
+  // 800ms threshold = a photo finish at the marble timescale.
+  const CLOSE_MARGIN_MS = 800;
+  const winnerTime = times[finishOrder[0]] ?? 0;
+  const runnerTime = times[finishOrder[1]] ?? 0;
+  const isCloseRace = winnerTime > 0 && runnerTime > 0 &&
+    Math.abs(runnerTime - winnerTime) <= CLOSE_MARGIN_MS;
+
+  finishOrder.forEach((id, idx) => {
+    const place = idx + 1;             // 1-indexed finish
+    const base = next[id] ?? emptyAnalytics();
+    const a: MarbleAnalytics = {
+      ...base,
+      finishCounts: [...base.finishCounts],
+      finishPositions: [...base.finishPositions],
+      eloHistory: [...base.eloHistory],
+      themeStats: { ...base.themeStats },
+    };
+    a.races += 1;
+    a.elo = Math.round(preElo[id] + eloDelta[id]);
+    a.eloHistory.push(a.elo);
+    if (a.eloHistory.length > ELO_HISTORY_CAP) a.eloHistory.shift();
+    a.finishPositions.push(place);
+    if (a.finishPositions.length > ELO_HISTORY_CAP) a.finishPositions.shift();
+    a.totalFinishPosition += place;
+    if (place <= 3) a.podiums += 1;
+    if (place >= 1 && place <= 8) a.finishCounts[place - 1] += 1;
+
+    // Theme split.
+    const ts = a.themeStats[courseTheme] ?? { wins: 0, races: 0, totalPos: 0 };
+    a.themeStats[courseTheme] = {
+      wins: ts.wins + (place === 1 ? 1 : 0),
+      races: ts.races + 1,
+      totalPos: ts.totalPos + place,
+    };
+
+    // Clutch — count this race if it was decided by a small margin.
+    if (isCloseRace) {
+      a.closeRaces += 1;
+      if (place === 1) a.closeWins += 1;
+    }
+
+    // Physics + race-intelligence telemetry.
+    const t = telById[id];
+    if (t) {
+      if (t.peakVelocity > a.peakVelocity) a.peakVelocity = t.peakVelocity;
+      a.totalAvgVelocity += t.avgVelocity;
+      a.totalBounces += t.bounces;
+      a.totalBumperHits += t.bumperHits;
+      a.totalPegContacts += t.pegContacts;
+      a.totalWallScrapes += t.wallScrapes;
+      a.totalSpeedBurstHits += t.speedBurstHits;
+      a.totalOvertakes += t.overtakes;
+      a.totalTimesPassed += t.timesPassed;
+      a.totalLeadTimeFraction += t.leadTimeFraction;
+      a.totalPosAt25 += t.posAt25;
+      a.totalPosAt50 += t.posAt50;
+      a.totalPosAt75 += t.posAt75;
+      if (t.wireToWire && place === 1) a.wireToWireWins += 1;
+    }
+    next[id] = a;
+  });
+  return next;
+}
+
+/**
+ * Build a stable, human-readable referral code from a seed string.
+ *
+ * Deterministic: the same seed always yields the same code, so a signed-in
+ * user keeps one code across reinstalls (seed = Firebase uid). When no uid
+ * is available the caller passes a random-once seed, and the result is
+ * persisted so it likewise never changes.
+ *
+ * Shape: an uppercase marble name + 2 digits, e.g. "ROCKY42".
+ */
+function generateReferralCode(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  hash = Math.abs(hash);
+  const marble = MARBLES[hash % MARBLES.length];
+  const digits = (hash % 100).toString().padStart(2, '0');
+  return `${marble.name.toUpperCase()}${digits}`;
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -575,7 +869,7 @@ export const useGameStore = create<GameState>()(
 
   lastResult: null,
   setLastResult: (result) => {
-    const { activeMode, seasonStandings, totalRaces, totalWins, currentStreak, bestStreak, passXp, passLevel, raceHistory, marbleStats, coinHistory } = get();
+    const { activeMode, seasonStandings, totalRaces, totalWins, currentStreak, bestStreak, passXp, passLevel, raceHistory, marbleStats, coinHistory, marbleAnalytics } = get();
 
     const isQuickRace = activeMode.type === 'quick_race';
 
@@ -598,6 +892,22 @@ export const useGameStore = create<GameState>()(
         const prev = newMarbleStats[result.playerPick.id] || { wins: 0, losses: 0, betCount: 0 };
         newMarbleStats[result.playerPick.id] = { ...prev, betCount: prev.betCount + 1 };
       }
+    }
+
+    // --- COMMON: deep analytics + ELO (all modes except quick race) ---
+    // Folds engine telemetry + finish order into the lifetime per-marble
+    // analytics map. Quick races are excluded to mirror marbleStats so the
+    // two records stay consistent.
+    let newMarbleAnalytics = marbleAnalytics;
+    if (!isQuickRace) {
+      const finishOrder = result.positions.map(p => p.marble.id);
+      const times: Record<string, number> = {};
+      result.positions.forEach(p => { times[p.marble.id] = p.time; });
+      const courseTheme =
+        COURSES.find(c => c.id === get().selectedCourseId)?.theme ?? 'unknown';
+      newMarbleAnalytics = foldRaceAnalytics(
+        marbleAnalytics, finishOrder, times, result.telemetry, courseTheme,
+      );
     }
 
     // --- COMMON: total races (all modes) ---
@@ -706,6 +1016,7 @@ export const useGameStore = create<GameState>()(
       coins: newCoins,
       seasonStandings: newStandings,
       marbleStats: newMarbleStats,
+      marbleAnalytics: newMarbleAnalytics,
       raceHistory: newHistory,
       totalRaces: newTotalRaces,
       totalWins: newTotalWins,
@@ -777,6 +1088,25 @@ export const useGameStore = create<GameState>()(
   totalWins: 0,
   currentStreak: 0,
   marbleStats: {},
+  marbleAnalytics: {},
+
+  settings: { ...DEFAULT_SETTINGS },
+  setSetting: (key, value) =>
+    set((s) => ({ settings: { ...s.settings, [key]: value } })),
+
+  referralCode: '',
+  referrals: [],
+  ensureReferralCode: () => {
+    const existing = get().referralCode;
+    if (existing) return existing;
+    /* Prefer the Firebase uid so the code survives a reinstall for
+     * signed-in users; otherwise seed from a random-once value. Either
+     * way the result is persisted, so the code is generated exactly once. */
+    const seed = get().firebaseUid ?? `anon-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+    const code = generateReferralCode(seed);
+    set({ referralCode: code });
+    return code;
+  },
 
   seasonWeek: 1,
   seasonStandings: { ...initialStandings },
@@ -2168,6 +2498,10 @@ export const useGameStore = create<GameState>()(
         currentStreak: state.currentStreak,
         bestStreak: state.bestStreak,
         marbleStats: state.marbleStats,
+        marbleAnalytics: state.marbleAnalytics,
+        settings: state.settings,
+        referralCode: state.referralCode,
+        referrals: state.referrals,
         seasonWeek: state.seasonWeek,
         seasonStandings: state.seasonStandings,
         dailyStreak: state.dailyStreak,
@@ -2189,7 +2523,7 @@ export const useGameStore = create<GameState>()(
         customTracks: state.customTracks,
         challenges: state.challenges,
       }),
-      version: 7,
+      version: 10,
       migrate: (persisted: any, version: number) => {
         if (version < 3 && persisted?.season) {
           persisted.season = null;
@@ -2262,7 +2596,27 @@ export const useGameStore = create<GameState>()(
             storeCoinsPurchasedToday: 0,
             storeLastPurchaseDate: '',
             challenges: { daily: [], weekly: [], lastDailyReset: '', lastWeeklyReset: '' },
+            marbleAnalytics: {},
           };
+        }
+        if (version < 8) {
+          /* Deep analytics added in v8 — backfill an empty record so the
+           * analytics screen reads a defined map on existing installs. */
+          persisted.marbleAnalytics = persisted.marbleAnalytics ?? {};
+        }
+        if (version < 9) {
+          /* Settings toggles added in v9 — backfill defaults so existing
+           * installs get a fully-populated settings object. Merge per-key
+           * so a partial persisted object still gets every flag. */
+          persisted.settings = { ...DEFAULT_SETTINGS, ...(persisted.settings ?? {}) };
+        }
+        if (version < 10) {
+          /* Referral / invite-friends state added in v10. Default the code
+           * to '' (the screen lazily derives + persists it on first open
+           * via ensureReferralCode) and the referrals list to empty — the
+           * list is server-populated, so existing installs start clean. */
+          persisted.referralCode = persisted.referralCode ?? '';
+          persisted.referrals = persisted.referrals ?? [];
         }
         return persisted;
       },

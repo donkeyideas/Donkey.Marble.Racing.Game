@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   StyleSheet,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -154,9 +155,14 @@ export default function AnalyticsScreen() {
 
           {/* Power rankings */}
           <Text style={styles.sectionTitle}>POWER RANKINGS</Text>
+          <Text style={styles.tapHint}>Tap a marble for deep analytics</Text>
 
           {rankings.map((entry, i) => (
-            <View key={entry.marble.id} style={styles.rankingCard}>
+            <Pressable
+              key={entry.marble.id}
+              style={({ pressed }) => [styles.rankingCard, pressed && styles.rankingCardPressed]}
+              onPress={() => router.push({ pathname: '/marble-analytics', params: { id: entry.marble.id } })}
+            >
               {/* Rank + marble */}
               <View style={styles.rankingHeader}>
                 <View style={[
@@ -218,7 +224,7 @@ export default function AnalyticsScreen() {
                   })}
                 </Text>
               </View>
-            </View>
+            </Pressable>
           ))}
         </ScrollView>
       </SafeAreaView>
@@ -235,7 +241,8 @@ const styles = StyleSheet.create({
   title: { fontFamily: Fonts.display, fontSize: 28, color: Colors.white, textAlign: 'center', marginBottom: 4 },
   subtitle: { fontFamily: Fonts.body, fontSize: 13, color: Colors.whiteAlpha40, textAlign: 'center', marginBottom: 16 },
 
-  sectionTitle: { fontFamily: Fonts.display, fontSize: 13, color: Colors.whiteAlpha50, letterSpacing: 2, marginBottom: 10, marginTop: 10 },
+  sectionTitle: { fontFamily: Fonts.display, fontSize: 13, color: Colors.whiteAlpha50, letterSpacing: 2, marginBottom: 4, marginTop: 10 },
+  tapHint: { fontFamily: Fonts.body, fontSize: 11, color: Colors.whiteAlpha35, marginBottom: 10 },
 
   /* Overview */
   overviewRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
@@ -262,6 +269,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 10,
   },
+  rankingCardPressed: { opacity: 0.6 },
   rankingHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   rankNum: { width: 28, height: 28, borderRadius: 8, backgroundColor: Colors.whiteAlpha07, alignItems: 'center', justifyContent: 'center' },
   rankNumText: { fontFamily: Fonts.bodyBold, fontSize: 12, color: Colors.whiteAlpha35 },

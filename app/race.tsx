@@ -11,7 +11,7 @@ import { ALL_COURSES as COURSES } from '../data/courses';
 import { getBgSprite, getThemeSprites, ThemeSprites, THEME_OVERLAYS } from '../assets/kenney/spriteMap';
 import RaceCanvas from '../rendering/RaceCanvas';
 import { useRaceSharedState } from '../rendering/raceSharedState';
-import { preloadRaceSounds, unloadRaceSounds, playSound } from '../utils/audioManager';
+import { preloadRaceSounds, unloadRaceSounds, playSound, setAudioEnabled } from '../utils/audioManager';
 import { getConfig, fetchRemoteConfig } from '../lib/remoteConfig';
 
 /** Toggle to fall back to solid-color View rendering (pre-sprite) */
@@ -568,11 +568,14 @@ export default function RaceScreen() {
   const playerPickFinished = useRef(false);
 
   const activeMode = useGameStore(s => s.activeMode);
+  const cameraShakeEnabled = useGameStore(s => s.settings.cameraShake);
 
   const handleEnd = useCallback(() => {
     if (!engRef.current || doneRef.current) return;
     doneRef.current = true;
     const p = engRef.current.getPositions();
+    // Pure read of engine telemetry — does not touch the simulation.
+    const telemetry = engRef.current.getTelemetry();
     const odds = getOdds();
 
     const playerPlacement = selectedMarble
@@ -656,7 +659,7 @@ export default function RaceScreen() {
     const playerWonRace = playerPlacement === 1;
     // Playoff race with no player marble in the bracket → pure spectator.
     const isPlayoffSpectator = activeMode.type === 'playoff' && !selectedMarble;
-    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace, spectator: isPlayoffSpectator });
+    setLastResult({ positions: p, playerPick: selectedMarble, betAmount, won, payout, playerPlacement, playerWonRace, spectator: isPlayoffSpectator, telemetry });
     // Payout is now atomic inside setLastResult — no separate addCoins call needed
     setRaceOver(true);
     /* Set outcome BEFORE haptics so the overlay renders the right
@@ -682,7 +685,7 @@ export default function RaceScreen() {
 
   // Camera shake during scrambler (countdown > 0), stop at GO
   useEffect(() => {
-    if (countdown > 0) {
+    if (countdown > 0 && cameraShakeEnabled) {
       // Continuous rumble loop during scrambler
       const rumble = () => {
         Animated.parallel([
@@ -704,11 +707,11 @@ export default function RaceScreen() {
       const interval = setInterval(rumble, 200);
       return () => clearInterval(interval);
     } else {
-      // Stop shake at GO
+      // Stop shake at GO (also the path when camera shake is disabled)
       shakeX.setValue(0);
       shakeY.setValue(0);
     }
-  }, [countdown]);
+  }, [countdown, cameraShakeEnabled]);
 
   // Release gate when countdown hits 0
   useEffect(() => {
@@ -720,8 +723,10 @@ export default function RaceScreen() {
     }
   }, [countdown]);
 
-  // Audio SFX — preload on mount, unload on unmount
+  // Audio SFX — preload on mount, unload on unmount.
+  // Sync the mute state from the Sound setting before preloading.
   useEffect(() => {
+    setAudioEnabled(useGameStore.getState().settings.sound);
     preloadRaceSounds();
     return () => { unloadRaceSounds(); };
   }, []);

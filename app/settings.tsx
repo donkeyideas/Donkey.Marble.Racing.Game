@@ -10,13 +10,15 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Fonts, BorderRadius, Spacing } from '../theme';
 import BackButton from '../components/BackButton';
-import { useGameStore } from '../state/gameStore';
+import { useGameStore, GameSettings } from '../state/gameStore';
+import { setAudioEnabled } from '../utils/audioManager';
 import { signInWithGoogle, signInWithApple, signOut, getLastGoogleSignInError, deleteAccount } from '../lib/firebase-auth';
 import { api } from '../lib/api';
 import { resetAccountLocally } from '../lib/accountReset';
@@ -39,6 +41,23 @@ async function deleteServerAccount(): Promise<void> {
     // Best-effort — local delete proceeds regardless.
   }
 }
+
+/* Toggle-row definitions, grouped to mirror Screen 23 of the mock.
+ * `key` maps 1:1 onto the GameSettings store object. */
+type ToggleDef = { key: keyof GameSettings; label: string; desc?: string };
+
+const NOTIFICATION_TOGGLES: ToggleDef[] = [
+  { key: 'raceReminders', label: 'Race Reminders', desc: 'Get notified before races start' },
+  { key: 'primeTimeAlerts', label: 'Prime Time Alert', desc: 'Never miss the 8 PM main event' },
+  { key: 'nightCapAlerts', label: 'Night Cap Reminder', desc: 'Alert for the 10 PM high-roller slot' },
+  { key: 'dailyBonusReminder', label: 'Daily Bonus Reminder', desc: "Don't forget your daily login coins" },
+];
+
+const PREFERENCE_TOGGLES: ToggleDef[] = [
+  { key: 'sound', label: 'Sound Effects' },
+  { key: 'vibration', label: 'Vibration' },
+  { key: 'cameraShake', label: 'Camera Shake', desc: 'Shake during collisions' },
+];
 
 const LEGAL_PAGES = [
   {
@@ -71,6 +90,8 @@ export default function SettingsScreen() {
   const firebaseDisplayName = useGameStore((s) => s.firebaseDisplayName);
   const firebaseEmail = useGameStore((s) => s.firebaseEmail);
   const setFirebaseUser = useGameStore((s) => s.setFirebaseUser);
+  const settings = useGameStore((s) => s.settings);
+  const setSetting = useGameStore((s) => s.setSetting);
   const [deleting, setDeleting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(playerName || '');
@@ -259,6 +280,31 @@ export default function SettingsScreen() {
     );
   };
 
+  /* Renders one toggle row. The mock styles Sound / Camera Shake / etc.
+   * as a label (+ optional description) with a track switch on the right. */
+  const renderToggle = ({ key, label, desc }: ToggleDef, idx: number, arr: ToggleDef[]) => (
+    <View
+      key={key}
+      style={[styles.toggleRow, idx === arr.length - 1 && styles.toggleRowLast]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={styles.linkLabel}>{label}</Text>
+        {desc ? <Text style={styles.linkSub}>{desc}</Text> : null}
+      </View>
+      <Switch
+        value={settings[key]}
+        onValueChange={(v) => {
+          setSetting(key, v);
+          // Sound effects mute applies immediately via the audio manager.
+          if (key === 'sound') setAudioEnabled(v);
+        }}
+        trackColor={{ false: 'rgba(255,255,255,0.15)', true: '#2ecc71' }}
+        thumbColor="#ffffff"
+        ios_backgroundColor="rgba(255,255,255,0.15)"
+      />
+    </View>
+  );
+
   return (
     <LinearGradient colors={['#1d56d4', '#0a3a96']} style={styles.fill}>
       <SafeAreaView style={styles.fill}>
@@ -384,6 +430,16 @@ export default function SettingsScreen() {
               )}
             </View>
           )}
+
+          {/* Notifications — persisted preferences only (no scheduler yet).
+              TODO wire: hook these into the local push-notification scheduler. */}
+          <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
+          <View style={styles.card}>{NOTIFICATION_TOGGLES.map(renderToggle)}</View>
+
+          {/* Preferences — Sound gates utils/audioManager, Vibration gates
+              utils/haptics, Camera Shake gates the race-screen shake effect. */}
+          <Text style={styles.sectionTitle}>PREFERENCES</Text>
+          <View style={styles.card}>{PREFERENCE_TOGGLES.map(renderToggle)}</View>
 
           {/* Legal & Compliance — in-app pages */}
           <Text style={styles.sectionTitle}>LEGAL</Text>
@@ -560,6 +616,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.whiteAlpha50,
     letterSpacing: 0.5,
+  },
+
+  /* Toggle rows (Notifications / Preferences groups) */
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  toggleRowLast: {
+    borderBottomWidth: 0,
   },
 
   /* Link cards */

@@ -1,3 +1,5 @@
+import { useGameStore } from '../state/gameStore';
+
 let Haptics: typeof import('expo-haptics') | null = null;
 try {
   Haptics = require('expo-haptics');
@@ -8,7 +10,19 @@ try {
 const COOLDOWN_MS = 50;
 let lastTime = 0;
 
+/* Respect the user's Vibration preference. Read non-reactively from the
+ * Zustand store — these helpers are called from imperative game-loop code,
+ * not React render. When the flag is off, all haptics early-return. */
+function vibrationEnabled(): boolean {
+  try {
+    return useGameStore.getState().settings.vibration;
+  } catch {
+    return true;
+  }
+}
+
 function throttled(fn: () => Promise<void>) {
+  if (!vibrationEnabled()) return;
   const now = Date.now();
   if (now - lastTime < COOLDOWN_MS) return;
   lastTime = now;
@@ -21,10 +35,10 @@ export const raceHaptics = {
   speedBurst:       () => Haptics && throttled(() => Haptics!.notificationAsync(Haptics!.NotificationFeedbackType.Warning)),
   pendulumHit:      () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
   cradleHit:        () => Haptics && throttled(() => Haptics!.impactAsync(Haptics!.ImpactFeedbackStyle.Heavy)),
-  finish:           () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
-  playerWin:        () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
-  playerLose:       () => Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
-  betPlaced:        () => Haptics?.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
+  finish:           () => vibrationEnabled() && Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  playerWin:        () => vibrationEnabled() && Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}),
+  playerLose:       () => vibrationEnabled() && Haptics?.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {}),
+  betPlaced:        () => vibrationEnabled() && Haptics?.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}),
 };
 
 export type HapticType = 'bumper' | 'trampoline' | 'speedBurst' | 'pendulum' | 'cradle';

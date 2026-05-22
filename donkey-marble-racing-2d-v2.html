@@ -2698,6 +2698,128 @@
     cursor: pointer;
     margin-top: 10px;
   }
+  /* Gold CTA variant -- used when a bet is placed in Quick Race */
+  .qr-race-btn.qr-bet-mode {
+    background: linear-gradient(180deg, #ffd84d, #ffc220);
+    border-color: #cc9a00;
+    box-shadow: 0 4px 0 #b8860b, 0 6px 12px rgba(0,0,0,0.3);
+  }
+
+  /* Quick Race -- optional betting flow */
+  .qr-mode-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .qr-mode-opt {
+    flex: 1;
+    text-align: center;
+    padding: 11px 8px;
+    border-radius: 14px;
+    border: 2px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    cursor: pointer;
+  }
+  .qr-mode-opt .qr-mode-label {
+    font-family: 'Lilita One', cursive;
+    font-size: 15px;
+    color: rgba(255,255,255,0.55);
+  }
+  .qr-mode-opt .qr-mode-sub {
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    margin-top: 2px;
+  }
+  .qr-mode-opt.watch.active {
+    border-color: rgba(46,204,113,0.5);
+    background: rgba(46,204,113,0.1);
+  }
+  .qr-mode-opt.watch.active .qr-mode-label { color: #2ecc71; }
+  .qr-mode-opt.bet.active {
+    border-color: #ffc220;
+    background: rgba(255,194,32,0.12);
+  }
+  .qr-mode-opt.bet.active .qr-mode-label { color: #ffc220; }
+  .qr-mode-opt.bet.active .qr-mode-sub { color: rgba(255,194,32,0.6); }
+
+  .qr-bet-panel {
+    background: rgba(255,194,32,0.06);
+    border: 1px solid rgba(255,194,32,0.25);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .qr-bet-panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,194,32,0.7);
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .qr-marble-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    margin-bottom: 14px;
+    padding-bottom: 4px;
+  }
+  .qr-marble-pick {
+    flex-shrink: 0;
+    width: 62px;
+    text-align: center;
+    padding: 8px 4px;
+    border-radius: 12px;
+    border: 2px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    cursor: pointer;
+  }
+  .qr-marble-pick.selected {
+    border-color: #ffc220;
+    background: rgba(255,194,32,0.15);
+  }
+  .qr-marble-pick .marble-sm {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    margin: 0 auto 4px;
+    position: relative;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.25), inset 0 -4px 6px rgba(0,0,0,0.2);
+  }
+  .qr-marble-pick .marble-sm::after {
+    content: '';
+    position: absolute;
+    top: 5px; left: 7px;
+    width: 12px; height: 8px;
+    background: rgba(255,255,255,0.45);
+    border-radius: 50%;
+    transform: rotate(-20deg);
+  }
+  .qr-marble-pick .qr-pick-name {
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .qr-marble-pick .qr-pick-odds {
+    font-size: 10px;
+    color: rgba(255,255,255,0.45);
+  }
+  .qr-payout {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.2);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .qr-payout .qr-payout-lbl {
+    font-size: 11px;
+    color: rgba(255,255,255,0.45);
+  }
+  .qr-payout .qr-payout-lbl b { color: #ffc220; }
+  .qr-payout .qr-payout-val {
+    font-family: 'Lilita One', cursive;
+    font-size: 18px;
+    color: #2ecc71;
+  }
 
   /* ==================== SCREEN 18: TOURNAMENT BRACKET ==================== */
   .tournament {
@@ -5299,12 +5421,129 @@
       </div>
 
       <div class="qr-course-card">
-        <div class="qr-course-thumb" style="background:linear-gradient(135deg,#1a3a5a,#0a2a4a)">F</div>
+        <div class="qr-course-thumb" style="background:linear-gradient(135deg,#2a1a3a,#1a0a28)">C</div>
         <div class="qr-course-info">
-          <div class="qr-course-name">Pendulum Alley</div>
-          <div class="qr-course-desc">Swinging pendulums block the path</div>
+          <div class="qr-course-name">The Gauntlet</div>
+          <div class="qr-course-desc">All obstacles -- Ultimate challenge</div>
         </div>
-        <div class="qr-course-tag" style="background:rgba(52,152,219,0.15);color:#3498db">FROZEN</div>
+        <div class="qr-course-tag" style="background:rgba(155,89,182,0.15);color:#c084fc">CYBER</div>
+      </div>
+
+      <!-- NEW: optional betting -- choose to bet or just watch -->
+      <div class="section-title" style="margin-top:14px">RACE MODE</div>
+      <div class="qr-mode-toggle">
+        <div class="qr-mode-opt watch">
+          <div class="qr-mode-label">JUST WATCH</div>
+          <div class="qr-mode-sub">No bet &middot; race for fun</div>
+        </div>
+        <div class="qr-mode-opt bet active">
+          <div class="qr-mode-label">PLACE A BET</div>
+          <div class="qr-mode-sub">Bet coins &middot; win big</div>
+        </div>
+      </div>
+
+      <!-- Bet panel -- only shown when PLACE A BET is selected -->
+      <div class="qr-bet-panel">
+        <div class="qr-bet-panel-title">PICK A MARBLE</div>
+        <div class="qr-marble-row">
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#ff6b6b,#e74c3c)"></div>
+            <div class="qr-pick-name">Dash</div>
+            <div class="qr-pick-odds">3.1x</div>
+          </div>
+          <div class="qr-marble-pick selected">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#4dabf7,#1d56d4)"></div>
+            <div class="qr-pick-name">Spike</div>
+            <div class="qr-pick-odds">2.4x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#69db7c,#2ecc71)"></div>
+            <div class="qr-pick-name">Rocky</div>
+            <div class="qr-pick-odds">2.8x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#ffd43b,#ffc220)"></div>
+            <div class="qr-pick-name">Lucky</div>
+            <div class="qr-pick-odds">3.5x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#a5d8ff,#74c0fc)"></div>
+            <div class="qr-pick-name">Frosty</div>
+            <div class="qr-pick-odds">3.0x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#da77f2,#9b59b6)"></div>
+            <div class="qr-pick-name">Nova</div>
+            <div class="qr-pick-odds">4.2x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#adb5bd,#868e96)"></div>
+            <div class="qr-pick-name">Shadow</div>
+            <div class="qr-pick-odds">3.8x</div>
+          </div>
+          <div class="qr-marble-pick">
+            <div class="marble-sm" style="background:radial-gradient(circle at 35% 30%,#66d9e8,#22b8cf)"></div>
+            <div class="qr-pick-name">Aqua</div>
+            <div class="qr-pick-odds">4.6x</div>
+          </div>
+        </div>
+
+        <div class="qr-bet-panel-title">BET AMOUNT</div>
+        <div class="bet-amounts" style="justify-content:flex-start;margin-bottom:12px">
+          <div class="bet-amt">100</div>
+          <div class="bet-amt active">250</div>
+          <div class="bet-amt">500</div>
+          <div class="bet-amt">1000</div>
+        </div>
+
+        <div class="qr-payout">
+          <div class="qr-payout-lbl">If <b>SPIKE</b> wins &middot; 2.4x</div>
+          <div class="qr-payout-val">+600</div>
+        </div>
+      </div>
+
+      <div class="qr-race-btn qr-bet-mode">PLACE 250 &amp; RACE</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SCREEN 17b: QUICK RACE -- JUST WATCH (no bet) ========== -->
+<div class="screen-wrapper">
+  <div class="screen-label">17b -- Quick Race (Just Watch)</div>
+  <div class="phone">
+    <div class="quick-race">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div class="back-btn"><span class="arrow">&#8249;</span> BACK</div>
+        <div class="coin-pill" style="padding:4px 10px">
+          <div class="coin-icon" style="width:18px;height:18px;font-size:10px">$</div>
+          <div class="coin-value" style="font-size:13px">4,850</div>
+        </div>
+      </div>
+
+      <div class="qr-banner">
+        <h2>QUICK RACE</h2>
+        <p>Pick a course, race anytime -- No season impact</p>
+        <div class="qr-xp-note">Earns reduced XP toward Season Pass</div>
+      </div>
+
+      <div class="section-title">SELECT COURSE</div>
+
+      <div class="qr-course-card qr-selected">
+        <div class="qr-course-thumb" style="background:linear-gradient(135deg,#1a6b3a,#0d4a2a)">M</div>
+        <div class="qr-course-info">
+          <div class="qr-course-name">Classic Zigzag</div>
+          <div class="qr-course-desc">Gentle descent, zigzag ramps</div>
+        </div>
+        <div class="qr-course-tag" style="background:rgba(46,204,113,0.15);color:#2ecc71">MEADOW</div>
+      </div>
+
+      <div class="qr-course-card">
+        <div class="qr-course-thumb" style="background:linear-gradient(135deg,#5a1a0a,#3a0a00)">V</div>
+        <div class="qr-course-info">
+          <div class="qr-course-name">Bumper Blitz</div>
+          <div class="qr-course-desc">Dense bumper field, chaotic bouncing</div>
+        </div>
+        <div class="qr-course-tag" style="background:rgba(231,76,60,0.15);color:#e74c3c">VOLCANO</div>
       </div>
 
       <div class="qr-course-card">
@@ -5316,11 +5555,15 @@
         <div class="qr-course-tag" style="background:rgba(155,89,182,0.15);color:#c084fc">CYBER</div>
       </div>
 
-      <div class="qr-course-card" style="opacity:0.4">
-        <div class="qr-course-thumb" style="background:rgba(255,255,255,0.05)">X</div>
-        <div class="qr-course-info">
-          <div class="qr-course-name" style="color:rgba(255,255,255,0.3)">Ball Pit Run</div>
-          <div class="qr-course-desc">Win 5 races to unlock</div>
+      <div class="section-title" style="margin-top:14px">RACE MODE</div>
+      <div class="qr-mode-toggle">
+        <div class="qr-mode-opt watch active">
+          <div class="qr-mode-label">JUST WATCH</div>
+          <div class="qr-mode-sub">No bet &middot; race for fun</div>
+        </div>
+        <div class="qr-mode-opt bet">
+          <div class="qr-mode-label">PLACE A BET</div>
+          <div class="qr-mode-sub">Bet coins &middot; win big</div>
         </div>
       </div>
 

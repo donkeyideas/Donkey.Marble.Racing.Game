@@ -43,6 +43,12 @@ export default function SeasonScreen() {
   const seedPlayoffs = useGameStore((s) => s.seedPlayoffs);
   const checkDailyStreak = useGameStore((s) => s.checkDailyStreak);
   const dailyStreak = useGameStore((s) => s.dailyStreak);
+  const betsToday = useGameStore((s) => s.betsToday);
+  const lastBetDate = useGameStore((s) => s.lastBetDate);
+  const bestStreak = useGameStore((s) => s.bestStreak);
+  const totalWins = useGameStore((s) => s.totalWins);
+  const lifetimeRaces = useGameStore((s) => s.totalRaces);
+  const marbleStats = useGameStore((s) => s.marbleStats);
 
   const [dailyBonus, setDailyBonus] = useState<{ reward: number; streak: number } | null>(null);
   // Bettor mode is hidden for now — the bet-per-race flow needs more work,
@@ -166,6 +172,23 @@ export default function SeasonScreen() {
 
   const isFranchise = season.seasonMode === 'franchise';
 
+  // ── Bet limit (daily cap of 10) ──
+  const DAILY_BET_CAP = 10;
+  const today = new Date().toISOString().slice(0, 10);
+  const betsUsedToday = lastBetDate === today ? Math.min(betsToday, DAILY_BET_CAP) : 0;
+
+  // ── Today's races — derived from the season schedule. There is no
+  // real-time clock for races, so we surface the schedule's weeks as the
+  // "slate": the current week is LIVE, the next is NEXT, later weeks are
+  // UPCOMING, and any completed weeks show DONE. We start one week back
+  // so the most recently completed race stays visible for context. ──
+  const currentWeekIdx = season.schedule.findIndex((w) => w.status === 'current');
+  const todaysRaces = season.schedule.slice(Math.max(0, currentWeekIdx - 1)).slice(0, 6);
+
+  // ── Prediction stats ──
+  const racesBet = Object.values(marbleStats).reduce((sum, s) => sum + s.betCount, 0);
+  const winRatePct = lifetimeRaces > 0 ? Math.round((totalWins / lifetimeRaces) * 100) : 0;
+
   const handlePlayRace = (race: SeasonRace) => {
     selectCourse(race.courseId);
     setActiveMode({ type: 'season', weekNumber: race.weekNumber, raceIndex: race.raceIndex });
@@ -285,6 +308,86 @@ export default function SeasonScreen() {
               </View>
             </View>
           )}
+
+          {/* ===== BET LIMIT STRIP ===== */}
+          <View style={styles.betLimitStrip}>
+            <View style={styles.betDotsRow}>
+              {Array.from({ length: DAILY_BET_CAP }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[styles.betPip, i < betsUsedToday && styles.betPipUsed]}
+                />
+              ))}
+            </View>
+            <Text style={styles.betLimitText}>
+              {betsUsedToday} / {DAILY_BET_CAP} bets used today
+            </Text>
+          </View>
+
+          {/* ===== TODAY'S RACES ===== */}
+          <Text style={styles.sectionTitle}>TODAY'S RACES</Text>
+          <View style={styles.card}>
+            {todaysRaces.map((week, i) => {
+              const race = week.races[0];
+              const isCompleted = race.status === 'completed';
+              const isCurrent = week.status === 'current';
+              const isAvailable = race.status === 'available';
+              let statusLabel = `WEEK ${week.weekNumber}`;
+              let statusStyle: object = styles.schedStatusUpcoming;
+              let statusTextStyle: object = styles.schedStatusTextUpcoming;
+              if (isCompleted) {
+                statusLabel = 'DONE';
+                statusStyle = styles.schedStatusDone;
+                statusTextStyle = styles.schedStatusTextDone;
+              } else if (isCurrent && isAvailable) {
+                statusLabel = 'LIVE';
+                statusStyle = styles.schedStatusLive;
+                statusTextStyle = styles.schedStatusTextLive;
+              } else if (isAvailable) {
+                statusLabel = 'NEXT';
+                statusStyle = styles.schedStatusNext;
+                statusTextStyle = styles.schedStatusTextNext;
+              }
+              return (
+                <Pressable
+                  key={race.id}
+                  onPress={() => isAvailable && handlePlayRace(race)}
+                  style={[
+                    styles.schedRow,
+                    i === todaysRaces.length - 1 && styles.schedRowLast,
+                  ]}
+                >
+                  <Text style={styles.schedTime}>W{week.weekNumber}</Text>
+                  <View style={styles.schedInfo}>
+                    <Text style={styles.schedName}>{race.name}</Text>
+                    <Text style={styles.schedCourse}>{race.courseName}</Text>
+                  </View>
+                  <View style={[styles.schedStatus, statusStyle]}>
+                    <Text style={[styles.schedStatusText, statusTextStyle]}>
+                      {statusLabel}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* ===== YOUR PREDICTION STATS ===== */}
+          <Text style={styles.sectionTitle}>YOUR PREDICTION STATS</Text>
+          <View style={styles.quickStatsRow}>
+            <View style={styles.qsCard}>
+              <Text style={[styles.qsValue, { color: Colors.yellow }]}>{winRatePct}%</Text>
+              <Text style={styles.qsLabel}>WIN RATE</Text>
+            </View>
+            <View style={styles.qsCard}>
+              <Text style={[styles.qsValue, { color: Colors.green }]}>{bestStreak}</Text>
+              <Text style={styles.qsLabel}>BEST STREAK</Text>
+            </View>
+            <View style={styles.qsCard}>
+              <Text style={[styles.qsValue, { color: Colors.white }]}>{racesBet}</Text>
+              <Text style={styles.qsLabel}>RACES BET</Text>
+            </View>
+          </View>
 
           {/* ===== MARBLE TRAINING (franchise only) ===== */}
           {isFranchise && season.seasonMarbleId && !seasonComplete && (() => {
@@ -866,4 +969,44 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   navCard: { flex: 1, backgroundColor: Colors.whiteAlpha07, borderWidth: 2, borderColor: Colors.whiteAlpha12, borderRadius: BorderRadius.md, paddingVertical: 14, alignItems: 'center' },
   navLabel: { fontFamily: Fonts.display, fontSize: 12, color: Colors.white },
+
+  // Bet limit strip
+  betLimitStrip: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  betDotsRow: { flexDirection: 'row', gap: 3 },
+  betPip: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)' },
+  betPipUsed: { backgroundColor: Colors.yellow },
+  betLimitText: { fontFamily: Fonts.bodySemiBold, fontSize: 11, color: Colors.whiteAlpha35 },
+
+  // Today's races (time-slotted schedule)
+  schedRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  schedRowLast: { borderBottomWidth: 0 },
+  schedTime: { fontFamily: Fonts.bodyBold, fontSize: 13, color: Colors.whiteAlpha40, width: 44 },
+  schedInfo: { flex: 1 },
+  schedName: { fontFamily: Fonts.bodyBold, fontSize: 14, color: Colors.white },
+  schedCourse: { fontFamily: Fonts.body, fontSize: 11, color: Colors.whiteAlpha35 },
+  schedStatus: { paddingVertical: 3, paddingHorizontal: 10, borderRadius: 10 },
+  schedStatusText: { fontFamily: Fonts.bodyBold, fontSize: 10, letterSpacing: 0.5 },
+  schedStatusDone: { backgroundColor: Colors.whiteAlpha07 },
+  schedStatusTextDone: { color: Colors.whiteAlpha25 },
+  schedStatusLive: { backgroundColor: Colors.redAlpha20 },
+  schedStatusTextLive: { color: Colors.red },
+  schedStatusNext: { backgroundColor: Colors.greenAlpha20 },
+  schedStatusTextNext: { color: Colors.green },
+  schedStatusUpcoming: { backgroundColor: Colors.whiteAlpha07 },
+  schedStatusTextUpcoming: { color: Colors.whiteAlpha35 },
+
+  // Prediction stats tri-card
+  quickStatsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  qsCard: {
+    flex: 1,
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 2,
+    borderColor: Colors.whiteAlpha10,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+  },
+  qsValue: { fontFamily: Fonts.display, fontSize: 22, lineHeight: 24 },
+  qsLabel: { fontFamily: Fonts.bodySemiBold, fontSize: 10, color: Colors.whiteAlpha35, marginTop: 2 },
 });

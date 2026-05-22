@@ -17,10 +17,34 @@ import { showModal } from '../components/GameModal';
 import { syncPlayerState } from '../lib/sync';
 import { getAnnouncements, getActivePromos, onLiveOpsChange, dismissLiveOpsItem } from '../lib/liveOps';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { ALL_COURSES, getTrackOfTheDay } from '../data/courses';
+import { ALL_COURSES, getTrackOfTheDay, type CourseData } from '../data/courses';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import { pollSupportReplies, readBannerDismissedCount, writeBannerDismissedCount } from '../lib/supportNotifier';
+
+/* The lobby has no real scheduled-race backend feed, so the "featured"
+ * race rotation is derived deterministically from today's date — every
+ * player sees the same hero + queue, and it refreshes daily. The hero
+ * countdown is a purely cosmetic client-side timer that loops. */
+function dayIndex(): number {
+  return Math.floor(Date.now() / 86_400_000);
+}
+
+/** Picks `count` distinct courses starting at a date-seeded offset. */
+function getFeaturedCourses(count: number): CourseData[] {
+  const start = dayIndex() % ALL_COURSES.length;
+  const out: CourseData[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push(ALL_COURSES[(start + i) % ALL_COURSES.length]);
+  }
+  return out;
+}
+
+function formatCountdown(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 function ModeCard({
   title,
@@ -63,6 +87,31 @@ export default function LobbyScreen() {
   // Daily streak reward
   const [dailyReward, setDailyReward] = useState<{ reward: number; streak: number } | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  // ===== HERO: featured race rotation + cosmetic countdown =====
+  // The featured race / queue come from a date-seeded slice of ALL_COURSES
+  // (see getFeaturedCourses). There's no scheduled-race backend, so the
+  // hero "LIVE NOW" countdown is a cosmetic loop — when it hits 0 it just
+  // resets, signalling "next race starting".
+  const featured = getFeaturedCourses(3);
+  const heroCourse = featured[0];
+  const upNext = featured.slice(1);
+  const dailyCourse = getTrackOfTheDay();
+  const [heroCountdown, setHeroCountdown] = useState(60);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setHeroCountdown((n) => (n <= 1 ? 60 : n - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Routes the player into a quick race on the given course.
+  const startCourse = useCallback((courseId: string) => {
+    useGameStore.getState().selectCourse(courseId);
+    useGameStore.getState().setActiveMode({ type: 'quick_race' });
+    useGameStore.getState().resetBet();
+    router.push('/race');
+  }, [router]);
 
   // Support replies — polled so the user sees admin responses without
   // manually drilling into Settings → Support. Banner + Settings badge.
@@ -297,6 +346,72 @@ export default function LobbyScreen() {
             ))}
           </View>
 
+          {/* ===== HERO: FEATURED RACE ===== */}
+          <Pressable
+            onPress={() => router.push('/betting')}
+            style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
+          >
+            <LinearGradient colors={['#1a4fc2', '#0d3a8f']} style={styles.heroCard}>
+              <View style={styles.heroDecor} />
+              <View style={styles.heroTopRow}>
+                <View style={styles.liveBadge}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveBadgeText}>LIVE NOW</Text>
+                </View>
+                <Text style={styles.heroTimer}>{formatCountdown(heroCountdown)}</Text>
+              </View>
+              <Text style={styles.heroTrackName}>{heroCourse.name.toUpperCase()}</Text>
+              <Text style={styles.heroTrackDesc} numberOfLines={1}>{heroCourse.description}</Text>
+              <View style={styles.heroMarbleRow}>
+                {MARBLES.map((m) => (
+                  <MarbleDot key={m.id} marble={m} size={28} />
+                ))}
+              </View>
+              <View style={styles.heroBtn}>
+                <Text style={styles.heroBtnText}>PLACE BET</Text>
+              </View>
+            </LinearGradient>
+          </Pressable>
+
+          {/* ===== HERO: UP NEXT QUEUE ===== */}
+          <Text style={styles.sectionTitle}>UP NEXT</Text>
+          {upNext.map((c, i) => (
+            <Pressable
+              key={c.id}
+              onPress={() => startCourse(c.id)}
+              style={({ pressed }) => [styles.raceCardSmall, pressed && styles.navCardPressed]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.raceCardName}>{c.name.toUpperCase()}</Text>
+                <Text style={styles.raceCardDesc} numberOfLines={1}>{c.description}</Text>
+              </View>
+              <View style={[styles.statusBadge, i === 0 ? styles.statusOpen : styles.statusSoon]}>
+                <Text style={[styles.statusBadgeText, i === 0 ? styles.statusOpenText : styles.statusSoonText]}>
+                  {i === 0 ? 'OPEN' : 'SOON'}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+
+          {/* ===== HERO: DAILY DERBY ===== */}
+          <Text style={[styles.sectionTitle, { marginTop: 16 }]}>DAILY EVENT</Text>
+          <Pressable
+            onPress={() => startCourse(dailyCourse.id)}
+            style={({ pressed }) => [pressed && { opacity: 0.9 }]}
+          >
+            <LinearGradient colors={['#ffc220', '#ff9a1a']} style={styles.dailyCard}>
+              <View style={styles.dailyStar}>
+                <Text style={styles.dailyStarText}>★</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dailyTitle}>DAILY DERBY</Text>
+                <Text style={styles.dailyDesc} numberOfLines={1}>
+                  {dailyCourse.name} · Bonus payout · Resets at midnight
+                </Text>
+              </View>
+            </LinearGradient>
+          </Pressable>
+
           {/* ===== GAME MODES ===== */}
           <Text style={styles.sectionTitle}>GAME MODES</Text>
 
@@ -466,6 +581,32 @@ export default function LobbyScreen() {
             </Pressable>
           </View>
 
+          <View style={styles.navRow}>
+            <Pressable
+              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
+              onPress={() => router.push('/economy')}
+            >
+              <Text style={styles.navLabel}>ECONOMY</Text>
+              <Text style={styles.navSub}>Coin stats</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
+              onPress={() => router.push('/invite-friends')}
+            >
+              <Text style={styles.navLabel}>INVITE</Text>
+              <Text style={styles.navSub}>Earn coins</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
+              onPress={() => router.push('/compare')}
+            >
+              <Text style={styles.navLabel}>COMPARE</Text>
+              <Text style={styles.navSub}>Marbles</Text>
+            </Pressable>
+          </View>
+
 
 
 
@@ -543,6 +684,168 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     marginBottom: 20,
+  },
+
+  /* ===== HERO CARD ===== */
+  heroCard: {
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: '#4d80ff',
+    padding: 20,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  heroDecor: {
+    position: 'absolute',
+    top: -20,
+    right: -20,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255,194,32,0.08)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#e74c3c',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#fff',
+  },
+  liveBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    color: '#fff',
+    letterSpacing: 1,
+  },
+  heroTimer: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 20,
+    color: Colors.yellow,
+  },
+  heroTrackName: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: Colors.white,
+    marginBottom: 4,
+  },
+  heroTrackDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 14,
+  },
+  heroMarbleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 16,
+  },
+  heroBtn: {
+    backgroundColor: Colors.yellow,
+    borderWidth: 2,
+    borderColor: '#cc9a00',
+    borderRadius: BorderRadius.pill,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  heroBtnText: {
+    fontFamily: Fonts.display,
+    fontSize: 17,
+    color: Colors.ink,
+  },
+
+  /* ===== UP NEXT QUEUE ===== */
+  raceCardSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.whiteAlpha07,
+    borderWidth: 2,
+    borderColor: Colors.whiteAlpha12,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  raceCardName: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 15,
+    color: Colors.white,
+  },
+  raceCardDesc: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  statusOpen: {
+    backgroundColor: 'rgba(46,204,113,0.2)',
+  },
+  statusSoon: {
+    backgroundColor: 'rgba(255,194,32,0.15)',
+  },
+  statusBadgeText: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  statusOpenText: {
+    color: '#2ecc71',
+  },
+  statusSoonText: {
+    color: Colors.yellow,
+  },
+
+  /* ===== DAILY DERBY CARD ===== */
+  dailyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  dailyStar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(10,26,58,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dailyStarText: {
+    fontSize: 24,
+    color: Colors.ink,
+    marginTop: -2,
+  },
+  dailyTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 18,
+    color: Colors.ink,
+  },
+  dailyDesc: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 12,
+    color: 'rgba(10,26,58,0.6)',
+    marginTop: 1,
   },
 
   /* ===== ANNOUNCEMENTS & PROMOS ===== */

@@ -33,9 +33,10 @@ interface RosterCardProps {
   unlockedAchievements: Record<string, { unlockedAt: string }>;
   onEquipSkin: (skinId: string) => void;
   onUnequipSkin: () => void;
+  onViewCard: () => void;
 }
 
-function RosterCard({ marble, isChampion, record, equippedSkinId, unlockedAchievements, onEquipSkin, onUnequipSkin }: RosterCardProps) {
+function RosterCard({ marble, isChampion, record, equippedSkinId, unlockedAchievements, onEquipSkin, onUnequipSkin, onViewCard }: RosterCardProps) {
   const skins = getSkinsForMarble(marble.id);
 
   // Determine which 3 stats to show (pick top 3 stat categories)
@@ -65,37 +66,43 @@ function RosterCard({ marble, isChampion, record, equippedSkinId, unlockedAchiev
         </View>
       )}
 
-      {/* Marble dot — show equipped skin colors */}
-      <MarbleDot
-        marble={equippedSkinId
-          ? { ...marble, ...(skins.find(s => s.id === equippedSkinId) ? { colorLight: skins.find(s => s.id === equippedSkinId)!.colorLight, colorDark: skins.find(s => s.id === equippedSkinId)!.colorDark } : {}) }
-          : marble
-        }
-        size={56}
-      />
+      {/* Tappable card body — opens the marble's trading card */}
+      <Pressable
+        onPress={onViewCard}
+        style={({ pressed }) => [{ alignItems: 'center', width: '100%' }, pressed && { opacity: 0.7 }]}
+      >
+        {/* Marble dot — show equipped skin colors */}
+        <MarbleDot
+          marble={equippedSkinId
+            ? { ...marble, ...(skins.find(s => s.id === equippedSkinId) ? { colorLight: skins.find(s => s.id === equippedSkinId)!.colorLight, colorDark: skins.find(s => s.id === equippedSkinId)!.colorDark } : {}) }
+            : marble
+          }
+          size={56}
+        />
 
-      {/* Name */}
-      <Text style={styles.cardName}>{marble.name}</Text>
+        {/* Name */}
+        <Text style={styles.cardName}>{marble.name}</Text>
 
-      {/* Record */}
-      <Text style={styles.cardRecord}>
-        W:{record.wins} L:{record.losses}
-      </Text>
+        {/* Record */}
+        <Text style={styles.cardRecord}>
+          W:{record.wins} L:{record.losses}
+        </Text>
 
-      {/* Personality */}
-      <Text style={styles.cardPersonality}>{marble.personality}</Text>
+        {/* Personality */}
+        <Text style={styles.cardPersonality}>{marble.personality}</Text>
 
-      {/* Stat bars */}
-      <View style={styles.statBars}>
-        {topStats.map((stat) => (
-          <StatBar
-            key={stat.key}
-            label={stat.label}
-            value={stat.value}
-            color={STAT_COLORS[stat.key] || Colors.yellow}
-          />
-        ))}
-      </View>
+        {/* Stat bars */}
+        <View style={styles.statBars}>
+          {topStats.map((stat) => (
+            <StatBar
+              key={stat.key}
+              label={stat.label}
+              value={stat.value}
+              color={STAT_COLORS[stat.key] || Colors.yellow}
+            />
+          ))}
+        </View>
+      </Pressable>
 
       {/* Skin selector */}
       {skins.length > 0 && (
@@ -216,6 +223,7 @@ export default function RosterScreen() {
                     unlockedAchievements={achievements}
                     onEquipSkin={(skinId) => equipSkin(marble.id, skinId)}
                     onUnequipSkin={() => unequipSkin(marble.id)}
+                    onViewCard={() => router.push(`/marble-card?id=${marble.id}`)}
                   />
                 </View>
               );

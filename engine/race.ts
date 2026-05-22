@@ -34,6 +34,35 @@ export interface SpeedBurstState {
   active: boolean;
 }
 
+/**
+ * Per-marble telemetry captured during a race. PURE OBSERVATION — every
+ * field here is filled by reading physics state and incrementing counters.
+ * Nothing in the telemetry path applies a force, sets a velocity/position,
+ * or otherwise touches the simulation. The race is byte-identical with or
+ * without telemetry capture enabled.
+ */
+export interface MarbleTelemetry {
+  marbleId: string;
+  finishTime: number;        // ms — final finish time
+  finishPlace: number;       // 1-indexed final placement
+  peakVelocity: number;      // max speed (px/tick) observed across the race
+  avgVelocity: number;       // mean speed across all sampled frames
+  velocitySampleCount: number;
+  bounces: number;           // total marble collisions (any surface/obstacle)
+  bumperHits: number;
+  pegContacts: number;
+  wallScrapes: number;       // wall / ceiling / channel-wall contacts
+  speedBurstHits: number;    // speed-burst pads that activated for this marble
+  posAt25: number;           // rank (1-8) at 25% race progress
+  posAt50: number;
+  posAt75: number;
+  posAtFinish: number;
+  overtakes: number;         // times this marble moved ahead of another
+  timesPassed: number;       // times another marble moved ahead of this one
+  wireToWire: boolean;       // led (rank 1) at every quartile checkpoint
+  leadTimeFraction: number;  // fraction of sampled frames spent in rank 1
+}
+
 export interface RaceState {
   marbles: { data: MarbleData; x: number; y: number; finished: boolean; finishTime: number }[];
   elapsed: number;
@@ -467,6 +496,34 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         }
       }
 
+      // === TELEMETRY (pure observation) — count collisions per marble.
+      // This block ONLY reads body labels and increments counters; it never
+      // touches any body, force, or velocity. It runs whether or not the
+      // haptic callback is wired so analytics still work without haptics.
+      {
+        const mA = marbleBodies.find(m => m.body === bodyA);
+        const mB = marbleBodies.find(m => m.body === bodyB);
+        // Each marble in the pair gets credited (marble-marble counts both).
+        const sides: { marbleId: string; other: any }[] = [];
+        if (mA) sides.push({ marbleId: mA.data.id, other: bodyB });
+        if (mB) sides.push({ marbleId: mB.data.id, other: bodyA });
+        sides.forEach(({ marbleId, other }) => {
+          const t = telemetry.get(marbleId);
+          if (!t) return;
+          t.bounces++;
+          const label = other?.label;
+          if (label === 'bumper') t.bumperHits++;
+          else if (label === 'peg') t.pegContacts++;
+          else if (label === 'wall' || label === 'ceiling' ||
+                   label === 'channel-wall') t.wallScrapes++;
+          else if (label === 'speedburst') {
+            // collisionStart on a burst pad — the activation roll happens
+            // above; count the pad CONTACT here (Burst Hit in the mock).
+            t.speedBurstHits++;
+          }
+        });
+      }
+
       // Haptic feedback for any marble collision (walls, ramps, bumpers, pegs, other marbles, etc.)
       if (onHaptic) {
         const mA = marbleBodies.find(m => m.body === bodyA);
@@ -657,6 +714,38 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     marbleBodies.push({ body, data: marble });
     Matter.Composite.add(world, body);
   });
+
+  // === TELEMETRY — PURE OBSERVATION ===
+  // None of these structures are read back into the simulation. They only
+  // accumulate counters/samples that getTelemetry() exposes after the race.
+  interface TelemetryAccum {
+    peakVelocity: number;
+    velocitySum: number;
+    velocitySamples: number;
+    bounces: number;
+    bumperHits: number;
+    pegContacts: number;
+    wallScrapes: number;
+    speedBurstHits: number;
+    posAt25: number;
+    posAt50: number;
+    posAt75: number;
+    overtakes: number;
+    timesPassed: number;
+    leadFrames: number;
+  }
+  const telemetry = new Map<string, TelemetryAccum>();
+  marblePool.forEach(m => {
+    telemetry.set(m.id, {
+      peakVelocity: 0, velocitySum: 0, velocitySamples: 0,
+      bounces: 0, bumperHits: 0, pegContacts: 0, wallScrapes: 0, speedBurstHits: 0,
+      posAt25: 0, posAt50: 0, posAt75: 0, overtakes: 0, timesPassed: 0, leadFrames: 0,
+    });
+  });
+  // Previous-frame ranking (marbleId -> rank) for overtake detection.
+  let prevRanking: Record<string, number> = {};
+  // Quartile checkpoints — captured the first frame elapsed crosses each threshold.
+  let captured25 = false, captured50 = false, captured75 = false;
 
   let gateOpen = false;
   let elapsed = 0;
@@ -943,6 +1032,88 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       });
     }
 
+    // === TELEMETRY SAMPLING (pure observation) ===
+    // Runs once per render frame AFTER physics. Reads velocities + positions
+    // and updates counters. Does not call any Matter.Body mutator.
+    if (gateOpen) {
+      // Per-marble velocity sampling.
+      for (const { body, data } of marbleBodies) {
+        const t = telemetry.get(data.id);
+        if (!t) continue;
+        const v = Math.sqrt(body.velocity.x * body.velocity.x +
+                            body.velocity.y * body.velocity.y);
+        if (v > t.peakVelocity) t.peakVelocity = v;
+        t.velocitySum += v;
+        t.velocitySamples++;
+      }
+      // Live ranking: a marble further down-track (larger y) is ahead;
+      // finished marbles are ranked by finish time. Mirrors getPositions().
+      const ranked = marbleBodies
+        .map(({ body, data }) => ({
+          id: data.id,
+          finished: !!finishTimes[data.id],
+          time: finishTimes[data.id] || 0,
+          y: body.position.y,
+        }))
+        .sort((a, b) => {
+          if (a.finished && b.finished) return a.time - b.time;
+          if (a.finished) return -1;
+          if (b.finished) return 1;
+          return b.y - a.y;
+        });
+      const ranking: Record<string, number> = {};
+      ranked.forEach((r, i) => { ranking[r.id] = i + 1; });
+
+      // Lead-time accounting — the current rank-1 marble.
+      const leaderId = ranked[0]?.id;
+      if (leaderId) {
+        const lt = telemetry.get(leaderId);
+        if (lt) lt.leadFrames++;
+      }
+
+      // Overtake / passed detection vs previous frame's ranking.
+      if (Object.keys(prevRanking).length > 0) {
+        for (const r of ranked) {
+          const prev = prevRanking[r.id];
+          const now = ranking[r.id];
+          if (prev !== undefined && now < prev) {
+            const t = telemetry.get(r.id);
+            if (t) t.overtakes += prev - now;
+          } else if (prev !== undefined && now > prev) {
+            const t = telemetry.get(r.id);
+            if (t) t.timesPassed += now - prev;
+          }
+        }
+      }
+      prevRanking = ranking;
+
+      // Quartile checkpoints — capture the first frame past each threshold.
+      // Race progress is measured by elapsed vs the deadline ceiling so it
+      // is independent of how many marbles have finished.
+      const prog = elapsed / DOOMSDAY_DEADLINE_MS;
+      if (!captured25 && prog >= 0.25) {
+        captured25 = true;
+        for (const r of ranked) {
+          const t = telemetry.get(r.id);
+          if (t) t.posAt25 = ranking[r.id];
+        }
+      }
+      if (!captured50 && prog >= 0.50) {
+        captured50 = true;
+        for (const r of ranked) {
+          const t = telemetry.get(r.id);
+          if (t) t.posAt50 = ranking[r.id];
+        }
+      }
+      if (!captured75 && prog >= 0.75) {
+        captured75 = true;
+        for (const r of ranked) {
+          const t = telemetry.get(r.id);
+          if (t) t.posAt75 = ranking[r.id];
+        }
+      }
+    }
+
     const marbles = marbleBodies.map(({ body, data }) => ({
       data,
       x: body.position.x,
@@ -1012,6 +1183,55 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
       .map(({ marble, time }) => ({ marble, time }));
   }
 
+  /**
+   * Pure read of accumulated telemetry. Call AFTER the race finishes
+   * (alongside getPositions). Derives finish place / quartile fallbacks
+   * but never mutates physics. Safe to call multiple times.
+   */
+  function getTelemetry(): MarbleTelemetry[] {
+    const positions = getPositions();
+    const placeById: Record<string, number> = {};
+    positions.forEach((p, i) => { placeById[p.marble.id] = i + 1; });
+    const totalLeadFrames = Array.from(telemetry.values())
+      .reduce((s, t) => s + t.leadFrames, 0) || 1;
+
+    return marbleBodies.map(({ data }) => {
+      const t = telemetry.get(data.id) ?? {
+        peakVelocity: 0, velocitySum: 0, velocitySamples: 0,
+        bounces: 0, bumperHits: 0, pegContacts: 0, wallScrapes: 0,
+        speedBurstHits: 0, posAt25: 0, posAt50: 0, posAt75: 0,
+        overtakes: 0, timesPassed: 0, leadFrames: 0,
+      };
+      const place = placeById[data.id] ?? marbleBodies.length;
+      // Short races may not reach a quartile checkpoint — fall back to the
+      // final place so the position-by-stage line still renders.
+      const p25 = t.posAt25 || place;
+      const p50 = t.posAt50 || place;
+      const p75 = t.posAt75 || place;
+      return {
+        marbleId: data.id,
+        finishTime: finishTimes[data.id] || 0,
+        finishPlace: place,
+        peakVelocity: t.peakVelocity,
+        avgVelocity: t.velocitySamples > 0 ? t.velocitySum / t.velocitySamples : 0,
+        velocitySampleCount: t.velocitySamples,
+        bounces: t.bounces,
+        bumperHits: t.bumperHits,
+        pegContacts: t.pegContacts,
+        wallScrapes: t.wallScrapes,
+        speedBurstHits: t.speedBurstHits,
+        posAt25: p25,
+        posAt50: p50,
+        posAt75: p75,
+        posAtFinish: place,
+        overtakes: t.overtakes,
+        timesPassed: t.timesPassed,
+        wireToWire: p25 === 1 && p50 === 1 && p75 === 1 && place === 1,
+        leadTimeFraction: t.leadFrames / totalLeadFrames,
+      };
+    });
+  }
+
   function destroy() { Matter.Engine.clear(engine); }
   // Expose the marbles in the engine's internal (shuffled) order so the renderer
   // can match each visual index to the correct marble identity. Without this,
@@ -1041,5 +1261,5 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     };
   }
 
-  return { step, getPositions, destroy, releaseGate, track, marbles, getStaticConfig };
+  return { step, getPositions, getTelemetry, destroy, releaseGate, track, marbles, getStaticConfig };
 }
