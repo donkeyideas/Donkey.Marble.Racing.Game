@@ -22,6 +22,7 @@ import { flushRaceSyncQueue, clearRaceSyncQueue } from '../lib/raceSyncQueue';
 import { reconcileLocalBalanceOnce } from '../lib/balanceReconcile';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
+import { useStableWindowDimensions } from '../utils/useStableDimensions';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -33,6 +34,17 @@ export default function RootLayout() {
     Fredoka_600SemiBold,
     Fredoka_700Bold,
   });
+
+  // Android cold-start fix: on the first launch after an app update the JS
+  // bundle can evaluate before the activity window is fully measured, so
+  // `Dimensions.get('window')` returns stale values and any module that
+  // captures them at import time (e.g. RaceCanvas's render SCALE) is sized
+  // wrong — the whole app looks "zoomed in" until the next launch. We hold
+  // back the navigator until the window size has settled so route screen
+  // modules are imported (and their module-level Dimensions reads run) only
+  // once the correct size is available.
+  const dimensionsStable = useStableWindowDimensions();
+  const ready = fontsLoaded && dimensionsStable;
 
   useEffect(() => {
     // Load cached remote config immediately, then fetch fresh in background
@@ -106,14 +118,14 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (ready) {
       SplashScreen.hideAsync();
       // Re-schedule event notifications if permission already granted (no prompt)
       scheduleIfAlreadyPermitted().catch(() => {});
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
-  if (!fontsLoaded) return null;
+  if (!ready) return null;
 
   return (
     <GestureHandlerRootView style={styles.root}>

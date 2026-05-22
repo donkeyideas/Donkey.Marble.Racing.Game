@@ -112,9 +112,6 @@ export interface MarbleTelemetry {
  */
 export interface MarbleAnalytics {
   races: number;                 // races counted into analytics (non quick-race)
-  // ELO rating — standard Elo, K=32, everyone starts at 1500.
-  elo: number;
-  eloHistory: number[];          // ELO after each counted race (capped at 60)
   // Finish-position accumulators.
   finishPositions: number[];     // recent finish places (capped at 60) — for σ
   podiums: number;               // top-3 finishes
@@ -446,7 +443,7 @@ interface GameState {
   currentStreak: number;
   marbleStats: Record<string, { wins: number; losses: number; betCount: number }>;
 
-  // Deep analytics — lifetime physics/race telemetry per marble + ELO.
+  // Deep analytics — lifetime physics/race telemetry per marble.
   marbleAnalytics: Record<string, MarbleAnalytics>;
 
   /* User-facing toggle settings (Settings screen). All default to true.
@@ -649,16 +646,12 @@ MARBLES.forEach((m) => {
 
 // ── Deep analytics helpers ──
 
-const ELO_START = 1500;
-const ELO_K = 32;
-const ELO_HISTORY_CAP = 60;
+const FINISH_HISTORY_CAP = 60;
 
 /** A fresh, zeroed analytics record for one marble. */
 function emptyAnalytics(): MarbleAnalytics {
   return {
     races: 0,
-    elo: ELO_START,
-    eloHistory: [],
     finishPositions: [],
     podiums: 0,
     finishCounts: [0, 0, 0, 0, 0, 0, 0, 0],
@@ -685,10 +678,7 @@ function emptyAnalytics(): MarbleAnalytics {
 
 /**
  * Fold one race's results + telemetry into the lifetime marbleAnalytics map.
- * PURE — returns a new map, mutates nothing. ELO is standard Elo (K=32,
- * start 1500): each marble is scored pairwise against every other marble in
- * the race (win = finished ahead). The per-marble net Elo delta is the sum
- * of pairwise (actual − expected) deltas, applied once.
+ * PURE — returns a new map, mutates nothing.
  *
  * `finishOrder` is the array of marble ids in finishing order (index 0 = 1st).
  * `times` maps marbleId → finish time; used to flag close races for Clutch.
@@ -703,23 +693,6 @@ function foldRaceAnalytics(
   const next: Record<string, MarbleAnalytics> = { ...prev };
   const n = finishOrder.length;
   if (n < 2) return next;
-
-  // Pre-race ELO snapshot for every racer (used by every pairwise calc).
-  const preElo: Record<string, number> = {};
-  finishOrder.forEach(id => { preElo[id] = (prev[id] ?? emptyAnalytics()).elo; });
-
-  // Pairwise Elo deltas — each marble vs every other marble.
-  const eloDelta: Record<string, number> = {};
-  finishOrder.forEach(id => { eloDelta[id] = 0; });
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const a = finishOrder[i], b = finishOrder[j]; // a finished ahead of b
-      const ea = 1 / (1 + Math.pow(10, (preElo[b] - preElo[a]) / 400));
-      const eb = 1 - ea;
-      eloDelta[a] += ELO_K * (1 - ea); // a "won" this pairing
-      eloDelta[b] += ELO_K * (0 - eb); // b "lost" this pairing
-    }
-  }
 
   // Telemetry indexed by marble id for quick lookup.
   const telById: Record<string, MarbleTelemetry> = {};
@@ -740,15 +713,11 @@ function foldRaceAnalytics(
       ...base,
       finishCounts: [...base.finishCounts],
       finishPositions: [...base.finishPositions],
-      eloHistory: [...base.eloHistory],
       themeStats: { ...base.themeStats },
     };
     a.races += 1;
-    a.elo = Math.round(preElo[id] + eloDelta[id]);
-    a.eloHistory.push(a.elo);
-    if (a.eloHistory.length > ELO_HISTORY_CAP) a.eloHistory.shift();
     a.finishPositions.push(place);
-    if (a.finishPositions.length > ELO_HISTORY_CAP) a.finishPositions.shift();
+    if (a.finishPositions.length > FINISH_HISTORY_CAP) a.finishPositions.shift();
     a.totalFinishPosition += place;
     if (place <= 3) a.podiums += 1;
     if (place >= 1 && place <= 8) a.finishCounts[place - 1] += 1;
@@ -894,7 +863,7 @@ export const useGameStore = create<GameState>()(
       }
     }
 
-    // --- COMMON: deep analytics + ELO (all modes except quick race) ---
+    // --- COMMON: deep analytics (all modes except quick race) ---
     // Folds engine telemetry + finish order into the lifetime per-marble
     // analytics map. Quick races are excluded to mirror marbleStats so the
     // two records stay consistent.

@@ -15,7 +15,6 @@ import MarbleDot from '../components/MarbleDot';
  * random numbers, no hardcoded fakes. A marble with zero races shows "NEW".
  *
  * METRIC FORMULAS (each one-liner; see inline notes for detail):
- *  - ELO          : standard Elo, K=32, start 1500, pairwise vs the field — stored.
  *  - Consistency  : 1 − (σ of finish positions / maxσ), clamped 0..1.
  *  - xFinish      : expected finish = 4.5 − 7·(normalized base-stat strength),
  *                   i.e. stronger base stats ⇒ lower (better) expected place.
@@ -111,12 +110,14 @@ const THEME_LABEL: Partial<Record<CourseTheme, string>> = {
   neon: 'Neon', snow: 'Snow',
 };
 
-function tierFor(elo: number, races: number): string {
-  if (races === 0) return 'Unrated';
-  if (elo >= 1750) return 'S';
-  if (elo >= 1650) return 'A';
-  if (elo >= 1550) return 'B';
-  if (elo >= 1450) return 'C';
+/** Performance tier from average finish position (1 = best, 8 = worst). */
+function tierFor(a: MarbleAnalytics): string {
+  if (a.races === 0) return 'Unrated';
+  const avg = avgFinish(a);
+  if (avg <= 2.5) return 'S';
+  if (avg <= 3.5) return 'A';
+  if (avg <= 4.5) return 'B';
+  if (avg <= 5.5) return 'C';
   return 'D';
 }
 
@@ -177,16 +178,14 @@ export default function MarbleAnalyticsScreen() {
     const consPctl: number[] = [];
     const clutchPctl: number[] = [];
     const dvoaPctl: number[] = [];
-    const eloPctl: number[] = [];
     MARBLES.forEach(m => {
       const ma = marbleAnalytics[m.id];
       speedPctl.push(ma ? ma.peakVelocity : 0);
       consPctl.push(ma ? consistency(ma) : 0);
       clutchPctl.push(ma ? clutch(ma) : 0);
       dvoaPctl.push(ma ? dvoa(ma) : 0);
-      eloPctl.push(ma ? ma.elo : 1500);
     });
-    return { speedPctl, consPctl, clutchPctl, dvoaPctl, eloPctl };
+    return { speedPctl, consPctl, clutchPctl, dvoaPctl };
   }, [marbleAnalytics]);
 
   // Last-20 finish-position trend (from raceHistory, all marbles).
@@ -234,13 +233,9 @@ export default function MarbleAnalyticsScreen() {
               <Text style={styles.heroName}>{marble.name}</Text>
               <Text style={styles.heroSub}>
                 {hasData
-                  ? `${a.races} races • Tier ${tierFor(a.elo, a.races)}`
+                  ? `${a.races} races • Tier ${tierFor(a)}`
                   : 'No races yet'}
               </Text>
-            </View>
-            <View style={styles.eloBadge}>
-              <Text style={styles.eloLabel}>ELO</Text>
-              <Text style={styles.eloValue}>{hasData ? a.elo : 'NEW'}</Text>
             </View>
           </View>
 
@@ -248,7 +243,7 @@ export default function MarbleAnalyticsScreen() {
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
                 {marble.name} hasn't raced yet. Run a few races to unlock deep
-                analytics — ELO, advanced metrics, physics profile and more.
+                analytics — advanced metrics, physics profile and more.
               </Text>
             </View>
           )}
@@ -279,8 +274,6 @@ export default function MarbleAnalyticsScreen() {
 
               {/* Percentile Rankings */}
               <Section title="PERCENTILE RANKINGS VS ALL MARBLES">
-                <PercentileBar label="ELO"
-                  pctl={percentile(a.elo, fieldMetrics.eloPctl)} color={Colors.yellow} />
                 <PercentileBar label="Top Speed"
                   pctl={percentile(a.peakVelocity, fieldMetrics.speedPctl)} color={Colors.green} />
                 <PercentileBar label="Consistency"
@@ -456,39 +449,6 @@ export default function MarbleAnalyticsScreen() {
                 </Section>
               )}
 
-              {/* ELO History */}
-              {a.eloHistory.length >= 2 && (
-                <Section title="ELO RATING HISTORY">
-                  {(() => {
-                    const hist = a.eloHistory;
-                    const min = Math.min(...hist);
-                    const max = Math.max(...hist);
-                    const range = Math.max(1, max - min);
-                    return (
-                      <>
-                        <View style={styles.eloChart}>
-                          {hist.map((e, i) => {
-                            const h = ((e - min) / range) * 100;
-                            return (
-                              <View key={i} style={styles.eloBarCol}>
-                                <View style={[styles.eloBar, {
-                                  height: `${Math.max(4, h)}%`,
-                                }]} />
-                              </View>
-                            );
-                          })}
-                        </View>
-                        <View style={styles.distFooter}>
-                          <Text style={styles.distFooterText}>Race 1 ({hist[0]})</Text>
-                          <Text style={styles.distFooterText}>
-                            Race {hist.length} ({hist[hist.length - 1]})
-                          </Text>
-                        </View>
-                      </>
-                    );
-                  })()}
-                </Section>
-              )}
             </>
           )}
         </ScrollView>
@@ -521,17 +481,6 @@ const styles = StyleSheet.create({
   },
   heroName: { fontFamily: Fonts.display, fontSize: 24, color: Colors.white },
   heroSub: { fontFamily: Fonts.body, fontSize: 12, color: Colors.whiteAlpha40, marginTop: 2 },
-  eloBadge: {
-    backgroundColor: Colors.yellowAlpha15,
-    borderWidth: 2,
-    borderColor: Colors.yellowAlpha20,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  eloLabel: { fontFamily: Fonts.bodyBold, fontSize: 8, color: Colors.whiteAlpha40, letterSpacing: 1 },
-  eloValue: { fontFamily: Fonts.display, fontSize: 20, color: Colors.yellow },
 
   emptyCard: { ...CARD, padding: 18 },
   emptyText: { fontFamily: Fonts.body, fontSize: 13, color: Colors.whiteAlpha50, lineHeight: 19, textAlign: 'center' },
@@ -594,9 +543,4 @@ const styles = StyleSheet.create({
   tdCell: { flex: 1 },
   tdText: { fontFamily: Fonts.bodySemiBold, fontSize: 11, color: Colors.whiteAlpha70 },
   themeDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-
-  /* ELO history chart */
-  eloChart: { flexDirection: 'row', alignItems: 'flex-end', height: 60, gap: 2, marginBottom: 6 },
-  eloBarCol: { flex: 1, height: '100%', justifyContent: 'flex-end' },
-  eloBar: { width: '100%', backgroundColor: Colors.yellow, borderRadius: 2, minWidth: 2 },
 });

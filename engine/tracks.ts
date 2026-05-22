@@ -874,11 +874,17 @@ export function buildGauntlet(): TrackConfig {
 // Two parallel sine-wave walls form a winding tube from top to bottom.
 // Funnel entry captures all marble spawn positions; no marble escapes the channel.
 
+// Grand Prix backgrounds map to the Skia-gradient bgThemes so every GP track
+// renders with a proper themed gradient. The four "legacy" theme aliases
+// (meadow/volcano/frozen/cyber) previously pointed at the PNG-tile themes
+// (grass/lava/ice/cyber), which made hasLegacyBg() true and skipped the
+// gradient render path — leaving Grand Prix tracks looking unthemed/plain.
+// They now point at the closest vibrant gradient theme instead.
 const GP_THEMES: Record<string, { bg: string; wall: string }> = {
-  meadow:   { bg: 'grass',    wall: '#8B5E3C' },
-  volcano:  { bg: 'lava',     wall: '#c0c0c0' },
-  frozen:   { bg: 'ice',      wall: '#d0d0d0' },
-  cyber:    { bg: 'cyber',    wall: '#00d4ff' },
+  meadow:   { bg: 'forest',   wall: '#8B5E3C' },
+  volcano:  { bg: 'volcanic', wall: '#c0c0c0' },
+  frozen:   { bg: 'ocean',    wall: '#d0d0d0' },
+  cyber:    { bg: 'neon',     wall: '#00d4ff' },
   beach:    { bg: 'beach',    wall: '#5a3520' },
   forest:   { bg: 'forest',   wall: '#8B5E3C' },
   desert:   { bg: 'desert',   wall: '#3a2510' },

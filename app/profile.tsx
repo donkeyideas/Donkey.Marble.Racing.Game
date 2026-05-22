@@ -15,7 +15,69 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import MarbleDot from '../components/MarbleDot';
 import PrimaryButton from '../components/PrimaryButton';
-import { getXpPerLevel } from '../lib/remoteConfig';
+import { getXpPerLevel, getConfig } from '../lib/remoteConfig';
+
+// The betting screen caps daily bets at 10 (hard-coded UI constant in
+// app/betting.tsx). Mirror it here so the limit bar stays in sync.
+const MAX_DAILY_BETS = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfToday(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// ── Daily-limit progress row ────────────────────────────────────────────────
+function LimitRow({
+  name,
+  used,
+  max,
+  color,
+  last,
+}: {
+  name: string;
+  used: number;
+  max: number;
+  color: string;
+  last?: boolean;
+}) {
+  const pct = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+  return (
+    <View style={[styles.limitRow, !last && styles.limitRowBorder]}>
+      <View style={styles.limitLeft}>
+        <Text style={styles.limitName}>{name}</Text>
+        <View style={styles.limitBarTrack}>
+          <View
+            style={[styles.limitBarFill, { width: `${pct}%`, backgroundColor: color }]}
+          />
+        </View>
+      </View>
+      <Text style={styles.limitVal}>
+        {used.toLocaleString()} / {max.toLocaleString()}
+      </Text>
+    </View>
+  );
+}
+
+// ── Daily login-streak strip ────────────────────────────────────────────────
+function StreakStrip({ streak }: { streak: number }) {
+  const cycle = getConfig().dailyRewards.length || 7;
+  const filled = streak <= 0 ? 0 : ((streak - 1) % cycle) + 1;
+  return (
+    <View style={styles.streakStrip}>
+      {Array.from({ length: cycle }).map((_, i) => (
+        <View
+          key={i}
+          style={[
+            styles.streakSeg,
+            { backgroundColor: i < filled ? '#2ecc71' : Colors.whiteAlpha10 },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
 
 const LEAGUE_TIERS = [
   { name: 'BRONZE', threshold: 1, color: Colors.bronze, next: 'SILVER', nextLevel: 10 },
@@ -169,6 +231,12 @@ export default function ProfileScreen() {
   const coinHistory = useGameStore((s) => s.coinHistory);
   const season = useGameStore((s) => s.season);
   const tournaments = useGameStore((s) => s.tournaments);
+  const betsToday = useGameStore((s) => s.betsToday);
+  const lastBetDate = useGameStore((s) => s.lastBetDate);
+  const dailyStreak = useGameStore((s) => s.dailyStreak);
+  const storePurchasesToday = useGameStore((s) => s.storePurchasesToday);
+  const storeCoinsPurchasedToday = useGameStore((s) => s.storeCoinsPurchasedToday);
+  const storeLastPurchaseDate = useGameStore((s) => s.storeLastPurchaseDate);
 
   const winRate = totalRaces > 0 ? Math.round((totalWins / totalRaces) * 100) : 0;
 
@@ -179,6 +247,30 @@ export default function ProfileScreen() {
   const coinsSpent = coinHistory
     .filter((t) => t.type === 'bet' || t.type === 'purchase')
     .reduce((sum, t) => sum + Math.abs(Math.min(0, t.amount)), 0);
+  const coinsPurchased = coinHistory
+    .filter((t) => t.type === 'purchase' && t.amount > 0)
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Today / week coin deltas from history timestamps
+  const { todayDelta, weekDelta } = useMemo(() => {
+    const dayStart = startOfToday();
+    const weekStart = dayStart - 6 * DAY_MS;
+    let todaySum = 0;
+    let weekSum = 0;
+    for (const tx of coinHistory) {
+      if (tx.timestamp >= dayStart) todaySum += tx.amount;
+      if (tx.timestamp >= weekStart) weekSum += tx.amount;
+    }
+    return { todayDelta: todaySum, weekDelta: weekSum };
+  }, [coinHistory]);
+  const fmtDelta = (n: number) => `${n >= 0 ? '+' : ''}${n.toLocaleString()}`;
+
+  // Daily-limit usage (reset when the stored date is not today)
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cfg = getConfig();
+  const betsUsed = lastBetDate === todayStr ? betsToday : 0;
+  const purchasesUsed = storeLastPurchaseDate === todayStr ? storePurchasesToday : 0;
+  const coinsBoughtToday = storeLastPurchaseDate === todayStr ? storeCoinsPurchasedToday : 0;
 
   // Most-bet vs highest-win-rate marble (separate metrics — both interesting)
   let mostBetId = '', mostBetCount = 0;
@@ -338,6 +430,55 @@ export default function ProfileScreen() {
               <Text style={[styles.statValue, { color: '#e74c3c' }]}>-{coinsSpent.toLocaleString()}</Text>
               <Text style={styles.statLabel}>SPENT</Text>
             </View>
+            <View style={[styles.statCard, { flex: 1 }]}>
+              <Text style={[styles.statValue, { color: '#ffc220' }]}>{coinsPurchased.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>PURCHASED</Text>
+            </View>
+          </View>
+
+          {/* Balance trend */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionLabel}>BALANCE TREND</Text>
+            <Text style={styles.balanceVal}>{coins.toLocaleString()}</Text>
+            <Text style={styles.balanceSub}>
+              {fmtDelta(todayDelta)} today {'·'} {fmtDelta(weekDelta)} this week
+            </Text>
+          </View>
+
+          {/* ===== DAILY LIMITS ===== */}
+          <Text style={styles.sectionHeader}>DAILY LIMITS</Text>
+          <View style={styles.sectionCard}>
+            <LimitRow
+              name="Bets Used"
+              used={betsUsed}
+              max={MAX_DAILY_BETS}
+              color="#ffc220"
+            />
+            <LimitRow
+              name="Purchase Transactions"
+              used={purchasesUsed}
+              max={cfg.maxDailyPurchases}
+              color="#c084fc"
+            />
+            <LimitRow
+              name="Coins Purchasable"
+              used={coinsBoughtToday}
+              max={cfg.maxDailyCoins}
+              color="#3498db"
+              last
+            />
+          </View>
+
+          {/* ===== DAILY LOGIN STREAK ===== */}
+          <Text style={styles.sectionHeader}>DAILY LOGIN STREAK</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.streakLoginHeader}>
+              <Text style={styles.streakLoginDay}>Day {dailyStreak}</Text>
+              <Text style={styles.streakLoginSub}>
+                {dailyStreak} day{dailyStreak === 1 ? '' : 's'} in a row
+              </Text>
+            </View>
+            <StreakStrip streak={dailyStreak} />
           </View>
 
           {/* ===== CAREER ACHIEVEMENTS ===== */}
@@ -372,6 +513,24 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+
+          {/* ===== INVITE FRIENDS ===== */}
+          <Text style={styles.sectionHeader}>GROW YOUR CIRCLE</Text>
+          <Pressable
+            style={({ pressed }) => [styles.inviteCard, pressed && { opacity: 0.85 }]}
+            onPress={() => router.push('/invite-friends')}
+          >
+            <View style={styles.inviteIcon}>
+              <Text style={styles.inviteIconText}>+</Text>
+            </View>
+            <View style={styles.inviteInfo}>
+              <Text style={styles.inviteTitle}>INVITE FRIENDS</Text>
+              <Text style={styles.inviteSub}>
+                Earn +500 coins for every friend who races
+              </Text>
+            </View>
+            <Text style={styles.inviteArrow}>{'›'}</Text>
+          </Pressable>
 
           {/* ===== ACTIONS ===== */}
           <View style={styles.actions}>
@@ -689,6 +848,120 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.whiteAlpha50,
     letterSpacing: 0.5,
+  },
+
+  /* ===== BALANCE TREND ===== */
+  balanceVal: {
+    fontFamily: Fonts.display,
+    fontSize: 34,
+    color: Colors.yellow,
+    lineHeight: 38,
+  },
+  balanceSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha35,
+    marginTop: 2,
+  },
+
+  /* ===== DAILY LIMITS ===== */
+  limitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+  },
+  limitRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  limitLeft: { flex: 1, marginRight: 12 },
+  limitName: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.white,
+    marginBottom: 5,
+  },
+  limitBarTrack: {
+    width: 130,
+    height: 6,
+    backgroundColor: Colors.whiteAlpha07,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  limitBarFill: { height: 6, borderRadius: 3 },
+  limitVal: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 13,
+    color: Colors.whiteAlpha50,
+  },
+
+  /* ===== DAILY LOGIN STREAK ===== */
+  streakLoginHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  streakLoginDay: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: Colors.yellow,
+  },
+  streakLoginSub: {
+    fontFamily: Fonts.bodyBold,
+    fontSize: 12,
+    color: Colors.whiteAlpha40,
+  },
+  streakStrip: { flexDirection: 'row', gap: 4, marginTop: 10 },
+  streakSeg: { flex: 1, height: 5, borderRadius: 2.5 },
+
+  /* ===== INVITE FRIENDS ===== */
+  inviteCard: {
+    backgroundColor: 'rgba(255,194,32,0.10)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,194,32,0.25)',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  inviteIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.yellow,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inviteIconText: {
+    fontFamily: Fonts.display,
+    fontSize: 28,
+    color: Colors.ink,
+    lineHeight: 32,
+  },
+  inviteInfo: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  inviteTitle: {
+    fontFamily: Fonts.display,
+    fontSize: 17,
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+  inviteSub: {
+    fontFamily: Fonts.body,
+    fontSize: 12,
+    color: Colors.whiteAlpha50,
+    marginTop: 2,
+  },
+  inviteArrow: {
+    fontFamily: Fonts.display,
+    fontSize: 24,
+    color: Colors.whiteAlpha40,
+    marginLeft: 8,
   },
 
   /* ===== ACTIONS ===== */

@@ -24,11 +24,15 @@ import { pollSupportReplies, readBannerDismissedCount, writeBannerDismissedCount
 
 /* The lobby has no real scheduled-race backend feed, so the "featured"
  * race rotation is derived deterministically from today's date — every
- * player sees the same hero + queue, and it refreshes daily. The hero
- * countdown is a purely cosmetic client-side timer that loops. */
+ * player sees the same pool, and it refreshes daily. The hero "LIVE NOW"
+ * race + UP NEXT queue rotate client-side: a useState index advances
+ * through this pool each time the countdown hits 0 (see HERO section). */
 function dayIndex(): number {
   return Math.floor(Date.now() / 86_400_000);
 }
+
+/** Size of the rotating featured-course pool the hero cycles through. */
+const FEATURED_POOL_SIZE = 8;
 
 /** Picks `count` distinct courses starting at a date-seeded offset. */
 function getFeaturedCourses(count: number): CourseData[] {
@@ -88,22 +92,36 @@ export default function LobbyScreen() {
   const [dailyReward, setDailyReward] = useState<{ reward: number; streak: number } | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
-  // ===== HERO: featured race rotation + cosmetic countdown =====
-  // The featured race / queue come from a date-seeded slice of ALL_COURSES
-  // (see getFeaturedCourses). There's no scheduled-race backend, so the
-  // hero "LIVE NOW" countdown is a cosmetic loop — when it hits 0 it just
-  // resets, signalling "next race starting".
-  const featured = getFeaturedCourses(3);
-  const heroCourse = featured[0];
-  const upNext = featured.slice(1);
-  const dailyCourse = getTrackOfTheDay();
-  const [heroCountdown, setHeroCountdown] = useState(60);
+  // ===== HERO: featured race rotation + countdown =====
+  // The featured pool is a date-seeded slice of ALL_COURSES (refreshes
+  // daily). There's no scheduled-race backend, so the rotation is driven
+  // client-side: `heroIndex` points at the "LIVE NOW" course; the next
+  // two pool entries (wrapping) form the UP NEXT queue. When the countdown
+  // hits 0, heroIndex advances — the first UP NEXT race becomes LIVE NOW,
+  // the queue shifts up, the next pool course fills the vacated slot, and
+  // the countdown resets to its starting value (HERO_COUNTDOWN_START).
+  const HERO_COUNTDOWN_START = 60;
+  const featuredPool = getFeaturedCourses(FEATURED_POOL_SIZE);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const heroCourse = featuredPool[heroIndex % featuredPool.length];
+  const upNext = [
+    featuredPool[(heroIndex + 1) % featuredPool.length],
+    featuredPool[(heroIndex + 2) % featuredPool.length],
+  ];
+  const [heroCountdown, setHeroCountdown] = useState(HERO_COUNTDOWN_START);
   useEffect(() => {
     const id = setInterval(() => {
-      setHeroCountdown((n) => (n <= 1 ? 60 : n - 1));
+      setHeroCountdown((n) => {
+        if (n <= 1) {
+          // Countdown elapsed: rotate the hero / queue forward and reset.
+          setHeroIndex((idx) => (idx + 1) % featuredPool.length);
+          return HERO_COUNTDOWN_START;
+        }
+        return n - 1;
+      });
     }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [featuredPool.length]);
 
   // Routes the player into a quick race on the given course.
   const startCourse = useCallback((courseId: string) => {
@@ -393,25 +411,6 @@ export default function LobbyScreen() {
             </Pressable>
           ))}
 
-          {/* ===== HERO: DAILY DERBY ===== */}
-          <Text style={[styles.sectionTitle, { marginTop: 16 }]}>DAILY EVENT</Text>
-          <Pressable
-            onPress={() => startCourse(dailyCourse.id)}
-            style={({ pressed }) => [pressed && { opacity: 0.9 }]}
-          >
-            <LinearGradient colors={['#ffc220', '#ff9a1a']} style={styles.dailyCard}>
-              <View style={styles.dailyStar}>
-                <Text style={styles.dailyStarText}>★</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.dailyTitle}>DAILY DERBY</Text>
-                <Text style={styles.dailyDesc} numberOfLines={1}>
-                  {dailyCourse.name} · Bonus payout · Resets at midnight
-                </Text>
-              </View>
-            </LinearGradient>
-          </Pressable>
-
           {/* ===== GAME MODES ===== */}
           <Text style={styles.sectionTitle}>GAME MODES</Text>
 
@@ -498,6 +497,7 @@ export default function LobbyScreen() {
           {/* ===== EXPLORE ===== */}
           <Text style={styles.sectionTitle}>EXPLORE</Text>
 
+          {/* Row 1 */}
           <View style={styles.navRow}>
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
@@ -517,22 +517,15 @@ export default function LobbyScreen() {
 
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/courses')}
-            >
-              <Text style={styles.navLabel}>COURSES</Text>
-              <Text style={styles.navSub}>{ALL_COURSES.length} tracks</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.navRow}>
-            <Pressable
-              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
               onPress={() => router.push('/store')}
             >
               <Text style={styles.navLabel}>STORE</Text>
               <Text style={styles.navSub}>Buy coins</Text>
             </Pressable>
+          </View>
 
+          {/* Row 2 */}
+          <View style={styles.navRow}>
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
               onPress={() => router.push('/pass')}
@@ -553,9 +546,7 @@ export default function LobbyScreen() {
               <Text style={styles.navLabel}>SETTINGS</Text>
               <Text style={styles.navSub}>Legal</Text>
             </Pressable>
-          </View>
 
-          <View style={styles.navRow}>
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
               onPress={() => router.push('/leaderboards')}
@@ -563,7 +554,10 @@ export default function LobbyScreen() {
               <Text style={styles.navLabel}>LEADERS</Text>
               <Text style={styles.navSub}>Rankings</Text>
             </Pressable>
+          </View>
 
+          {/* Row 3 */}
+          <View style={styles.navRow}>
             <Pressable
               style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
               onPress={() => router.push('/achievements')}
@@ -578,24 +572,6 @@ export default function LobbyScreen() {
             >
               <Text style={styles.navLabel}>CHALLENGES</Text>
               <Text style={styles.navSub}>Daily</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.navRow}>
-            <Pressable
-              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/economy')}
-            >
-              <Text style={styles.navLabel}>ECONOMY</Text>
-              <Text style={styles.navSub}>Coin stats</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [styles.navCard, pressed && styles.navCardPressed]}
-              onPress={() => router.push('/invite-friends')}
-            >
-              <Text style={styles.navLabel}>INVITE</Text>
-              <Text style={styles.navSub}>Earn coins</Text>
             </Pressable>
 
             <Pressable
@@ -811,41 +787,6 @@ const styles = StyleSheet.create({
   },
   statusSoonText: {
     color: Colors.yellow,
-  },
-
-  /* ===== DAILY DERBY CARD ===== */
-  dailyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  dailyStar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(10,26,58,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dailyStarText: {
-    fontSize: 24,
-    color: Colors.ink,
-    marginTop: -2,
-  },
-  dailyTitle: {
-    fontFamily: Fonts.display,
-    fontSize: 18,
-    color: Colors.ink,
-  },
-  dailyDesc: {
-    fontFamily: Fonts.bodySemiBold,
-    fontSize: 12,
-    color: 'rgba(10,26,58,0.6)',
-    marginTop: 1,
   },
 
   /* ===== ANNOUNCEMENTS & PROMOS ===== */
