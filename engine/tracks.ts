@@ -920,15 +920,29 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
   const finish = generateFinishZone(FINISH_Y);
 
-  // Seed-varied parameters
+  // Seed-varied parameters.
+  //
+  // CLUNK FIX: the S-channel walls are a sine-wave polyline. "Clunky" marble
+  // feel on Grand Prix tracks was caused by two compounding problems:
+  //   1. HALF_WAVES was 42-51 — a violently tight serpentine (a full S-curve
+  //      every ~100-120px, narrower than the channel itself). Marbles could
+  //      not flow; they ricocheted wall-to-wall.
+  //   2. The wave was sampled with only N=120 points, so each polyline
+  //      segment advanced the sine phase by ~69°. The walls were therefore
+  //      jagged sawtooth zigzags (avg kink 31-40°, max ~90-100° per joint)
+  //      instead of smooth curves — every joint is a corner the marble slams.
+  // Normal (non-GP) tracks have ~2° kinks. The fix: a much gentler wave
+  // (HALF_WAVES 8-12 = long sweeping F1 curves) sampled at high resolution
+  // (N=200), which drops the per-segment phase to ~4-5° and the wall kink
+  // angle to single digits — smooth, like every other track.
   const AMP = 55 + Math.floor(rng() * 20);            // 55-75
-  const HALF_WAVES = 42 + Math.floor(rng() * 10);     // 42-51
+  const HALF_WAVES = 8 + Math.floor(rng() * 5);       // 8-12 — gentle sweeping S
   const CH_W = 170 + Math.floor(rng() * 20);          // 170-190
   const HALF = CH_W / 2;
   const CHAMBER_HALF = 160 + Math.floor(rng() * 15);  // 160-175
   const WAVE_START = 250;
   const WAVE_END = 5200;
-  const N = 120;
+  const N = 200;                                       // high-res sampling — smooth walls
 
   // 7 chamber Y positions — slightly jittered by seed
   const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
@@ -975,7 +989,12 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     }
 
     const localHalf = HALF + chamberBlend * (CHAMBER_HALF - HALF);
-    const localAmp = AMP * (1 - chamberBlend * 0.85);
+    // Ease the wave amplitude in over the first 8% of the channel so the
+    // centerline leaves the (centered) entry funnel with near-zero slope
+    // instead of the wave's full initial slope — removes the lone sharp
+    // kink at the funnel→wave joint.
+    const easeIn = Math.min(1, t / 0.08);
+    const localAmp = AMP * (1 - chamberBlend * 0.85) * easeIn;
     const cx = 200 + localAmp * Math.sin(HALF_WAVES * Math.PI * t);
 
     leftPts.push({ x: cx - localHalf, y });

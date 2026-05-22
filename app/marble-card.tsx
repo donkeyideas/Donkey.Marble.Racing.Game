@@ -1,20 +1,13 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
-  Pressable,
   ScrollView,
   StyleSheet,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  interpolate,
-} from 'react-native-reanimated';
 import { Colors, Fonts, MARBLES, BorderRadius, MarbleData } from '../theme';
 import { useGameStore } from '../state/gameStore';
 import BackButton from '../components/BackButton';
@@ -71,32 +64,6 @@ export default function MarbleCardScreen() {
   const raceHistory = useGameStore((s) => s.raceHistory);
   const season = useGameStore((s) => s.season);
 
-  // ── Flip state ──
-  const flip = useSharedValue(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-
-  const toggleFlip = useCallback(() => {
-    const next = !isFlipped;
-    setIsFlipped(next);
-    flip.value = withTiming(next ? 1 : 0, { duration: 450 });
-  }, [isFlipped, flip]);
-
-  const frontAnimStyle = useAnimatedStyle(() => ({
-    transform: [
-      { perspective: 1000 },
-      { rotateY: `${interpolate(flip.value, [0, 1], [0, 180])}deg` },
-    ],
-    opacity: flip.value > 0.5 ? 0 : 1,
-  }));
-
-  const backAnimStyle = useAnimatedStyle(() => ({
-    transform: [
-      { perspective: 1000 },
-      { rotateY: `${interpolate(flip.value, [0, 1], [180, 360])}deg` },
-    ],
-    opacity: flip.value > 0.5 ? 1 : 0,
-  }));
-
   // ── Derived data (all real store data) ──
 
   // All-time record from seasonStandings
@@ -125,7 +92,7 @@ export default function MarbleCardScreen() {
     maxBetCount,
   });
 
-  // ── Back: season standing ──
+  // ── Season standing ──
   const seasonEntry = season?.standings[marble.id] ?? null;
   const seasonRank = useMemo(() => {
     if (!season || !seasonEntry) return null;
@@ -134,7 +101,7 @@ export default function MarbleCardScreen() {
     return sorted.findIndex(([id]) => id === marble.id) + 1;
   }, [season, seasonEntry, marble.id]);
 
-  // ── Back: last 10 races placements (real raceHistory) ──
+  // ── Last 10 races placements (real raceHistory) ──
   const last10 = useMemo(
     () =>
       raceHistory
@@ -145,7 +112,7 @@ export default function MarbleCardScreen() {
     [raceHistory, marble.id],
   );
 
-  // ── Back: head-to-head vs other marbles (real raceHistory) ──
+  // ── Head-to-head vs other marbles (real raceHistory) ──
   // For every race both marbles appeared in, count who finished ahead.
   const headToHead = useMemo(() => {
     return MARBLES.filter((m) => m.id !== marble.id)
@@ -174,298 +141,218 @@ export default function MarbleCardScreen() {
   return (
     <LinearGradient colors={['#0d1a3a', '#0a1230']} style={styles.fill}>
       <SafeAreaView style={styles.fill}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <BackButton onPress={() => router.back()} />
+          <View style={styles.seasonBadge}>
+            <Text style={styles.seasonBadgeText}>{seasonLabel}</Text>
+          </View>
+        </View>
+
         <ScrollView
           style={styles.fill}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <View style={styles.headerRow}>
-            <BackButton onPress={() => router.back()} />
-            <Pressable
-              onPress={toggleFlip}
-              hitSlop={10}
-              style={({ pressed }) => [styles.flipBtn, pressed && styles.pressed]}
-            >
-              <Text style={styles.flipBtnText}>FLIP</Text>
-            </Pressable>
+          {/* ===== Identity hero ===== */}
+          <LinearGradient
+            colors={['#1a3a7a', '#0d1a3a']}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={styles.heroCard}
+          >
+            <MarbleDot marble={marble} size={96} />
+            <Text style={styles.marbleName}>{marble.name}</Text>
+            <Text style={styles.personality}>{marble.personality}</Text>
+
+            {/* Hot / Cold badge */}
+            {form !== 'neutral' && (
+              <View
+                style={[
+                  styles.formBadge,
+                  form === 'hot' ? styles.formBadgeHot : styles.formBadgeCold,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.formBadgeText,
+                    form === 'hot' ? styles.formTextHot : styles.formTextCold,
+                  ]}
+                >
+                  {form === 'hot'
+                    ? `HOT — ${recentWins} wins in last ${last5.length}`
+                    : `COLD — ${recentWins} wins in last ${last5.length}`}
+                </Text>
+              </View>
+            )}
+
+            {/* Record row */}
+            <View style={styles.recordRow}>
+              <View style={styles.recordItem}>
+                <Text style={styles.recordValue}>{record.wins}</Text>
+                <Text style={styles.recordLabel}>WINS</Text>
+              </View>
+              <View style={styles.recordDivider} />
+              <View style={styles.recordItem}>
+                <Text style={styles.recordValue}>{record.losses}</Text>
+                <Text style={styles.recordLabel}>LOSSES</Text>
+              </View>
+              <View style={styles.recordDivider} />
+              <View style={styles.recordItem}>
+                <Text style={styles.recordValue}>
+                  {totalRaces > 0 ? `${winRatePct}%` : '--'}
+                </Text>
+                <Text style={styles.recordLabel}>WIN RATE</Text>
+              </View>
+            </View>
+          </LinearGradient>
+
+          {/* ===== Overall + stat bars ===== */}
+          <View style={styles.card}>
+            <View style={styles.ratingHeader}>
+              <Text style={styles.sectionLabel}>RATING</Text>
+              <View style={styles.overallPill}>
+                <Text style={styles.overallNum}>{overall}</Text>
+                <Text style={styles.overallLabel}>OVERALL</Text>
+              </View>
+            </View>
+
+            <View style={styles.statBlock}>
+              {STAT_META.map((meta) => {
+                const value = marble.stats[meta.key]; // 0..5 base
+                const pct = Math.max(0, Math.min(100, (value / 5) * 100));
+                return (
+                  <View key={meta.key} style={styles.statRow}>
+                    <Text style={styles.statLabel}>{meta.label}</Text>
+                    <View style={styles.statBarBg}>
+                      <View
+                        style={[
+                          styles.statBarFill,
+                          { width: `${pct}%`, backgroundColor: meta.color },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.statVal}>{value}</Text>
+                  </View>
+                );
+              })}
+            </View>
           </View>
 
-          {/* Card stage */}
-          <Pressable onPress={toggleFlip} style={styles.cardStage}>
-            {/* ===== FRONT ===== */}
-            <Animated.View
-              style={[styles.cardFace, styles.cardFront, frontAnimStyle]}
-            >
-              <LinearGradient
-                colors={['#1a3a7a', '#0d1a3a', '#0a1230']}
-                start={{ x: 0.2, y: 0 }}
-                end={{ x: 0.8, y: 1 }}
-                style={styles.cardFaceInner}
-              >
-                <View style={styles.seasonBadge}>
-                  <Text style={styles.seasonBadgeText}>{seasonLabel}</Text>
+          {/* ===== Season stats ===== */}
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>SEASON STATS</Text>
+            {seasonEntry ? (
+              <View style={styles.statGrid}>
+                <View style={styles.statCell}>
+                  <Text style={styles.statCellVal}>#{seasonRank}</Text>
+                  <Text style={styles.statCellLabel}>RANK</Text>
                 </View>
-
-                <View style={styles.marbleBig}>
-                  <MarbleDot marble={marble} size={92} />
-                </View>
-
-                <Text style={styles.marbleName}>{marble.name}</Text>
-                <Text style={styles.personality}>{marble.personality}</Text>
-
-                {/* Record row */}
-                <View style={styles.recordRow}>
-                  <View style={styles.recordItem}>
-                    <Text style={styles.recordValue}>{record.wins}</Text>
-                    <Text style={styles.recordLabel}>WINS</Text>
-                  </View>
-                  <View style={styles.recordItem}>
-                    <Text style={styles.recordValue}>{record.losses}</Text>
-                    <Text style={styles.recordLabel}>LOSSES</Text>
-                  </View>
-                  <View style={styles.recordItem}>
-                    <Text style={styles.recordValue}>
-                      {totalRaces > 0 ? `${winRatePct}%` : '--'}
-                    </Text>
-                    <Text style={styles.recordLabel}>WIN RATE</Text>
-                  </View>
-                </View>
-
-                {/* Overall rating pill */}
-                <View style={styles.overallPill}>
-                  <Text style={styles.overallNum}>{overall}</Text>
-                  <Text style={styles.overallLabel}>OVERALL</Text>
-                </View>
-
-                {/* Stat bars */}
-                <View style={styles.statBlock}>
-                  {STAT_META.map((meta) => {
-                    const value = marble.stats[meta.key]; // 0..5 base
-                    const pct = Math.max(0, Math.min(100, (value / 5) * 100));
-                    return (
-                      <View key={meta.key} style={styles.statRow}>
-                        <Text style={styles.statLabel}>{meta.label}</Text>
-                        <View style={styles.statBarBg}>
-                          <View
-                            style={[
-                              styles.statBarFill,
-                              { width: `${pct}%`, backgroundColor: meta.color },
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.statVal}>{value}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-
-                {/* Hot / Cold badge */}
-                {form !== 'neutral' && (
-                  <View
-                    style={[
-                      styles.formBadge,
-                      form === 'hot' ? styles.formBadgeHot : styles.formBadgeCold,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.formBadgeText,
-                        form === 'hot' ? styles.formTextHot : styles.formTextCold,
-                      ]}
-                    >
-                      {form === 'hot'
-                        ? `HOT — ${recentWins} wins in last ${last5.length}`
-                        : `COLD — ${recentWins} wins in last ${last5.length}`}
-                    </Text>
-                  </View>
-                )}
-
-                <Text style={styles.flipHint}>Tap to flip for full stats</Text>
-              </LinearGradient>
-            </Animated.View>
-
-            {/* ===== BACK ===== */}
-            <Animated.View
-              style={[styles.cardFace, styles.cardBack, backAnimStyle]}
-            >
-              <LinearGradient
-                colors={['#0d2a5a', '#0a1230']}
-                start={{ x: 0.2, y: 0 }}
-                end={{ x: 0.8, y: 1 }}
-                style={styles.cardFaceInner}
-              >
-                {/* Back header */}
-                <View style={styles.backHeader}>
-                  <MarbleDot marble={marble} size={36} />
-                  <Text style={styles.backName}>{marble.name}</Text>
-                  <View style={styles.seasonBadgeSm}>
-                    <Text style={styles.seasonBadgeText}>
-                      {season ? `S${season.seasonNumber}` : 'PRE'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Season stats grid */}
-                <Text style={styles.sectionLabel}>SEASON STATS</Text>
-                {seasonEntry ? (
-                  <View style={styles.statGrid}>
-                    <View style={styles.statCell}>
-                      <Text style={styles.statCellVal}>
-                        #{seasonRank}
-                      </Text>
-                      <Text style={styles.statCellLabel}>RANK</Text>
-                    </View>
-                    <View style={styles.statCell}>
-                      <Text style={[styles.statCellVal, { color: Colors.yellow }]}>
-                        {seasonEntry.points}
-                      </Text>
-                      <Text style={styles.statCellLabel}>POINTS</Text>
-                    </View>
-                    <View style={styles.statCell}>
-                      <Text style={styles.statCellVal}>
-                        {seasonEntry.wins}-{seasonEntry.losses}
-                      </Text>
-                      <Text style={styles.statCellLabel}>W-L</Text>
-                    </View>
-                    <View style={styles.statCell}>
-                      <Text style={styles.statCellVal}>{seasonEntry.podiums}</Text>
-                      <Text style={styles.statCellLabel}>PODIUMS</Text>
-                    </View>
-                  </View>
-                ) : (
-                  <Text style={styles.noData}>
-                    No active season — start a season to track standings.
+                <View style={styles.statCell}>
+                  <Text style={[styles.statCellVal, { color: Colors.yellow }]}>
+                    {seasonEntry.points}
                   </Text>
-                )}
+                  <Text style={styles.statCellLabel}>POINTS</Text>
+                </View>
+                <View style={styles.statCell}>
+                  <Text style={styles.statCellVal}>
+                    {seasonEntry.wins}-{seasonEntry.losses}
+                  </Text>
+                  <Text style={styles.statCellLabel}>W-L</Text>
+                </View>
+                <View style={styles.statCell}>
+                  <Text style={styles.statCellVal}>{seasonEntry.podiums}</Text>
+                  <Text style={styles.statCellLabel}>PODIUMS</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.noData}>
+                No active season — start a season to track standings.
+              </Text>
+            )}
+          </View>
 
-                {/* Last 10 races sparkline */}
-                <Text style={styles.sectionLabel}>LAST 10 RACES</Text>
-                {last10.length > 0 ? (
-                  <View style={styles.sparkRow}>
-                    {last10.map((place, i) => {
-                      // 1st = tallest bar, 8th = shortest
-                      const h = Math.max(15, ((9 - place) / 8) * 100);
-                      return (
-                        <View key={i} style={styles.sparkBarSlot}>
-                          <View
-                            style={[
-                              styles.sparkBar,
-                              { height: `${h}%`, backgroundColor: placeColor(place) },
-                            ]}
-                          />
-                          <Text style={styles.sparkPlace}>{place}</Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={styles.noData}>No races completed yet.</Text>
-                )}
+          {/* ===== Last 10 races ===== */}
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>LAST 10 RACES</Text>
+            {last10.length > 0 ? (
+              <View style={styles.sparkRow}>
+                {last10.map((place, i) => {
+                  // 1st = tallest bar, 8th = shortest
+                  const h = Math.max(15, ((9 - place) / 8) * 100);
+                  return (
+                    <View key={i} style={styles.sparkBarSlot}>
+                      <View
+                        style={[
+                          styles.sparkBar,
+                          { height: `${h}%`, backgroundColor: placeColor(place) },
+                        ]}
+                      />
+                      <Text style={styles.sparkPlace}>{place}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.noData}>No races completed yet.</Text>
+            )}
+          </View>
 
-                {/* Head-to-head */}
-                <Text style={styles.sectionLabel}>HEAD-TO-HEAD</Text>
-                {headToHead.length > 0 ? (
-                  <View style={styles.h2hBlock}>
-                    {headToHead.map((h) => {
-                      const pct = h.total > 0 ? (h.wins / h.total) * 100 : 0;
-                      const ahead = h.wins >= h.losses;
-                      return (
-                        <View key={h.opp.id} style={styles.h2hRow}>
-                          <MarbleDot marble={h.opp} size={18} />
-                          <Text style={styles.h2hName}>{h.opp.name}</Text>
-                          <Text style={styles.h2hRecord}>
-                            {h.wins}-{h.losses}
-                          </Text>
-                          <View style={styles.h2hBarBg}>
-                            <View
-                              style={[
-                                styles.h2hBarFill,
-                                {
-                                  width: `${pct}%`,
-                                  backgroundColor: ahead ? Colors.green : Colors.red,
-                                },
-                              ]}
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={styles.noData}>No head-to-head data yet.</Text>
-                )}
-
-                <Text style={styles.flipHint}>Tap to flip back</Text>
-              </LinearGradient>
-            </Animated.View>
-          </Pressable>
+          {/* ===== Head-to-head ===== */}
+          <View style={[styles.card, styles.cardLast]}>
+            <Text style={styles.sectionLabel}>HEAD-TO-HEAD</Text>
+            {headToHead.length > 0 ? (
+              <View style={styles.h2hBlock}>
+                {headToHead.map((h) => {
+                  const pct = h.total > 0 ? (h.wins / h.total) * 100 : 0;
+                  const ahead = h.wins >= h.losses;
+                  return (
+                    <View key={h.opp.id} style={styles.h2hRow}>
+                      <MarbleDot marble={h.opp} size={20} />
+                      <Text style={styles.h2hName}>{h.opp.name}</Text>
+                      <Text style={styles.h2hRecord}>
+                        {h.wins}-{h.losses}
+                      </Text>
+                      <View style={styles.h2hBarBg}>
+                        <View
+                          style={[
+                            styles.h2hBarFill,
+                            {
+                              width: `${pct}%`,
+                              backgroundColor: ahead ? Colors.green : Colors.red,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={styles.noData}>No head-to-head data yet.</Text>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
   );
 }
 
-const CARD_WIDTH = 300;
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 32,
   },
-  pressed: { opacity: 0.6 },
 
   // Header
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
-    marginBottom: 16,
-  },
-  flipBtn: {
-    backgroundColor: Colors.yellowAlpha15,
-    borderWidth: 1.5,
-    borderColor: Colors.yellowAlpha20,
-    borderRadius: BorderRadius.sm,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-  },
-  flipBtnText: {
-    fontFamily: Fonts.bodyBold,
-    fontSize: 12,
-    color: Colors.yellow,
-    letterSpacing: 1,
-  },
-
-  // Card stage — front + back stacked
-  cardStage: {
-    width: CARD_WIDTH,
-    minHeight: 540,
-  },
-  cardFace: {
-    width: CARD_WIDTH,
-    borderRadius: 24,
-    borderWidth: 3,
-    borderColor: 'rgba(255,194,32,0.3)',
-    overflow: 'hidden',
-    backfaceVisibility: 'hidden',
-  },
-  cardFront: {
-    position: 'relative',
-  },
-  cardBack: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  cardFaceInner: {
-    paddingHorizontal: 20,
-    paddingVertical: 22,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 12,
   },
 
   // Season badge
@@ -474,13 +361,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.pill,
     paddingVertical: 4,
     paddingHorizontal: 14,
-    marginBottom: 12,
-  },
-  seasonBadgeSm: {
-    backgroundColor: Colors.yellowAlpha15,
-    borderRadius: BorderRadius.pill,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
   },
   seasonBadgeText: {
     fontFamily: Fonts.bodyBold,
@@ -489,31 +369,44 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // Front: marble + name
-  marbleBig: {
-    marginBottom: 10,
+  // Identity hero card
+  heroCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.whiteAlpha10,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    alignItems: 'center',
+    marginBottom: 12,
   },
   marbleName: {
     fontFamily: Fonts.display,
     fontSize: 32,
     color: Colors.white,
+    marginTop: 12,
   },
   personality: {
     fontFamily: Fonts.body,
     fontSize: 13,
     color: Colors.whiteAlpha40,
     fontStyle: 'italic',
-    marginBottom: 14,
+    marginTop: 2,
   },
 
   // Record row
   recordRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
-    marginBottom: 16,
+    gap: 18,
+    marginTop: 18,
   },
-  recordItem: { alignItems: 'center' },
+  recordItem: { alignItems: 'center', minWidth: 64 },
+  recordDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: Colors.whiteAlpha10,
+  },
   recordValue: {
     fontFamily: Fonts.display,
     fontSize: 26,
@@ -527,18 +420,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  // Generic card (standard subtle styling — no gold border)
+  card: {
+    backgroundColor: Colors.whiteAlpha07,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.whiteAlpha10,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+  },
+  cardLast: {
+    marginBottom: 0,
+  },
+
+  // Rating header row
+  ratingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+
   // Overall rating
   overallPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(255,194,32,0.12)',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: Colors.yellowAlpha20,
     borderRadius: BorderRadius.pill,
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
   },
   overallNum: {
     fontFamily: Fonts.display,
@@ -555,15 +469,15 @@ const styles = StyleSheet.create({
   // Stat bars
   statBlock: {
     width: '100%',
-    gap: 6,
+    gap: 10,
   },
   statRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   statLabel: {
-    width: 52,
+    width: 56,
     fontFamily: Fonts.bodyBold,
     fontSize: 11,
     color: Colors.whiteAlpha40,
@@ -571,14 +485,14 @@ const styles = StyleSheet.create({
   },
   statBarBg: {
     flex: 1,
-    height: 8,
+    height: 10,
     backgroundColor: Colors.whiteAlpha07,
-    borderRadius: 4,
+    borderRadius: 5,
     overflow: 'hidden',
   },
   statBarFill: {
-    height: 8,
-    borderRadius: 4,
+    height: 10,
+    borderRadius: 5,
   },
   statVal: {
     width: 22,
@@ -595,7 +509,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingVertical: 5,
     paddingHorizontal: 14,
-    marginTop: 14,
+    marginTop: 12,
   },
   formBadgeHot: {
     backgroundColor: 'rgba(231,76,60,0.15)',
@@ -612,62 +526,35 @@ const styles = StyleSheet.create({
   formTextHot: { color: Colors.red },
   formTextCold: { color: '#3498db' },
 
-  flipHint: {
-    fontFamily: Fonts.body,
-    fontSize: 12,
-    color: Colors.whiteAlpha25,
-    marginTop: 16,
-  },
-
-  // Back header
-  backHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    width: '100%',
-    paddingBottom: 12,
-    marginBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.whiteAlpha10,
-  },
-  backName: {
-    flex: 1,
-    fontFamily: Fonts.display,
-    fontSize: 20,
-    color: Colors.white,
-  },
-
   // Section labels
   sectionLabel: {
     fontFamily: Fonts.bodyBold,
     fontSize: 10,
     color: Colors.yellow,
     letterSpacing: 2,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-    marginTop: 4,
+    marginBottom: 12,
   },
 
   // Season stat grid
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     width: '100%',
-    marginBottom: 12,
   },
   statCell: {
-    width: '48.5%',
+    width: '48%',
+    flexGrow: 1,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
   statCellVal: {
     fontFamily: Fonts.display,
-    fontSize: 18,
+    fontSize: 20,
     color: Colors.white,
   },
   statCellLabel: {
@@ -681,10 +568,9 @@ const styles = StyleSheet.create({
   sparkRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 4,
-    height: 56,
+    gap: 6,
+    height: 84,
     width: '100%',
-    marginBottom: 12,
   },
   sparkBarSlot: {
     flex: 1,
@@ -694,58 +580,55 @@ const styles = StyleSheet.create({
   },
   sparkBar: {
     width: '100%',
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
     minHeight: 4,
   },
   sparkPlace: {
     fontFamily: Fonts.bodyBold,
-    fontSize: 8,
+    fontSize: 9,
     color: Colors.whiteAlpha35,
-    marginTop: 2,
+    marginTop: 4,
   },
 
   // Head-to-head
   h2hBlock: {
     width: '100%',
-    marginBottom: 6,
   },
   h2hRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 4,
+    gap: 10,
+    paddingVertical: 6,
   },
   h2hName: {
     flex: 1,
     fontFamily: Fonts.bodyBold,
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.white,
   },
   h2hRecord: {
     fontFamily: Fonts.bodyBold,
     fontSize: 12,
     color: Colors.whiteAlpha40,
-    width: 40,
+    width: 44,
     textAlign: 'right',
   },
   h2hBarBg: {
-    width: 60,
-    height: 6,
+    width: 72,
+    height: 7,
     backgroundColor: Colors.whiteAlpha07,
-    borderRadius: 3,
+    borderRadius: 3.5,
     overflow: 'hidden',
   },
   h2hBarFill: {
-    height: 6,
-    borderRadius: 3,
+    height: 7,
+    borderRadius: 3.5,
   },
 
   noData: {
     fontFamily: Fonts.body,
     fontSize: 12,
     color: Colors.whiteAlpha35,
-    alignSelf: 'flex-start',
-    marginBottom: 12,
   },
 });
