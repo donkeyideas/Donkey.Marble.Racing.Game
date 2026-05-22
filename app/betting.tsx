@@ -461,35 +461,44 @@ export default function BettingScreen() {
         </ScrollView>
       ) : (
         <View style={styles.franchiseBetGrid}>
-          {getConfig().betAmounts.map((amount) => {
-            const active = betAmount === amount;
-            // Potential win = amount × selectedOdds (the franchise marble's
-            // current odds). Falls back to 5x if no odds yet (shouldn't
-            // happen since franchise auto-selects the marble on mount).
+          {(() => {
+            // Chunk into rows of 2 so the grid grows vertically to fill the
+            // available space (each row flex:1, each card flex:1) instead
+            // of leaving a big empty area below 4 square cards.
+            const amts = getConfig().betAmounts;
+            const rows: number[][] = [];
+            for (let i = 0; i < amts.length; i += 2) rows.push(amts.slice(i, i + 2));
             const odds = selectedOdds || 5;
-            const win = Math.round(amount * odds);
-            return (
-              <Pressable
-                key={amount}
-                onPress={() => setBetAmount(amount)}
-                style={({ pressed }) => [
-                  styles.franchiseBetCard,
-                  active && styles.franchiseBetCardActive,
-                  pressed && { opacity: 0.9 },
-                ]}
-              >
-                <Text style={[styles.franchiseBetAmount, active && styles.franchiseBetAmountActive]}>
-                  {amount}
-                </Text>
-                <Text style={styles.franchiseBetLabel}>BET</Text>
-                <View style={styles.franchiseBetDivider} />
-                <Text style={[styles.franchiseBetWinAmount, active && styles.franchiseBetWinAmountActive]}>
-                  {win.toLocaleString()}
-                </Text>
-                <Text style={styles.franchiseBetLabel}>WIN</Text>
-              </Pressable>
-            );
-          })}
+            return rows.map((row, ri) => (
+              <View key={ri} style={styles.franchiseBetRow}>
+                {row.map((amount) => {
+                  const active = betAmount === amount;
+                  const win = Math.round(amount * odds);
+                  return (
+                    <Pressable
+                      key={amount}
+                      onPress={() => setBetAmount(amount)}
+                      style={({ pressed }) => [
+                        styles.franchiseBetCard,
+                        active && styles.franchiseBetCardActive,
+                        pressed && { opacity: 0.9 },
+                      ]}
+                    >
+                      <Text style={[styles.franchiseBetAmount, active && styles.franchiseBetAmountActive]}>
+                        {amount}
+                      </Text>
+                      <Text style={styles.franchiseBetLabel}>BET</Text>
+                      <View style={styles.franchiseBetDivider} />
+                      <Text style={[styles.franchiseBetWinAmount, active && styles.franchiseBetWinAmountActive]}>
+                        {win.toLocaleString()}
+                      </Text>
+                      <Text style={styles.franchiseBetLabel}>WIN</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ));
+          })()}
         </View>
       )}
 
@@ -682,17 +691,20 @@ const styles = StyleSheet.create({
   // Franchise mode: 2x2 grid of big bet-amount cards filling the screen.
   franchiseBetGrid: {
     flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,
   },
-  franchiseBetCard: {
-    width: '48%',
-    aspectRatio: 1,
+  // Row of 2 bet cards — flex:1 so two rows split the grid's height evenly.
+  franchiseBetRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
     marginBottom: 12,
+  },
+  franchiseBetCard: {
+    flex: 1,
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.10)',
