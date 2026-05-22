@@ -19,12 +19,13 @@ function getMarble(id: string): MarbleData {
   return MARBLES.find((m) => m.id === id)!;
 }
 
-// Champion banner: spring-in scale + pulsing label + glow + coin count-up
-function ChampionFanfare({ children, payout }: { children: React.ReactNode; payout: number }) {
+// Champion banner: spring-in scale + pulsing label + glow.
+// The "+X coins" line is rendered INSIDE the gold championBanner card by
+// the caller — keeping it inside the gold border instead of floating below it.
+function ChampionFanfare({ children }: { children: React.ReactNode }) {
   const scale = useRef(new RNAnimated.Value(0)).current;
   const pulse = useRef(new RNAnimated.Value(1)).current;
   const glow = useRef(new RNAnimated.Value(0)).current;
-  const [displayCoins, setDisplayCoins] = useState(0);
   useEffect(() => {
     RNAnimated.spring(scale, { toValue: 1, tension: 60, friction: 6, useNativeDriver: true }).start();
     RNAnimated.loop(RNAnimated.sequence([
@@ -35,17 +36,7 @@ function ChampionFanfare({ children, payout }: { children: React.ReactNode; payo
       RNAnimated.timing(glow, { toValue: 1, duration: 1100, useNativeDriver: true }),
       RNAnimated.timing(glow, { toValue: 0, duration: 1100, useNativeDriver: true }),
     ])).start();
-    if (payout > 0) {
-      const start = Date.now();
-      const duration = 1400;
-      const tick = () => {
-        const t = Math.min(1, (Date.now() - start) / duration);
-        setDisplayCoins(Math.floor(t * payout));
-        if (t < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    }
-  }, [payout]);
+  }, []);
   return (
     <RNAnimated.View style={{ transform: [{ scale: RNAnimated.multiply(scale, pulse) }] }}>
       <RNAnimated.View
@@ -58,14 +49,6 @@ function ChampionFanfare({ children, payout }: { children: React.ReactNode; payo
         }}
       />
       {children}
-      {payout > 0 && (
-        <Text style={{
-          fontFamily: Fonts.display, fontSize: 22, color: '#2ecc71',
-          textAlign: 'center', marginTop: 8,
-        }}>
-          +{displayCoins.toLocaleString()} coins
-        </Text>
-      )}
     </RNAnimated.View>
   );
 }
@@ -194,10 +177,15 @@ export default function ChampionshipScreen() {
                     <Text style={styles.championRecord}>
                       Survived {playoffs.rounds.length} rounds
                     </Text>
+                    {isWin && payout > 0 && (
+                      <Text style={styles.championPayout}>
+                        +{payout.toLocaleString()} coins
+                      </Text>
+                    )}
                   </View>
                 );
                 return isWin
-                  ? <ChampionFanfare payout={payout}>{Banner}</ChampionFanfare>
+                  ? <ChampionFanfare>{Banner}</ChampionFanfare>
                   : <LossFanfare>{Banner}</LossFanfare>;
               })()}
               <View style={styles.detailsCard}>
@@ -476,6 +464,13 @@ const styles = StyleSheet.create({
     padding: 28,
     alignItems: 'center',
     marginBottom: 16,
+  },
+  championPayout: {
+    fontFamily: Fonts.display,
+    fontSize: 22,
+    color: '#2ecc71',
+    textAlign: 'center',
+    marginTop: 14,
   },
   championLabel: {
     fontFamily: Fonts.display,

@@ -102,7 +102,13 @@ export default function LobbyScreen() {
   // the countdown resets to its starting value (HERO_COUNTDOWN_START).
   const HERO_COUNTDOWN_START = 60;
   const featuredPool = getFeaturedCourses(FEATURED_POOL_SIZE);
-  const [heroIndex, setHeroIndex] = useState(0);
+  // Time-seed the starting hero index so opening the app at different
+  // times shows a different LIVE NOW race (instead of always landing on
+  // pool[0] on every cold start). Advances by 1 every HERO_COUNTDOWN_START
+  // seconds in lock-step with the running countdown.
+  const [heroIndex, setHeroIndex] = useState(
+    () => Math.floor(Date.now() / (HERO_COUNTDOWN_START * 1000)) % FEATURED_POOL_SIZE,
+  );
   const heroCourse = featuredPool[heroIndex % featuredPool.length];
   const upNext = [
     featuredPool[(heroIndex + 1) % featuredPool.length],

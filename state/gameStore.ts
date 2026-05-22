@@ -1456,6 +1456,12 @@ export const useGameStore = create<GameState>()(
       const isFranchise = season.seasonMode === 'franchise';
       let playoffPayout = 0;
       let playoffDesc = '';
+      /* seriesId is the per-payout-type natural key the server uses for
+       * idempotency (playoff_payout:{playerId}:{seasonNumber}:{seriesId}).
+       * Without it the server returns 400 and the local optimistic credit
+       * gets snapped back on the next sync. If we can't determine a
+       * seriesId we MUST skip the server call entirely. */
+      let seriesId: string | null = null;
 
       if (isFranchise && playerMarbleId) {
         // Determine player's final placement (1st = champion, 2nd = last eliminated, etc.)
@@ -1483,10 +1489,11 @@ export const useGameStore = create<GameState>()(
            * "you played 10 races for nothing" UX. */
           playoffPayout = qualifiedPrize;
           playoffDesc = 'Season Complete (consolation)';
+          seriesId = 'consolation';
         } else {
-          if (placement === 1) { playoffPayout = championPrize; playoffDesc = 'Playoff Champion'; }
-          else if (placement === 2) { playoffPayout = runnerUpPrize; playoffDesc = 'Playoff Runner-Up'; }
-          else if (placement === 3) { playoffPayout = top3Prize; playoffDesc = 'Playoff Top 3'; }
+          if (placement === 1) { playoffPayout = championPrize; playoffDesc = 'Playoff Champion'; seriesId = 'champion'; }
+          else if (placement === 2) { playoffPayout = runnerUpPrize; playoffDesc = 'Playoff Runner-Up'; seriesId = 'runner-up'; }
+          else if (placement === 3) { playoffPayout = top3Prize; playoffDesc = 'Playoff Top 3'; seriesId = 'top-3'; }
         }
       } else {
         // Bettor mode: flat completion bonus for finishing the season.
@@ -1497,15 +1504,23 @@ export const useGameStore = create<GameState>()(
       }
 
       const { coins: prevCoins, coinHistory } = get();
-      if (playoffPayout > 0) {
+      if (playoffPayout > 0 && seriesId) {
         /* Server-authoritative payout with rollback on permanent rejection.
          * The optimistic credit lands in the set() below; if the server
          * refuses (e.g. season already finalized), the rollback restores
-         * prevCoins so the player doesn't keep phantom playoff coins. */
+         * prevCoins so the player doesn't keep phantom playoff coins.
+         * seasonNumber + seriesId form the natural-key idempotency tuple
+         * the server requires — omitting them caused a silent 400 that
+         * wiped the credit on the next sync. */
         applyEconomyActionWithRollback(
           {
             action: 'playoff_payout',
-            payload: { amount: playoffPayout, description: playoffDesc },
+            payload: {
+              amount: playoffPayout,
+              description: playoffDesc,
+              seasonNumber: season.seasonNumber,
+              seriesId,
+            },
           },
           () => useGameStore.setState({ coins: prevCoins }),
         ).then((res) => {
