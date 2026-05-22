@@ -15,7 +15,7 @@ import {
   generateEventCourses, calculateNationalPayout, SERIES_POINTS,
   getETDateString,
 } from '../data/nationalRaces';
-import { syncRaceResult, syncPurchase } from '../lib/sync';
+import { syncRaceResult, syncPurchase, syncPlayerState } from '../lib/sync';
 import { applyEconomyAction, EconomyAction, EconomyResult } from '../lib/economy';
 
 /**
@@ -810,7 +810,13 @@ export const useGameStore = create<GameState>()(
   setScreen: (screen) => set({ screen }),
 
   playerName: '',
-  setPlayerName: (name) => set({ playerName: name }),
+  setPlayerName: (name) => {
+    set({ playerName: name });
+    // Push the new name to the server immediately so the admin dashboard
+    // (and any other device) reflects the change without having to wait
+    // for the next lobby mount to fire its sync.
+    syncPlayerState({ playerName: name });
+  },
 
   hasSeenIntroRace: false,
   setHasSeenIntroRace: (v) => set({ hasSeenIntroRace: v }),
