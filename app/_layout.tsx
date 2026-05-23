@@ -23,6 +23,7 @@ import { reconcileLocalBalanceOnce } from '../lib/balanceReconcile';
 import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 import { useStableWindowDimensions } from '../utils/useStableDimensions';
+import { initRewardedAds, loadRewardedAd } from '../utils/rewardedAds';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -122,6 +123,19 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
       // Re-schedule event notifications if permission already granted (no prompt)
       scheduleIfAlreadyPermitted().catch(() => {});
+      // Initialise Google Mobile Ads once the app frame is stable, then
+      // start pre-loading a rewarded ad in the background so the Store's
+      // "Watch ad for coins" tile can show one instantly when the player
+      // opens it. Wrapped in try/catch — a missing native module or
+      // network failure must never crash the boot path.
+      (async () => {
+        try {
+          await initRewardedAds();
+          loadRewardedAd();
+        } catch {
+          // noop — ad init is best-effort.
+        }
+      })();
     }
   }, [ready]);
 

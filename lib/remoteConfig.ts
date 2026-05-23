@@ -117,6 +117,14 @@ export interface RemoteConfig {
    * ids without an entry use their native bg.
    */
   trackBgImages?: Record<string, string>;
+  /**
+   * Master switch for the "Watch ad for coins" feature. When false,
+   * the Store UI hides the rewarded-ad tile entirely so we can disable
+   * the feature remotely (e.g. if AdMob fill drops, policy issues, or
+   * during App Store / Play Store review). Defaults false so the
+   * feature stays dark until explicitly turned on per platform.
+   */
+  feature_rewarded_ads?: boolean;
 }
 
 export const DEFAULT_CONFIG: RemoteConfig = {
@@ -179,6 +187,7 @@ export const DEFAULT_CONFIG: RemoteConfig = {
   betHouseEdge: 0.10,
   passXp: { betRace: 250, quickRace: 125, winBonus: 500 },
   trackBgImages: {},
+  feature_rewarded_ads: false,
 };
 
 /** XP required to advance one Season Pass level. Reads live remote config
@@ -238,4 +247,12 @@ export async function fetchRemoteConfig(): Promise<RemoteConfig> {
 /** Get current config (cached in memory, never throws) */
 export function getConfig(): RemoteConfig {
   return cached ?? DEFAULT_CONFIG;
+}
+
+/** True when the rewarded-ad "watch for coins" feature is enabled via
+ *  remote config. Store UI calls this to decide whether to render the
+ *  watch-ad tile. Defaults false (feature off) when remote config is
+ *  missing or the field is absent. */
+export function isRewardedAdsEnabled(): boolean {
+  return getConfig().feature_rewarded_ads === true;
 }

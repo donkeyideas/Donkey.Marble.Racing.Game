@@ -17,6 +17,16 @@ import {
 } from '../data/nationalRaces';
 import { syncRaceResult, syncPurchase, syncPlayerState } from '../lib/sync';
 import { applyEconomyAction, EconomyAction, EconomyResult } from '../lib/economy';
+import { showRewardedAd } from '../utils/rewardedAds';
+
+/**
+ * UTC date stamp for daily-cap tracking. Matches the server's daily-cap
+ * window (UTC midnight) so the client never thinks it has caps left when
+ * the server has already reset, or vice versa.
+ */
+function todayUtc(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 /**
  * Wrap applyEconomyAction so that 4xx (non-401) failures roll back any
@@ -549,6 +559,16 @@ interface GameState {
     purchaseToken: string,
     storeProductId: string,
   ) => Promise<{ success: boolean; coins?: number; error?: string }>;
+
+  /* Rewarded-ads counter — NON-persisted. The server is the source of
+   * truth for the per-day cap; these locals are only used to keep the UI
+   * snappy between taps (so the tile shows "3 / 5 today" without waiting
+   * for a server round-trip). Resetting on app restart is fine: the next
+   * claimRewardedAd() call gets a 4xx/cap-reached from the server if the
+   * player has already maxed out today. */
+  adsWatchedToday: number;
+  lastAdDate: string;
+  claimRewardedAd: () => Promise<{ ok: boolean; granted?: number; message?: string }>;
 
   // Odds
   getOdds: () => Record<string, number>;
@@ -2143,6 +2163,91 @@ export const useGameStore = create<GameState>()(
     });
 
     return { success: true, coins: grantedCoins };
+  },
+
+  // ── Rewarded Ads ──
+  /* Non-persisted: the server is the source of truth for the daily cap.
+   * Resetting on cold start is intentional — the next claimRewardedAd()
+   * call sees the server's authoritative count and updates `adsWatchedToday`
+   * from the server response (or refuses with `Daily cap reached`). */
+  adsWatchedToday: 0,
+  lastAdDate: '',
+
+  claimRewardedAd: async () => {
+    const today = todayUtc();
+    const { adsWatchedToday, lastAdDate, coinHistory } = get();
+
+    // Reset local counter on a fresh UTC day.
+    const watchedSoFar = lastAdDate === today ? adsWatchedToday : 0;
+    if (lastAdDate !== today) {
+      set({ adsWatchedToday: 0, lastAdDate: today });
+    }
+
+    // Client-side cap so the UI matches what the server will enforce.
+    if (watchedSoFar >= 5) {
+      return { ok: false, message: 'Daily cap reached' };
+    }
+
+    // Show the ad. The util resolves with `watched: false` if the user
+    // dismissed before completion (or if the SDK failed to load a fill).
+    let watched = false;
+    try {
+      const result = await showRewardedAd();
+      watched = !!result?.watched;
+    } catch (err) {
+      if (__DEV__) console.warn('[claimRewardedAd] showRewardedAd threw', err);
+      return { ok: false, message: 'Ad not completed' };
+    }
+    if (!watched) {
+      return { ok: false, message: 'Ad not completed' };
+    }
+
+    /* Per-ad nonce → idempotency key. If the user double-taps or the
+     * network hiccups mid-grant, the server replays the prior result
+     * instead of double-crediting. */
+    const nonce =
+      typeof (globalThis as any).crypto?.randomUUID === 'function'
+        ? (globalThis as any).crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    const res = await applyEconomyAction({
+      action: 'reward_ad' as EconomyAction,
+      payload: {},
+      idempotencyKey: nonce,
+    });
+
+    if (!res.ok) {
+      if (__DEV__) console.warn('[claimRewardedAd]', res.status, res.message);
+      return { ok: false, message: res.message };
+    }
+
+    /* Server-confirmed grant. Trust the server balance over any optimistic
+     * local addition — `coinHistory` is local-only metadata so we append
+     * the +100 line for the UI ledger. */
+    const granted =
+      (res.result?.granted as number | undefined) ??
+      (res.transaction?.amount as number | undefined) ??
+      100;
+
+    const newCoinHistory = [
+      {
+        type: 'payout' as const,
+        amount: granted,
+        description: 'Rewarded ad',
+        timestamp: Date.now(),
+      },
+      ...coinHistory,
+    ];
+    while (newCoinHistory.length > 200) newCoinHistory.pop();
+
+    set({
+      coins: res.balance,
+      adsWatchedToday: watchedSoFar + 1,
+      lastAdDate: today,
+      coinHistory: newCoinHistory,
+    });
+
+    return { ok: true, granted };
   },
 
   // ── Achievements & Skins ──

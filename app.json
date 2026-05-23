@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
-      "buildNumber": "91",
+      "buildNumber": "92",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,14 +36,11 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.donkeymarble.racing",
-      "versionCode": 57,
+      "versionCode": 58,
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",
         "com.android.vending.BILLING"
-      ],
-      "blockedPermissions": [
-        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "web": {
@@ -66,7 +63,15 @@
           "iosUrlScheme": "com.googleusercontent.apps.791385622060-goted95ii4ea0emlb046qeni65icb8a1"
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-6024881476822443~1201318482",
+          "iosAppId": "ca-app-pub-6024881476822443~2127010041",
+          "userTrackingPermission": "This identifier will be used to deliver personalized ads to you."
+        }
+      ]
     ],
     "extra": {
       "router": {},
