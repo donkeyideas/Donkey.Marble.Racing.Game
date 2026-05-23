@@ -21,6 +21,7 @@ import { ALL_COURSES, getTrackOfTheDay, type CourseData } from '../data/courses'
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
 import { pollSupportReplies, readBannerDismissedCount, writeBannerDismissedCount } from '../lib/supportNotifier';
+import { isRewardedAdsEnabled } from '../lib/remoteConfig';
 
 /* The lobby has no real scheduled-race backend feed, so the "featured"
  * race rotation is derived deterministically from today's date — every
@@ -87,6 +88,30 @@ export default function LobbyScreen() {
   const passLevel = useGameStore((s) => s.passLevel);
   const achievements = useGameStore((s) => s.achievements);
   const achievementCount = Object.keys(achievements).length;
+
+  // Rewarded-ads — read store + per-day reset for the lobby "FREE COINS" card.
+  const adsWatchedToday = useGameStore((s) => s.adsWatchedToday);
+  const lastAdDate = useGameStore((s) => s.lastAdDate);
+  const claimRewardedAd = useGameStore((s) => s.claimRewardedAd);
+  const adsEnabled = isRewardedAdsEnabled();
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const adsToday = lastAdDate === todayUtc ? adsWatchedToday : 0;
+  const adsCapReached = adsToday >= 5;
+  const [adClaiming, setAdClaiming] = useState(false);
+  const handleWatchAd = useCallback(async () => {
+    if (adClaiming || adsCapReached) return;
+    setAdClaiming(true);
+    try {
+      const res = await claimRewardedAd();
+      if (res.ok) {
+        Alert.alert('Coins added', `+${res.granted ?? 100} coins!`);
+      } else {
+        Alert.alert('No coins awarded', res.message ?? 'Please try again later.');
+      }
+    } finally {
+      setAdClaiming(false);
+    }
+  }, [adClaiming, adsCapReached, claimRewardedAd]);
 
   // Daily streak reward
   const [dailyReward, setDailyReward] = useState<{ reward: number; streak: number } | null>(null);
@@ -499,6 +524,40 @@ export default function LobbyScreen() {
             colors={['#34495e', '#2c3e50']}
             onPress={() => router.push('/profile')}
           />
+
+          {/* Rewarded-ad card — gated by the feature_rewarded_ads remote
+              flag. Sits right under PROFILE so the "earn coins" surface is
+              immediately visible on the lobby. Disabled once today's
+              5/day cap is hit (server is the source of truth on the cap;
+              this is the optimistic display). */}
+          {adsEnabled && (
+            <Pressable
+              onPress={handleWatchAd}
+              disabled={adClaiming || adsCapReached}
+              style={({ pressed }) => [
+                pressed && !adClaiming && !adsCapReached && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+              ]}
+            >
+              <LinearGradient
+                colors={adsCapReached ? ['#444', '#2c2c2c'] : ['#ffd84d', '#ffc220']}
+                style={styles.modeCard}
+              >
+                <View style={styles.modeBadge}>
+                  <Text style={styles.modeBadgeText}>
+                    {adClaiming ? 'LOADING' : adsCapReached ? 'MAX' : `${adsToday} / 5 TODAY`}
+                  </Text>
+                </View>
+                <Text style={[styles.modeTitle, adsCapReached ? { color: 'rgba(255,255,255,0.5)' } : { color: Colors.ink }]}>
+                  FREE COINS · +100
+                </Text>
+                <Text style={[styles.modeSub, adsCapReached ? { color: 'rgba(255,255,255,0.35)' } : { color: 'rgba(10,26,58,0.7)' }]}>
+                  {adsCapReached
+                    ? 'Daily cap reached — resets tomorrow'
+                    : 'Watch a short ad to earn 100 coins'}
+                </Text>
+              </LinearGradient>
+            </Pressable>
+          )}
 
           {/* ===== EXPLORE ===== */}
           <Text style={styles.sectionTitle}>EXPLORE</Text>

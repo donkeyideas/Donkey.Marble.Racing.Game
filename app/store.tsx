@@ -8,8 +8,7 @@ import BackButton from '../components/BackButton';
 import CoinPill from '../components/CoinPill';
 import { useGameStore } from '../state/gameStore';
 import { COIN_PACKS, CoinPack, getCoinPacks } from '../state/gameStore';
-import { getConfig, isRewardedAdsEnabled } from '../lib/remoteConfig';
-import { loadRewardedAd } from '../utils/rewardedAds';
+import { getConfig } from '../lib/remoteConfig';
 let IAP: typeof import('react-native-iap') | null = null;
 try {
   IAP = require('react-native-iap');
@@ -70,9 +69,6 @@ export default function StoreScreen() {
   const storePurchasesToday = useGameStore((s) => s.storePurchasesToday);
   const storeCoinsPurchasedToday = useGameStore((s) => s.storeCoinsPurchasedToday);
   const storeLastPurchaseDate = useGameStore((s) => s.storeLastPurchaseDate);
-  const adsWatchedToday = useGameStore((s) => s.adsWatchedToday);
-  const lastAdDate = useGameStore((s) => s.lastAdDate);
-  const claimRewardedAd = useGameStore((s) => s.claimRewardedAd);
 
   const [successPack, setSuccessPack] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -80,29 +76,12 @@ export default function StoreScreen() {
   const [iapReady, setIapReady] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
-  const [adClaiming, setAdClaiming] = useState(false);
-
-  /* Preload a rewarded-ad fill on mount so the first tap is instant.
-   * Cheap call — no-op if the SDK already has one queued, and silently
-   * fails on platforms where the SDK isn't available (e.g. Expo Go). */
-  useEffect(() => {
-    if (!isRewardedAdsEnabled()) return;
-    try { loadRewardedAd(); } catch { /* ignore */ }
-  }, []);
-
   // Reset daily counters display if new day
   const today = new Date().toISOString().slice(0, 10);
   const isNewDay = storeLastPurchaseDate !== today;
   const purchasesUsed = isNewDay ? 0 : storePurchasesToday;
   const coinsUsed = isNewDay ? 0 : storeCoinsPurchasedToday;
 
-  /* Today's ad count, mirroring the store's UTC-day reset logic. The
-   * store also resets these inside claimRewardedAd, but we mirror the
-   * check here so the tile shows "0 / 5" on a fresh day even before the
-   * user taps. */
-  const adsToday = lastAdDate === today ? adsWatchedToday : 0;
-  const adsCapReached = adsToday >= 5;
-  const adsEnabled = isRewardedAdsEnabled();
   // Limits pulled from remote config so live-ops can adjust without an app
   // update. Previously hardcoded `/ 3` and `/ 25000` in three places — when
   // an admin changed maxDailyPurchases via the dashboard, the gameStore
@@ -243,23 +222,6 @@ export default function StoreScreen() {
     }
   };
 
-  const handleClaimAd = async () => {
-    if (adClaiming || adsCapReached) return;
-    setAdClaiming(true);
-    try {
-      const res = await claimRewardedAd();
-      if (res.ok) {
-        Alert.alert('Coins added', `+${res.granted ?? 100} coins!`);
-        // Pre-load the next ad immediately so the next tap is just as snappy.
-        try { loadRewardedAd(); } catch { /* ignore */ }
-      } else {
-        Alert.alert('No coins awarded', res.message ?? 'Please try again later.');
-      }
-    } finally {
-      setAdClaiming(false);
-    }
-  };
-
   const handleRestore = async () => {
     if (!IAP || !iapReady) {
       setRestoreMsg('Store not available in this build.');
@@ -358,55 +320,6 @@ export default function StoreScreen() {
 
           {/* Coin Packs */}
           <Text style={styles.sectionTitle}>COIN PACKS</Text>
-
-          {/* Watch-ad tile — gated by remote-config flag. Sits at the top
-              of the pack list so the free option is the first thing the
-              player sees. Disabled once the daily cap (5/day) is hit. */}
-          {adsEnabled && (
-            <Pressable
-              onPress={handleClaimAd}
-              disabled={adClaiming || adsCapReached}
-              style={({ pressed }) => [
-                styles.packCard,
-                styles.packCardAd,
-                adsCapReached && styles.packCardDisabled,
-                pressed && !adClaiming && !adsCapReached && { opacity: 0.85 },
-              ]}
-            >
-              {/* Today's progress chip — top-right corner, like the pack badges. */}
-              <View style={[styles.packBadge, styles.packBadgeAd]}>
-                <Text style={[styles.packBadgeText, { color: Colors.green }]}>
-                  {adsToday} / 5 today
-                </Text>
-              </View>
-
-              {/* Icon — green play-ish glyph to read as "free" */}
-              <View style={[styles.packIcon, { backgroundColor: 'rgba(46,204,113,0.15)' }]}>
-                <Text style={[styles.packIconText, { color: Colors.green }]}>{'▶'}</Text>
-              </View>
-
-              {/* Info */}
-              <View style={styles.packInfo}>
-                <Text style={[styles.packName, { color: Colors.green }]}>FREE COINS</Text>
-                <Text style={styles.packCoins}>Watch a short ad</Text>
-              </View>
-
-              {/* "Price" pill shows +100 as the reward (or status). */}
-              {adClaiming ? (
-                <View style={styles.pricePill}>
-                  <Text style={styles.priceText}>...</Text>
-                </View>
-              ) : adsCapReached ? (
-                <View style={[styles.pricePill, { opacity: 0.5 }]}>
-                  <Text style={styles.priceText}>MAX</Text>
-                </View>
-              ) : (
-                <View style={[styles.pricePill, { backgroundColor: 'rgba(46,204,113,0.18)' }]}>
-                  <Text style={[styles.priceText, { color: Colors.green }]}>+100</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
 
           {getCoinPacks().map((pack) => {
             const style = PACK_STYLES[pack.id];
@@ -694,10 +607,6 @@ const styles = StyleSheet.create({
   packCardDisabled: {
     opacity: 0.4,
   },
-  packCardAd: {
-    borderColor: 'rgba(46,204,113,0.35)',
-    backgroundColor: 'rgba(46,204,113,0.08)',
-  },
 
   /* Badge */
   packBadge: {
@@ -711,9 +620,6 @@ const styles = StyleSheet.create({
   },
   packBadgePurple: {
     backgroundColor: 'rgba(155,89,182,0.15)',
-  },
-  packBadgeAd: {
-    backgroundColor: 'rgba(46,204,113,0.18)',
   },
   packBadgeText: {
     fontFamily: Fonts.bodyBold,
