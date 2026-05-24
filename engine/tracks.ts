@@ -219,9 +219,18 @@ export function buildClassicZigzag(): TrackConfig {
   // to 4 ramps + 1 peg zone drops total height to 2480 and avg race to
   // ~30–35s while preserving the zigzag-with-bumpers identity.
   const RAMP_DROP = 65;
-  const RAMP_CYS = [300, 520, 740, 1500];
-  const PEG_ZONE_YS = [1150];
-  const FINISH_Y = 2200;
+  // LENGTH EXTENSION — was 4 ramps + FINISH_Y 2200 = ~12s sprint. Now 11
+  // ramps + FINISH_Y 4700 to land in the 25-30s window. Three new ramp
+  // groups + two new peg zones + extra obstacles fill the new descent
+  // while preserving the "zigzag with bumpers" identity.
+  const RAMP_CYS = [
+    300, 520, 740, 1500,
+    2200, 2420, 2640,     // group 3 (new)
+    3400, 3620, 3840,     // group 4 (new)
+    4500,                 // final descent ramp (new)
+  ];
+  const PEG_ZONE_YS = [1150, 1950, 3150, 4250];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -232,23 +241,42 @@ export function buildClassicZigzag(): TrackConfig {
 
   const obstacles: ObstacleInfo[] = [];
 
-  // Single peg zone (was 2 zones — second was redundant after track shortened)
-  obstacles.push(...generatePegZone(PEG_ZONE_YS[0], 3, 5, 65, 35));
+  // All 4 peg zones — original + 3 new across the extended descent.
+  PEG_ZONE_YS.forEach(pegY => {
+    obstacles.push(...generatePegZone(pegY, 3, 5, 65, 35));
+  });
 
-  // Bumpers between the middle ramp pair
+  // Bumper clusters — original middle plus new clusters in each lower group
   const mid12 = (520 + 740) / 2;
   obstacles.push(
     { x: 150, y: mid12 - 40, r: 14, type: 'bumper' },
     { x: 250, y: mid12, r: 14, type: 'bumper' },
     { x: 150, y: mid12 + 40, r: 14, type: 'bumper' },
   );
+  const mid34 = (2420 + 2640) / 2;
+  obstacles.push(
+    { x: 250, y: mid34 - 40, r: 14, type: 'bumper' },
+    { x: 150, y: mid34, r: 14, type: 'bumper' },
+    { x: 250, y: mid34 + 40, r: 14, type: 'bumper' },
+  );
+  const mid56 = (3620 + 3840) / 2;
+  obstacles.push(
+    { x: 150, y: mid56 - 40, r: 14, type: 'bumper' },
+    { x: 250, y: mid56, r: 14, type: 'bumper' },
+    { x: 150, y: mid56 + 40, r: 14, type: 'bumper' },
+  );
 
-  // Sparse gap bumpers
+  // Sparse gap bumpers — extended for new sections
   obstacles.push(...generateGapBumpers(950, 40));
+  obstacles.push(...generateGapBumpers(2000, 40));
+  obstacles.push(...generateGapBumpers(3200, 40));
+  obstacles.push(...generateGapBumpers(4300, 35));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 340, speed: randSign() * (0.005 + Math.random() * 0.005) },
     { x: 200, y: 950, width: 200, speed: randSign() * (0.008 + Math.random() * 0.005) },
+    { x: 200, y: mid34, width: 280, speed: randSign() * (0.006 + Math.random() * 0.005) },
+    { x: 200, y: mid56, width: 280, speed: randSign() * (0.007 + Math.random() * 0.005) },
   ];
 
   PEG_ZONE_YS.forEach(pegY => {
@@ -285,6 +313,8 @@ export function buildClassicZigzag(): TrackConfig {
     bgImage: 'grass_hills',
     speedBursts: [
       { x: 120, y: 605, width: 50, direction: 'left', activationChance: 0.6 },
+      { x: 280, y: 2500, width: 50, direction: 'right', activationChance: 0.6 },
+      { x: 120, y: 3700, width: 50, direction: 'left', activationChance: 0.6 },
     ],
   };
 }
@@ -292,10 +322,19 @@ export function buildClassicZigzag(): TrackConfig {
 // ── Course 2: Bumper Blitz ──
 
 export function buildBumperBlitz(): TrackConfig {
+  // LENGTH EXTENSION — doubled vertical content so races land in the
+  // 25-30s window instead of the prior ~12s sprint. Adds a third + fourth
+  // ramp group, a third peg zone, third gap-bumper band, and matching
+  // windmills for the new lower section. FINISH_Y pushed from 2700 → 4700.
   const RAMP_DROP = 50;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1150, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,        // group 1 (top)
+    1500, 1720, 1940,     // group 2
+    2700, 2920, 3140,     // group 3 (new)
+    3900, 4120, 4340,     // group 4 (new)
+  ];
+  const PEG_ZONE_YS = [1150, 2350, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -311,22 +350,31 @@ export function buildBumperBlitz(): TrackConfig {
     obstacles.push(...generatePegZone(pegY, 3, 5, 65, 35));
   });
 
-  // Single bumper between ramp pairs — reduced from 2 per pair to avoid congestion
-  const rampMids = [(300 + 520) / 2, (520 + 740) / 2, (1500 + 1720) / 2, (1720 + 1940) / 2];
+  // Single bumper between ramp pairs — extended to cover all 4 ramp groups
+  const rampMids = [
+    (300 + 520) / 2, (520 + 740) / 2,
+    (1500 + 1720) / 2, (1720 + 1940) / 2,
+    (2700 + 2920) / 2, (2920 + 3140) / 2,
+    (3900 + 4120) / 2, (4120 + 4340) / 2,
+  ];
   rampMids.forEach((midY, i) => {
     obstacles.push(
       { x: i % 2 === 0 ? 150 : 250, y: midY, r: 14, type: 'bumper' },
     );
   });
 
-  // Sparse bumpers in gap zones — removed y=1350 gap (was causing ramp group 2 congestion)
+  // Sparse bumpers in gap zones — extended for new sections
   obstacles.push(...generateGapBumpers(950, 40));
   obstacles.push(...generateGapBumpers(2150, 40));
+  obstacles.push(...generateGapBumpers(3350, 40));
+  obstacles.push(...generateGapBumpers(4550, 35));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 300, speed: randSign() * (0.006 + Math.random() * 0.005) },
     { x: 200, y: 950, width: 280, speed: randSign() * (0.005 + Math.random() * 0.004) },
     { x: 200, y: (1500 + 1720) / 2, width: 300, speed: randSign() * (0.007 + Math.random() * 0.005) },
+    { x: 200, y: (2700 + 2920) / 2, width: 300, speed: randSign() * (0.006 + Math.random() * 0.005) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.007 + Math.random() * 0.005) },
   ];
 
   PEG_ZONE_YS.forEach(pegY => {
@@ -357,6 +405,8 @@ export function buildBumperBlitz(): TrackConfig {
     bgImage: 'grass',
     speedBursts: [
       { x: 300, y: 575, width: 45, direction: 'right', activationChance: 0.55 },
+      { x: 100, y: 2975, width: 45, direction: 'left', activationChance: 0.55 },
+      { x: 300, y: 4175, width: 45, direction: 'right', activationChance: 0.55 },
     ],
   };
 }
@@ -365,9 +415,14 @@ export function buildBumperBlitz(): TrackConfig {
 
 export function buildPendulumAlley(): TrackConfig {
   const RAMP_DROP = 60;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1150, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  const PEG_ZONE_YS = [1150, 2350, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -385,24 +440,32 @@ export function buildPendulumAlley(): TrackConfig {
   obstacles.push(...generateGapPegs(900, 2));
   obstacles.push(...generateGapPegs(1350, 2));
   obstacles.push(...generateGapPegs(2150, 2));
+  obstacles.push(...generateGapPegs(3350, 2));
+  obstacles.push(...generateGapPegs(4550, 2));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 280, speed: randSign() * (0.005 + Math.random() * 0.004) },
+    { x: 200, y: (2700 + 2920) / 2, width: 280, speed: randSign() * (0.005 + Math.random() * 0.004) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
   ];
 
   const funnels: FunnelData[] = []; // no funnels — arch jams with 8 marbles
   const springs = generateSprings(RAMP_CYS, RAMP_DROP);
   const finish = generateFinishZone(FINISH_Y);
 
-  // Wrecking ball pendulums — bobs hang in GAP ZONES between ramps, not on them
-  // Ramp exits: ~365,585,805 (group 1) and ~1565,1785,2005 (group 2)
-  // Bobs must NOT overlap ramp Y ranges. Place anchors so bob (anchor+length) is in gaps.
-  // Fewer, smaller pendulums — reduced from 7 to 4 to prevent marble trapping
+  // Wrecking ball pendulums — doubled for the extended track length.
+  // Bobs sit in GAP ZONES between ramps; alternating anchor X positions
+  // and start velocity directions keep the swing chaos varied.
   const pendulums: PendulumConfig[] = [
     { anchorX: 200, anchorY: 720, length: 100, bobRadius: 14, startVelocityX: 5 },
     { anchorX: 200, anchorY: 1250, length: 100, bobRadius: 14, startVelocityX: -5 },
     { anchorX: 150, anchorY: 1920, length: 100, bobRadius: 14, startVelocityX: 5 },
     { anchorX: 250, anchorY: 2100, length: 100, bobRadius: 14, startVelocityX: -5 },
+    { anchorX: 200, anchorY: 2900, length: 100, bobRadius: 14, startVelocityX: 5 },
+    { anchorX: 150, anchorY: 3450, length: 100, bobRadius: 14, startVelocityX: -5 },
+    { anchorX: 250, anchorY: 3700, length: 100, bobRadius: 14, startVelocityX: 5 },
+    { anchorX: 200, anchorY: 4100, length: 110, bobRadius: 14, startVelocityX: -5 },
+    { anchorX: 200, anchorY: 4500, length: 100, bobRadius: 14, startVelocityX: 5 },
   ];
 
   return {
@@ -423,6 +486,8 @@ export function buildPendulumAlley(): TrackConfig {
     speedBursts: [
       { x: 130, y: 810, width: 55, direction: 'down', activationChance: 0.6 },
       { x: 270, y: 1785, width: 50, direction: 'left', activationChance: 0.65 },
+      { x: 130, y: 2985, width: 55, direction: 'down', activationChance: 0.6 },
+      { x: 270, y: 4185, width: 50, direction: 'left', activationChance: 0.65 },
     ],
   };
 }
@@ -431,8 +496,13 @@ export function buildPendulumAlley(): TrackConfig {
 
 export function buildBallPitRun(): TrackConfig {
   const RAMP_DROP = 55;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -442,36 +512,49 @@ export function buildBallPitRun(): TrackConfig {
   }));
 
   const obstacles: ObstacleInfo[] = [];
-  // Light bumpers to guide flow between pit zones
+  // Light bumpers to guide flow between pit zones — extended for new sections
   obstacles.push(
     { x: 150, y: 950, r: 12, type: 'bumper' },
     { x: 250, y: 950, r: 12, type: 'bumper' },
     { x: 200, y: 1350, r: 14, type: 'bumper' },
     { x: 150, y: 2050, r: 12, type: 'bumper' },
     { x: 250, y: 2050, r: 12, type: 'bumper' },
+    { x: 150, y: 3250, r: 12, type: 'bumper' },
+    { x: 250, y: 3250, r: 12, type: 'bumper' },
+    { x: 200, y: 3650, r: 14, type: 'bumper' },
+    { x: 150, y: 4450, r: 12, type: 'bumper' },
+    { x: 250, y: 4450, r: 12, type: 'bumper' },
   );
 
   // Pegs in non-pit gaps
   obstacles.push(...generateGapPegs(1350, 3));
+  obstacles.push(...generateGapPegs(3650, 3));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 300, speed: randSign() * (0.005 + Math.random() * 0.004) },
     { x: 200, y: (1500 + 1720) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
+    { x: 200, y: (2700 + 2920) / 2, width: 300, speed: randSign() * (0.005 + Math.random() * 0.004) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
   ];
 
   const funnels: FunnelData[] = [
     generateFunnel(1000, 160, 50),
     generateFunnel(2200, 160, 50),
+    generateFunnel(3400, 160, 50),
+    generateFunnel(4500, 130, 40),
   ];
 
   const springs = generateSprings(RAMP_CYS, RAMP_DROP);
   const finish = generateFinishZone(FINISH_Y);
 
-  // Avalanche ball zones — fewer, smaller balls to prevent marble trapping
+  // Avalanche ball zones — doubled count to fill the new lower sections.
   const ballPits: BallPitConfig[] = [
     { x: 30, y: 850, width: 340, height: 200, ballCount: 10, ballRadius: 7 },
     { x: 30, y: 1250, width: 340, height: 160, ballCount: 8, ballRadius: 7 },
     { x: 30, y: 2100, width: 340, height: 200, ballCount: 10, ballRadius: 7 },
+    { x: 30, y: 3050, width: 340, height: 200, ballCount: 10, ballRadius: 7 },
+    { x: 30, y: 3450, width: 340, height: 160, ballCount: 8, ballRadius: 7 },
+    { x: 30, y: 4300, width: 340, height: 180, ballCount: 9, ballRadius: 7 },
   ];
 
   return {
@@ -497,10 +580,15 @@ export function buildBallPitRun(): TrackConfig {
 
 export function buildPegStorm(): TrackConfig {
   const RAMP_DROP = 55;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  // Reduced from 4 peg zones to 2 — 4 was way too dense (154 pegs)
-  const PEG_ZONE_YS = [1100, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  // 3 peg zones distributed across the extended length
+  const PEG_ZONE_YS = [1100, 2350, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -527,8 +615,13 @@ export function buildPegStorm(): TrackConfig {
     }
   });
 
-  // Bumpers between ramp pairs — 2 per pair (was 5 — too dense)
-  const rampMids = [(300 + 520) / 2, (520 + 740) / 2, (1500 + 1720) / 2, (1720 + 1940) / 2];
+  // Bumpers between ramp pairs — extended for all 4 ramp groups
+  const rampMids = [
+    (300 + 520) / 2, (520 + 740) / 2,
+    (1500 + 1720) / 2, (1720 + 1940) / 2,
+    (2700 + 2920) / 2, (2920 + 3140) / 2,
+    (3900 + 4120) / 2, (4120 + 4340) / 2,
+  ];
   rampMids.forEach(midY => {
     obstacles.push(
       { x: 130, y: midY, r: 14, type: 'bumper' },
@@ -540,10 +633,14 @@ export function buildPegStorm(): TrackConfig {
   obstacles.push(...generateGapBumpers(900, 30));
   obstacles.push(...generateGapBumpers(1420, 25));
   obstacles.push(...generateGapBumpers(2100, 30));
+  obstacles.push(...generateGapBumpers(3300, 30));
+  obstacles.push(...generateGapBumpers(4500, 25));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 300, speed: randSign() * (0.007 + Math.random() * 0.005) },
     { x: 200, y: (1500 + 1720) / 2, width: 280, speed: randSign() * (0.008 + Math.random() * 0.005) },
+    { x: 200, y: (2700 + 2920) / 2, width: 300, speed: randSign() * (0.007 + Math.random() * 0.005) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.008 + Math.random() * 0.005) },
   ];
   PEG_ZONE_YS.forEach(pegY => {
     windmillConfigs.push({
@@ -573,6 +670,8 @@ export function buildPegStorm(): TrackConfig {
     speedBursts: [
       { x: 100, y: 585, width: 48, direction: 'left', activationChance: 0.6 },
       { x: 310, y: 1995, width: 48, direction: 'right', activationChance: 0.55 },
+      { x: 100, y: 2985, width: 48, direction: 'left', activationChance: 0.6 },
+      { x: 310, y: 4185, width: 48, direction: 'right', activationChance: 0.55 },
     ],
   };
 }
@@ -581,9 +680,14 @@ export function buildPegStorm(): TrackConfig {
 
 export function buildCradleDrop(): TrackConfig {
   const RAMP_DROP = 60;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1150, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  const PEG_ZONE_YS = [1150, 2350, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -601,21 +705,28 @@ export function buildCradleDrop(): TrackConfig {
   obstacles.push(...generateGapPegs(820, 2));
   obstacles.push(...generateGapPegs(1300, 2));
   obstacles.push(...generateGapPegs(2050, 2));
+  obstacles.push(...generateGapPegs(3250, 2));
+  obstacles.push(...generateGapPegs(4500, 2));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 300, speed: randSign() * (0.005 + Math.random() * 0.004) },
     { x: 200, y: (1500 + 1720) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
+    { x: 200, y: (2700 + 2920) / 2, width: 300, speed: randSign() * (0.005 + Math.random() * 0.004) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
   ];
 
   const funnels: FunnelData[] = []; // no funnels — arch jams with 8 marbles
   const springs = generateSprings(RAMP_CYS, RAMP_DROP);
   const finish = generateFinishZone(FINISH_Y);
 
-  // Newton's cradles — 3 bobs each, wider spacing so marbles pass between
+  // Newton's cradles — doubled to 5 cradle rows across the extended length.
   const cradles: CradleConfig[] = [
     { x: 200, y: 860, count: 3, spacing: 30, length: 80, ballRadius: 9 },
     { x: 200, y: 1350, count: 3, spacing: 30, length: 75, ballRadius: 9 },
     { x: 200, y: 2100, count: 3, spacing: 30, length: 80, ballRadius: 9 },
+    { x: 200, y: 3050, count: 3, spacing: 30, length: 80, ballRadius: 9 },
+    { x: 200, y: 3700, count: 3, spacing: 30, length: 75, ballRadius: 9 },
+    { x: 200, y: 4500, count: 3, spacing: 30, length: 80, ballRadius: 9 },
   ];
 
   return {
@@ -642,9 +753,14 @@ export function buildCradleDrop(): TrackConfig {
 
 export function buildTrampolinePark(): TrackConfig {
   const RAMP_DROP = 55;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1150, 2350];
-  const FINISH_Y = 2700;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  const PEG_ZONE_YS = [1150, 2350, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -662,6 +778,8 @@ export function buildTrampolinePark(): TrackConfig {
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (1500 + 1720) / 2, width: 280, speed: randSign() * (0.005 + Math.random() * 0.004) },
+    { x: 200, y: (2700 + 2920) / 2, width: 280, speed: randSign() * (0.006 + Math.random() * 0.004) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.005 + Math.random() * 0.004) },
   ];
 
   // No funnels — they create bottlenecks with 8 marbles. Pegs alone provide randomization.
@@ -669,17 +787,21 @@ export function buildTrampolinePark(): TrackConfig {
   const springs = generateSprings(RAMP_CYS, RAMP_DROP);
   const finish = generateFinishZone(FINISH_Y);
 
-  // Trampolines in gap zones only — NOT near ramp exits (caused marbles to bounce backwards)
-  // Reduced strength (was 7-10, now 5-7) so marbles redirect but still flow downward
+  // Trampolines — doubled count across all 6 gap zones for the extended
+  // length. Each cluster stays light (1-2 trampolines per gap) so marbles
+  // redirect without getting trapped on shelves.
   const trampolines: TrampolineConfig[] = [
-    // Gap zone 1 (y=830-1150) — reduced count and strength
     { x: 120, y: 900, width: 70, strength: 3 },
     { x: 280, y: 1000, width: 70, strength: 3 },
-    // Gap zone 2 (y=1220-1500)
     { x: 200, y: 1350, width: 70, strength: 3 },
-    // Gap zone 3 (y=2005-2350)
     { x: 120, y: 2100, width: 70, strength: 3 },
     { x: 280, y: 2220, width: 70, strength: 3 },
+    { x: 200, y: 2500, width: 70, strength: 3 },
+    { x: 120, y: 3300, width: 70, strength: 3 },
+    { x: 280, y: 3450, width: 70, strength: 3 },
+    { x: 200, y: 3700, width: 70, strength: 3 },
+    { x: 120, y: 4450, width: 70, strength: 3 },
+    { x: 280, y: 4570, width: 70, strength: 3 },
   ];
 
   return {
@@ -779,9 +901,14 @@ export function buildTerrainValley(): TrackConfig {
 
 export function buildGauntlet(): TrackConfig {
   const RAMP_DROP = 60;
-  const RAMP_CYS = [300, 520, 740, 1500, 1720, 1940];
-  const PEG_ZONE_YS = [1100, 2300];
-  const FINISH_Y = 2750;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+  ];
+  const PEG_ZONE_YS = [1100, 2300, 3550];
+  const FINISH_Y = 4700;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
 
@@ -795,21 +922,27 @@ export function buildGauntlet(): TrackConfig {
     obstacles.push(...generatePegZone(pegY, 4, 6, 55, 32));
   });
 
-  // Bumpers
+  // Bumpers — extended for all 4 ramp groups
   obstacles.push(
     { x: 150, y: (520 + 740) / 2, r: 14, type: 'bumper' },
     { x: 250, y: (520 + 740) / 2, r: 14, type: 'bumper' },
     { x: 200, y: (1720 + 1940) / 2, r: 16, type: 'bumper' },
+    { x: 150, y: (2920 + 3140) / 2, r: 14, type: 'bumper' },
+    { x: 250, y: (2920 + 3140) / 2, r: 14, type: 'bumper' },
+    { x: 200, y: (4120 + 4340) / 2, r: 16, type: 'bumper' },
   );
 
   // Fill gaps with mixed elements
-  // Sparse gap fills — no bumpers at y=900 (pendulum zone)
   obstacles.push(...generateGapPegs(1300, 2));
   obstacles.push(...generateGapBumpers(2150, 25));
+  obstacles.push(...generateGapPegs(3300, 2));
+  obstacles.push(...generateGapBumpers(4500, 25));
 
   const windmillConfigs: WindmillConfig[] = [
     { x: 200, y: (300 + 520) / 2, width: 300, speed: randSign() * (0.006 + Math.random() * 0.005) },
     { x: 200, y: (1500 + 1720) / 2, width: 280, speed: randSign() * (0.007 + Math.random() * 0.005) },
+    { x: 200, y: (2700 + 2920) / 2, width: 300, speed: randSign() * (0.006 + Math.random() * 0.005) },
+    { x: 200, y: (3900 + 4120) / 2, width: 280, speed: randSign() * (0.007 + Math.random() * 0.005) },
   ];
   PEG_ZONE_YS.forEach(pegY => {
     windmillConfigs.push({
@@ -822,27 +955,30 @@ export function buildGauntlet(): TrackConfig {
   const springs = generateSprings(RAMP_CYS, RAMP_DROP);
   const finish = generateFinishZone(FINISH_Y);
 
-  // Wrecking ball pendulums
-  // Fewer, smaller pendulums
+  // Wrecking ball pendulums — doubled for the extended track length
   const pendulums: PendulumConfig[] = [
     { anchorX: 200, anchorY: 860, length: 110, bobRadius: 14, startVelocityX: 5 },
     { anchorX: 200, anchorY: 2050, length: 120, bobRadius: 14, startVelocityX: -5 },
+    { anchorX: 200, anchorY: 3250, length: 110, bobRadius: 14, startVelocityX: 5 },
+    { anchorX: 200, anchorY: 4400, length: 120, bobRadius: 14, startVelocityX: -5 },
   ];
 
-  // Trampolines — placed in gap zones only (NOT on ramps!)
   // Trampolines — only in zones without pendulums/bumpers to avoid traps
   const trampolines: TrampolineConfig[] = [
     { x: 200, y: 2200, width: 80, strength: 4 },
+    { x: 200, y: 4550, width: 80, strength: 4 },
   ];
 
-  // Newton's cradles — 3 bobs, wider spacing
+  // Newton's cradles — one per major section
   const cradles: CradleConfig[] = [
     { x: 200, y: 2450, count: 3, spacing: 30, length: 65, ballRadius: 9 },
+    { x: 200, y: 4250, count: 3, spacing: 30, length: 65, ballRadius: 9 },
   ];
 
-  // Ball pit zone — fewer balls to reduce trapping
+  // Ball pit zones — fewer balls each to reduce trapping, more zones overall
   const ballPits: BallPitConfig[] = [
     { x: 50, y: 1220, width: 300, height: 150, ballCount: 8, ballRadius: 7 },
+    { x: 50, y: 3420, width: 300, height: 150, ballCount: 8, ballRadius: 7 },
   ];
 
   return {
@@ -866,6 +1002,8 @@ export function buildGauntlet(): TrackConfig {
     speedBursts: [
       { x: 140, y: 810, width: 55, direction: 'down', activationChance: 0.65 },
       { x: 260, y: 2005, width: 50, direction: 'right', activationChance: 0.6 },
+      { x: 140, y: 3210, width: 55, direction: 'down', activationChance: 0.65 },
+      { x: 260, y: 4205, width: 50, direction: 'left', activationChance: 0.6 },
     ],
   };
 }
