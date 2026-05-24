@@ -1053,13 +1053,17 @@ const CHAMBER_COMBOS: ChamberCombo[] = ['windmill_pegs', 'pendulum_bumpers', 'sp
 export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
   const rng = gpRng(seed * 7919 + 42);
 
-  // LENGTH EXTENSION — was FINISH_Y 5400 with 7 chambers averaging
-  // 16-19s. Pushed to 7500 with 11 chambers to match the 25-30s window
-  // hand-crafted tracks now hit. The sine wave still spans almost the
-  // full descent (WAVE_END = 7200) so the F1-sweep identity carries
-  // through to the longer track instead of degenerating into a straight
-  // shot at the bottom.
-  const FINISH_Y = 7500;
+  // PERF REVERT — pushed FINISH_Y to 7500 + 11 chambers + N=290 during
+  // the length-extension pass, which bumped per-track body count from
+  // ~445 to ~725 and made GP unplayable on older phones (~25fps drops).
+  // Reverted to the original length / chamber count / sampling that
+  // worked on the test phone. v2 visual improvements (wider channel,
+  // gentler waves, bigger chamber obstacles) stay — they don't add
+  // bodies, just change geometry. GP races land back at the ~16-19s
+  // range from before the extension. If you need both longer GP AND
+  // older-phone perf, the only path is the zone-architecture rewrite
+  // documented in RAPIER_MIGRATION.md.
+  const FINISH_Y = 5400;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
   const finish = generateFinishZone(FINISH_Y);
@@ -1081,32 +1085,30 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
   const HALF = CH_W / 2;
   const CHAMBER_HALF = 175 + Math.floor(rng() * 15);  // 175-190 (was 160-175)
   const WAVE_START = 250;
-  const WAVE_END = 7200;
-  // Sample density scales with length to keep per-segment phase ~4°.
-  // Was N=200 over 4950px (~25 px/segment). Now N=290 over 6950px
-  // (~24 px/segment) so wall smoothness stays the same.
-  const N = 290;
+  // PERF REVERT — WAVE_END back to 5200 (was 7200), N back to 200 (was
+  // 290). Original values that worked on older phones. Per-segment
+  // joint angle ~6° at the gentler HALF_WAVES=4-6 we use post-v2, so
+  // walls stay smooth without the elevated body count.
+  const WAVE_END = 5200;
+  const N = 200;
 
-  // 11 chamber Y positions — extended from 7. Original 7 spans 800-4400;
-  // new 4 fill the 5000-7000 range. Slight ±30 jitter per seed.
-  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400, 5000, 5600, 6200, 6800];
+  // PERF REVERT — 7 chambers (was 11). Matches the original layout
+  // that was performance-validated. Combined with the shorter FINISH_Y
+  // this puts GP race times back at the ~16-19s baseline.
+  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
   const chambers = baseYs.map(by => ({
     y: by + Math.floor(rng() * 60 - 30),
     radius: 200,
   }));
 
-  // Shuffle obstacle combos for this seed — 6 combos for 11 chambers
-  // means each combo gets used 1-2 times. Pad the array so every chamber
-  // has a combo assigned (random fills for the overflow slots).
+  // Shuffle obstacle combos for this seed
   const combos = [...CHAMBER_COMBOS];
   for (let i = combos.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [combos[i], combos[j]] = [combos[j], combos[i]];
   }
-  const chamberCombos: ChamberCombo[] = [];
-  for (let i = 0; i < chambers.length; i++) {
-    chamberCombos.push(combos[i % combos.length]);
-  }
+  // 7 chambers, 6 combos — last chamber reuses a combo
+  const chamberCombos = [...combos, combos[Math.floor(rng() * combos.length)]];
 
   const leftPts: { x: number; y: number }[] = [];
   const rightPts: { x: number; y: number }[] = [];
@@ -1245,21 +1247,12 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     }
   });
 
-  // CLUNK FIX v2 — sparse gap obstacles between chambers. The 600px gaps
-  // between chamber Y positions used to be empty channel — just snaking
-  // wall with nothing to interact with. A handful of pegs in each gap
-  // gives marbles something to deflect off and reduces the "long boring
-  // snake" feel without crowding the chambers. Offset alternates left/
-  // right so the pegs don't form a centerline that traps marbles.
-  for (let gi = 0; gi < chambers.length - 1; gi++) {
-    const yMid = (chambers[gi].y + chambers[gi + 1].y) / 2;
-    const xOffset = gi % 2 === 0 ? -40 : 40;
-    obstacles.push(
-      { x: 200 + xOffset, y: yMid - 60, r: 11, type: 'peg' },
-      { x: 200 - xOffset, y: yMid, r: 11, type: 'peg' },
-      { x: 200 + xOffset, y: yMid + 60, r: 11, type: 'peg' },
-    );
-  }
+  // PERF REVERT — the gap-pegs added during v2 (3 pegs × 10 gaps = 30
+  // extra obstacle bodies) were removed because they pushed older phones
+  // over their per-frame physics budget. The wider channel + gentler
+  // wave + bigger chamber obstacles already do enough to keep the
+  // descent interesting; the gap pegs were marginal value at a high
+  // body-count cost.
 
   const gpTheme = GP_THEMES[theme] || GP_THEMES.cyber;
 
