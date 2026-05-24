@@ -1053,103 +1053,50 @@ const CHAMBER_COMBOS: ChamberCombo[] = ['windmill_pegs', 'pendulum_bumpers', 'sp
 export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
   const rng = gpRng(seed * 7919 + 42);
 
-  // PERF REVERT — pushed FINISH_Y to 7500 + 11 chambers + N=290 during
-  // the length-extension pass, which bumped per-track body count from
-  // ~445 to ~725 and made GP unplayable on older phones (~25fps drops).
-  // Reverted to the original length / chamber count / sampling that
-  // worked on the test phone. v2 visual improvements (wider channel,
-  // gentler waves, bigger chamber obstacles) stay — they don't add
-  // bodies, just change geometry. GP races land back at the ~16-19s
-  // range from before the extension. If you need both longer GP AND
-  // older-phone perf, the only path is the zone-architecture rewrite
-  // documented in RAPIER_MIGRATION.md.
-  const FINISH_Y = 5400;
+  // ARCHITECTURE REWRITE (v3) — replaced the sine-wave polyline
+  // channel with zone-based architecture (open vertical descent +
+  // discrete zigzag ramps + chamber obstacle zones). Same total
+  // length and chamber identity as the channel version, but body
+  // count drops from ~725 to ~200 (in line with hand-crafted)
+  // because we're no longer carrying 580 channel-wall polyline
+  // segments. GP identity now lives in: length (7500px ≈ 25-30s
+  // races), themed visuals (background + wall color from
+  // GP_THEMES), and the chamber-combo system below.
+  const FINISH_Y = 7500;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
   const finish = generateFinishZone(FINISH_Y);
 
-  // Seed-varied parameters.
-  //
-  // CLUNK FIX v2: round-2 widening + sweepier curves + bigger chamber
-  // obstacles. v1 (HALF_WAVES 42-51 → 8-12, N=120 → 200) reduced the
-  // jagged sawtooth but the channel was still too narrow (170-190 wide
-  // around a 55-75 amplitude wave) which forced wall-to-wall ricochet for
-  // the entire 5000px descent. v2 widens the channel to 220-260, halves
-  // the wave amplitude to 30-45, and stretches the half-wave count to
-  // 4-6 so each curve is a long sweeping bend instead of a series of
-  // quick S-turns. Net: marbles flow through with momentum preserved
-  // instead of bleeding off speed in every wall slap.
-  const AMP = 30 + Math.floor(rng() * 15);            // 30-45 (was 55-75)
-  const HALF_WAVES = 4 + Math.floor(rng() * 3);       // 4-6 (was 8-12)
-  const CH_W = 220 + Math.floor(rng() * 40);          // 220-260 (was 170-190)
-  const HALF = CH_W / 2;
-  const CHAMBER_HALF = 175 + Math.floor(rng() * 15);  // 175-190 (was 160-175)
-  const WAVE_START = 250;
-  // PERF REVERT — WAVE_END back to 5200 (was 7200), N back to 200 (was
-  // 290). Original values that worked on older phones. Per-segment
-  // joint angle ~6° at the gentler HALF_WAVES=4-6 we use post-v2, so
-  // walls stay smooth without the elevated body count.
-  const WAVE_END = 5200;
-  const N = 200;
+  // Zone-architecture: 18 zigzag ramps in 6 groups + 6 chamber zones
+  // between them. Same flow shape as a hand-crafted track but extended
+  // to GP length. Body count: ~36 ramp segments + ~40-60 chamber
+  // obstacles + 18 springs + 4 walls ≈ 200 bodies (vs 725 for the
+  // old channel architecture). Old-phone playable, race time ~25-30s.
+  const RAMP_DROP = 60;
+  const RAMP_CYS = [
+    300, 520, 740,
+    1500, 1720, 1940,
+    2700, 2920, 3140,
+    3900, 4120, 4340,
+    5100, 5320, 5540,
+    6300, 6520, 6740,
+  ];
 
-  // PERF REVERT — 7 chambers (was 11). Matches the original layout
-  // that was performance-validated. Combined with the shorter FINISH_Y
-  // this puts GP race times back at the ~16-19s baseline.
-  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
+  // Chamber Y positions sit in the gaps between ramp groups. Same
+  // chamber-combo system that gave each GP its theme of obstacles.
+  const baseYs = [1150, 2350, 3550, 4750, 5950, 7100];
   const chambers = baseYs.map(by => ({
-    y: by + Math.floor(rng() * 60 - 30),
-    radius: 200,
+    y: by + Math.floor(rng() * 40 - 20),
   }));
 
-  // Shuffle obstacle combos for this seed
+  // Shuffle obstacle combos for this seed — 6 chambers + 6 combos so
+  // each combo gets used exactly once per track, ordered randomly.
   const combos = [...CHAMBER_COMBOS];
   for (let i = combos.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [combos[i], combos[j]] = [combos[j], combos[i]];
   }
-  // 7 chambers, 6 combos — last chamber reuses a combo
-  const chamberCombos = [...combos, combos[Math.floor(rng() * combos.length)]];
-
-  const leftPts: { x: number; y: number }[] = [];
-  const rightPts: { x: number; y: number }[] = [];
-
-  // Entry funnel: y=20 → WAVE_START
-  const FUNNEL_N = 10;
-  const FUNNEL_TOP_HALF = 170;
-  for (let i = 0; i <= FUNNEL_N; i++) {
-    const t = i / FUNNEL_N;
-    const y = 20 + t * (WAVE_START - 20);
-    const halfW = FUNNEL_TOP_HALF * (1 - t) + HALF * t;
-    leftPts.push({ x: 200 - halfW, y });
-    rightPts.push({ x: 200 + halfW, y });
-  }
-
-  // S-channel with chamber widenings
-  for (let i = 1; i <= N; i++) {
-    const t = i / N;
-    const y = WAVE_START + t * (WAVE_END - WAVE_START);
-
-    let chamberBlend = 0;
-    for (const ch of chambers) {
-      const dist = Math.abs(y - ch.y);
-      if (dist < ch.radius) {
-        const b = 1 - dist / ch.radius;
-        chamberBlend = Math.max(chamberBlend, b * b * (3 - 2 * b));
-      }
-    }
-
-    const localHalf = HALF + chamberBlend * (CHAMBER_HALF - HALF);
-    // Ease the wave amplitude in over the first 8% of the channel so the
-    // centerline leaves the (centered) entry funnel with near-zero slope
-    // instead of the wave's full initial slope — removes the lone sharp
-    // kink at the funnel→wave joint.
-    const easeIn = Math.min(1, t / 0.08);
-    const localAmp = AMP * (1 - chamberBlend * 0.85) * easeIn;
-    const cx = 200 + localAmp * Math.sin(HALF_WAVES * Math.PI * t);
-
-    leftPts.push({ x: cx - localHalf, y });
-    rightPts.push({ x: cx + localHalf, y });
-  }
+  const chamberCombos: ChamberCombo[] = combos;
 
   // Build obstacles based on chamber combos
   const obstacles: ObstacleInfo[] = [];
@@ -1247,12 +1194,14 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     }
   });
 
-  // PERF REVERT — the gap-pegs added during v2 (3 pegs × 10 gaps = 30
-  // extra obstacle bodies) were removed because they pushed older phones
-  // over their per-frame physics budget. The wider channel + gentler
-  // wave + bigger chamber obstacles already do enough to keep the
-  // descent interesting; the gap pegs were marginal value at a high
-  // body-count cost.
+  // Build ramps + springs from the RAMP_CYS array, matching the
+  // hand-crafted track pattern. Ramps alternate left/right by index
+  // so marbles zigzag down through the chambers.
+  const ramps: RampData[] = RAMP_CYS.map((cy, i) => ({
+    points: generateRampPoints(cy, i % 2 === 0, RAMP_DROP),
+    engineCY: cy,
+  }));
+  const springs = generateSprings(RAMP_CYS, RAMP_DROP);
 
   const gpTheme = GP_THEMES[theme] || GP_THEMES.cyber;
 
@@ -1262,15 +1211,12 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     totalHeight: TOTAL_HEIGHT,
     finishY: FINISH_Y,
     ...finish,
-    ramps: [
-      { points: leftPts, engineCY: (WAVE_START + WAVE_END) / 2 },
-      { points: rightPts, engineCY: (WAVE_START + WAVE_END) / 2 },
-    ],
+    ramps,
     obstacles,
     windmillConfigs,
     funnels: [],
     finishFunnel: finish.finishFunnel,
-    springs: [],
+    springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
     bgImage: gpTheme.bg,
     pendulums,
