@@ -88,30 +88,44 @@ export async function enqueueEconomyAction(item: QueuedItem): Promise<void> {
   await writeQueue(items);
 }
 
+export interface FlushResult {
+  /** Items successfully sent to the server (including idempotent replays). */
+  drained: number;
+  /**
+   * The server's authoritative balance from the LAST successful drain, if
+   * any. Callers use this for silent reconciliation — snap local coins to
+   * server after replay so offline-applied debits/credits converge to the
+   * canonical post-server-validation balance.
+   */
+  balance: number | null;
+}
+
 /**
  * Attempt to drain the queue. Each item is POSTed via the same economy
  * endpoint; on success, the item is removed. On the first failure we
  * stop and try again on the next flush — preserving order so dependent
  * actions stay sequential.
  *
- * Returns the number of items successfully drained. If the queue is empty
- * or there's no auth token, returns 0 immediately.
+ * Returns the count drained plus the server's last-seen balance so the
+ * caller can reconcile local state to the canonical server value. If the
+ * queue is empty or there's no auth token, returns {drained:0, balance:null}.
  */
-export async function flushEconomyQueue(): Promise<number> {
-  if (flushInFlight) return 0;
+export async function flushEconomyQueue(): Promise<FlushResult> {
+  if (flushInFlight) return { drained: 0, balance: null };
   flushInFlight = true;
   try {
     const token = await getToken();
-    if (!token) return 0;
+    if (!token) return { drained: 0, balance: null };
 
     let items = await readQueue();
-    if (items.length === 0) return 0;
+    if (items.length === 0) return { drained: 0, balance: null };
 
     // Drop stale entries before we even try
     const now = Date.now();
     items = items.filter((i) => now - i.addedAt < MAX_AGE_MS);
 
     let drained = 0;
+    let lastBalance: number | null = null;
     while (items.length > 0) {
       const head = items[0];
       try {
@@ -122,6 +136,7 @@ export async function flushEconomyQueue(): Promise<number> {
         });
         // Server accepted (or replayed via idempotency). Either way, item is done.
         if (res && (res as any).success !== false) {
+          if (typeof (res as any).balance === 'number') lastBalance = (res as any).balance;
           items.shift();
           drained++;
           continue;
@@ -141,7 +156,7 @@ export async function flushEconomyQueue(): Promise<number> {
     }
 
     await writeQueue(items);
-    return drained;
+    return { drained, balance: lastBalance };
   } finally {
     flushInFlight = false;
   }

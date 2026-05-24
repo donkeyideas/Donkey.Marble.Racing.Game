@@ -44,7 +44,12 @@ async function applyEconomyActionWithRollback(
   rollback: () => void,
 ): Promise<EconomyResult> {
   const res = await applyEconomyAction(opts);
-  if (!res.ok && res.status !== 401) {
+  // 401 = queued for auth · 0 = queued for network. Both keep the optimistic
+  // local debit because the action IS in the retry queue and will replay
+  // when connectivity / token returns. Previously only 401 was exempted, so
+  // a player on the subway saw their balance rollback and the action drop —
+  // making bet/tournament/national entry silently impossible offline.
+  if (!res.ok && res.status !== 401 && res.status !== 0) {
     rollback();
   }
   return res;
@@ -1666,7 +1671,9 @@ export const useGameStore = create<GameState>()(
     let newBalance: number;
     if (res.ok) {
       newBalance = res.balance;
-    } else if (res.status === 401) {
+    } else if (res.status === 401 || res.status === 0) {
+      // Queued for auth (401) or queued for network (0) — keep the optimistic
+      // debit; the syncQueue will replay once we're back online / signed in.
       newBalance = optimisticBalance;
     } else {
       if (__DEV__) console.warn('[enterNationalRace] server rejected', res.status, res.message);
@@ -1909,8 +1916,10 @@ export const useGameStore = create<GameState>()(
     let newBalance: number;
     if (res.ok) {
       newBalance = res.balance;
-    } else if (res.status === 401) {
-      // Queued — keep optimistic debit; queue will settle on sign-in.
+    } else if (res.status === 401 || res.status === 0) {
+      // Queued — keep optimistic debit; queue will settle on sign-in / when
+      // we're back online. Both auth (401) and network (0) failures go
+      // through the syncQueue with the original idempotencyKey.
       newBalance = optimisticBalance;
     } else {
       // Permanent rejection — rollback already restored prevCoins.
@@ -2480,9 +2489,12 @@ export const useGameStore = create<GameState>()(
       return true;
     }
 
-    // 401 = signed-out / queued — proceed optimistically with local debit so
-    // the user can play offline. The queued action will reconcile on sign-in.
-    if (res.status === 401) {
+    // 401 = signed-out, 0 = network failure (e.g. subway / airplane mode).
+    // Both are "queued for retry" cases — proceed optimistically with local
+    // debit so the user can actually play the race. The queued action
+    // replays via syncQueue once connectivity / auth returns, and the
+    // idempotencyKey prevents double-spend on retry.
+    if (res.status === 401 || res.status === 0) {
       set({
         coins: coins - betAmount,
         currentBetId: null,
@@ -2503,7 +2515,7 @@ export const useGameStore = create<GameState>()(
   },
 
   settleBet: async (payout: number) => {
-    const { currentBetId } = get();
+    const { currentBetId, coins } = get();
     if (!currentBetId) {
       // No in-flight bet to settle — happens in quick race / tournament /
       // playoff modes where no place_bet was issued. Nothing to do.
@@ -2515,9 +2527,19 @@ export const useGameStore = create<GameState>()(
     });
     if (res.ok) {
       set({ coins: res.balance, currentBetId: null });
-    } else if (__DEV__) {
-      console.warn('[settleBet]', res.status, res.message);
+      return;
     }
+    // Offline (401 / network 0): credit the payout locally so the player
+    // sees their winnings now. The settle_bet action is queued and will
+    // replay with the same idempotencyKey when we're back online — server
+    // will reconcile to the canonical amount (idempotency prevents double
+    // credit). Previously the payout was silently dropped offline and the
+    // user thought they lost a winning bet.
+    if (res.status === 401 || res.status === 0) {
+      set({ coins: coins + payout, currentBetId: null });
+      return;
+    }
+    if (__DEV__) console.warn('[settleBet]', res.status, res.message);
   },
 
   resetBet: () => {

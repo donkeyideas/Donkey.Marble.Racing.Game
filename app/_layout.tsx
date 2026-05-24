@@ -24,6 +24,8 @@ import { useGameStore } from '../state/gameStore';
 import { GameModalHost } from '../components/GameModal';
 import { useStableWindowDimensions } from '../utils/useStableDimensions';
 import { initRewardedAds, loadRewardedAd } from '../utils/rewardedAds';
+import { onReconnect } from '../lib/networkStatus';
+import OfflineBanner from '../components/OfflineBanner';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -70,7 +72,17 @@ export default function RootLayout() {
     // behind a Firebase sign-in meant anonymous users never reconciled
     // and their phone-vs-admin coin drift never closed. That was the
     // root cause behind the persistent mismatch even after v3 shipped.
-    flushEconomyQueue().catch(() => {});
+    // Drain both queues, then snap local coins to the server's authoritative
+    // post-drain balance. Economy queue runs first so race-sync settlements
+    // see the latest balance baseline. Both queues silently reconcile —
+    // server wins per the offline architecture decision.
+    flushEconomyQueue()
+      .then((res) => {
+        if (res.drained > 0 && typeof res.balance === 'number') {
+          useGameStore.setState({ coins: res.balance });
+        }
+      })
+      .catch(() => {});
     flushRaceSyncQueue()
       .then((res) => {
         if (res.drained > 0 && typeof res.balance === 'number') {
@@ -79,6 +91,23 @@ export default function RootLayout() {
       })
       .catch(() => {});
     reconcileLocalBalanceOnce().catch(() => {});
+
+    // Reconnect handler: when we go offline -> online (e.g. subway tunnel
+    // ends, or wifi reconnects), drain the queues immediately instead of
+    // waiting for the next foreground. Without this, a player who placed
+    // a bet underground would see "phantom coin" state until they killed
+    // and reopened the app.
+    const unsubReconnect = onReconnect(() => {
+      flushEconomyQueue().catch(() => {});
+      flushRaceSyncQueue()
+        .then((res) => {
+          if (res.drained > 0 && typeof res.balance === 'number') {
+            useGameStore.setState({ coins: res.balance });
+          }
+        })
+        .catch(() => {});
+      reconcileLocalBalanceOnce().catch(() => {});
+    });
 
     const unsubAuth = onAuthStateChanged((user) => {
       const { setFirebaseUser } = useGameStore.getState();
@@ -115,7 +144,10 @@ export default function RootLayout() {
       }
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      unsubReconnect();
+    };
   }, []);
 
   useEffect(() => {
@@ -144,6 +176,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <StatusBar style="light" />
+      <OfflineBanner />
       <Stack
         screenOptions={{
           headerShown: false,

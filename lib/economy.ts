@@ -103,7 +103,13 @@ export async function applyEconomyAction(opts: {
     // any backlogged actions AND any queued race syncs opportunistically.
     // Fire-and-forget. If the race queue drains anything, snap local coins
     // to the server's post-drain balance so the UI matches.
-    flushEconomyQueue().catch(() => {});
+    flushEconomyQueue()
+      .then((q) => {
+        if (q.drained > 0 && typeof q.balance === 'number') {
+          useGameStore.setState({ coins: q.balance });
+        }
+      })
+      .catch(() => {});
     flushRaceSyncQueue()
       .then((q) => {
         if (q.drained > 0 && typeof q.balance === 'number') {
