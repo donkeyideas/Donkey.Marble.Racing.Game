@@ -922,24 +922,20 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
 
   // Seed-varied parameters.
   //
-  // CLUNK FIX: the S-channel walls are a sine-wave polyline. "Clunky" marble
-  // feel on Grand Prix tracks was caused by two compounding problems:
-  //   1. HALF_WAVES was 42-51 — a violently tight serpentine (a full S-curve
-  //      every ~100-120px, narrower than the channel itself). Marbles could
-  //      not flow; they ricocheted wall-to-wall.
-  //   2. The wave was sampled with only N=120 points, so each polyline
-  //      segment advanced the sine phase by ~69°. The walls were therefore
-  //      jagged sawtooth zigzags (avg kink 31-40°, max ~90-100° per joint)
-  //      instead of smooth curves — every joint is a corner the marble slams.
-  // Normal (non-GP) tracks have ~2° kinks. The fix: a much gentler wave
-  // (HALF_WAVES 8-12 = long sweeping F1 curves) sampled at high resolution
-  // (N=200), which drops the per-segment phase to ~4-5° and the wall kink
-  // angle to single digits — smooth, like every other track.
-  const AMP = 55 + Math.floor(rng() * 20);            // 55-75
-  const HALF_WAVES = 8 + Math.floor(rng() * 5);       // 8-12 — gentle sweeping S
-  const CH_W = 170 + Math.floor(rng() * 20);          // 170-190
+  // CLUNK FIX v2: round-2 widening + sweepier curves + bigger chamber
+  // obstacles. v1 (HALF_WAVES 42-51 → 8-12, N=120 → 200) reduced the
+  // jagged sawtooth but the channel was still too narrow (170-190 wide
+  // around a 55-75 amplitude wave) which forced wall-to-wall ricochet for
+  // the entire 5000px descent. v2 widens the channel to 220-260, halves
+  // the wave amplitude to 30-45, and stretches the half-wave count to
+  // 4-6 so each curve is a long sweeping bend instead of a series of
+  // quick S-turns. Net: marbles flow through with momentum preserved
+  // instead of bleeding off speed in every wall slap.
+  const AMP = 30 + Math.floor(rng() * 15);            // 30-45 (was 55-75)
+  const HALF_WAVES = 4 + Math.floor(rng() * 3);       // 4-6 (was 8-12)
+  const CH_W = 220 + Math.floor(rng() * 40);          // 220-260 (was 170-190)
   const HALF = CH_W / 2;
-  const CHAMBER_HALF = 160 + Math.floor(rng() * 15);  // 160-175
+  const CHAMBER_HALF = 175 + Math.floor(rng() * 15);  // 175-190 (was 160-175)
   const WAVE_START = 250;
   const WAVE_END = 5200;
   const N = 200;                                       // high-res sampling — smooth walls
@@ -1014,65 +1010,104 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     const dir = ci % 2 === 0 ? 1 : -1; // alternate directions
 
     switch (combo) {
+      // CLUNK FIX v2 — chamber obstacle sizes bumped from r:5 (cosmetic) to
+      // r:11 (peg) / r:14 (bumper) to match hand-crafted tracks. Earlier
+      // 5px obstacles were too small to register as physics theater — the
+      // marble would graze past them and the chambers felt empty. Also
+      // added 2-3 extra obstacles per combo so the wider channel still
+      // has a sense of "stuff happening here."
       case 'windmill_pegs':
         windmillConfigs.push({ x: 200, y, width: 120, speed: 0.008 * dir });
         obstacles.push(
-          { x: 140, y: y + 30, r: 5, type: 'peg' },
-          { x: 200, y: y + 10, r: 5, type: 'peg' },
-          { x: 260, y: y + 30, r: 5, type: 'peg' },
-          { x: 170, y: y + 60, r: 5, type: 'peg' },
-          { x: 230, y: y + 60, r: 5, type: 'peg' },
+          { x: 130, y: y + 30, r: 11, type: 'peg' },
+          { x: 200, y: y + 10, r: 11, type: 'peg' },
+          { x: 270, y: y + 30, r: 11, type: 'peg' },
+          { x: 160, y: y + 70, r: 11, type: 'peg' },
+          { x: 240, y: y + 70, r: 11, type: 'peg' },
+          { x: 100, y: y + 100, r: 11, type: 'peg' },
+          { x: 300, y: y + 100, r: 11, type: 'peg' },
         );
         break;
       case 'pendulum_bumpers':
         pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: 6 * dir });
         obstacles.push(
-          { x: 130, y: y - 30, r: 5, type: 'bumper' },
-          { x: 270, y: y - 30, r: 5, type: 'bumper' },
-          { x: 150, y: y + 40, r: 5, type: 'bumper' },
-          { x: 250, y: y + 40, r: 5, type: 'bumper' },
+          { x: 110, y: y - 30, r: 14, type: 'bumper' },
+          { x: 290, y: y - 30, r: 14, type: 'bumper' },
+          { x: 140, y: y + 50, r: 14, type: 'bumper' },
+          { x: 260, y: y + 50, r: 14, type: 'bumper' },
+          { x: 200, y: y + 110, r: 14, type: 'bumper' },
         );
         break;
       case 'speedburst_tramp':
         speedBursts.push(
-          { x: 200, y: y - 20, width: 60, direction: 'down' as const, activationChance: 0.7 },
-          { x: 140, y: y + 10, width: 50, direction: 'right' as const, activationChance: 0.6 },
-          { x: 260, y: y + 10, width: 50, direction: 'left' as const, activationChance: 0.6 },
+          { x: 200, y: y - 20, width: 70, direction: 'down' as const, activationChance: 0.7 },
+          { x: 130, y: y + 10, width: 60, direction: 'right' as const, activationChance: 0.65 },
+          { x: 270, y: y + 10, width: 60, direction: 'left' as const, activationChance: 0.65 },
         );
         trampolines.push(
-          { x: 140, y: y + 50, width: 40, strength: 5 },
-          { x: 260, y: y + 50, width: 40, strength: 5 },
+          { x: 130, y: y + 60, width: 50, strength: 5 },
+          { x: 270, y: y + 60, width: 50, strength: 5 },
+        );
+        obstacles.push(
+          { x: 200, y: y + 90, r: 14, type: 'bumper' },
+          { x: 120, y: y + 110, r: 11, type: 'peg' },
+          { x: 280, y: y + 110, r: 11, type: 'peg' },
         );
         break;
       case 'windmill_bumpers':
-        windmillConfigs.push({ x: 200, y, width: 120, speed: -0.008 * dir });
+        windmillConfigs.push({ x: 200, y, width: 140, speed: -0.008 * dir });
         obstacles.push(
-          { x: 140, y: y - 20, r: 5, type: 'bumper' },
-          { x: 260, y: y - 20, r: 5, type: 'bumper' },
-          { x: 200, y: y + 40, r: 5, type: 'bumper' },
+          { x: 120, y: y - 20, r: 14, type: 'bumper' },
+          { x: 280, y: y - 20, r: 14, type: 'bumper' },
+          { x: 200, y: y + 50, r: 14, type: 'bumper' },
+          { x: 140, y: y + 90, r: 14, type: 'bumper' },
+          { x: 260, y: y + 90, r: 14, type: 'bumper' },
         );
         break;
       case 'pendulum_pegs':
         pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: -6 * dir });
         obstacles.push(
-          { x: 150, y: y + 20, r: 5, type: 'peg' },
-          { x: 200, y: y, r: 5, type: 'peg' },
-          { x: 250, y: y + 20, r: 5, type: 'peg' },
-          { x: 175, y: y + 50, r: 5, type: 'peg' },
-          { x: 225, y: y + 50, r: 5, type: 'peg' },
+          { x: 140, y: y + 20, r: 11, type: 'peg' },
+          { x: 200, y: y, r: 11, type: 'peg' },
+          { x: 260, y: y + 20, r: 11, type: 'peg' },
+          { x: 165, y: y + 60, r: 11, type: 'peg' },
+          { x: 235, y: y + 60, r: 11, type: 'peg' },
+          { x: 110, y: y + 90, r: 11, type: 'peg' },
+          { x: 290, y: y + 90, r: 11, type: 'peg' },
         );
         break;
       case 'tramp_speedburst':
         trampolines.push(
-          { x: 150, y: y + 40, width: 40, strength: 5 },
-          { x: 250, y: y + 40, width: 40, strength: 5 },
+          { x: 140, y: y + 40, width: 50, strength: 5 },
+          { x: 260, y: y + 40, width: 50, strength: 5 },
         );
         speedBursts.push(
-          { x: 200, y: y - 20, width: 60, direction: 'down' as const, activationChance: 0.7 },
+          { x: 200, y: y - 20, width: 70, direction: 'down' as const, activationChance: 0.7 },
+        );
+        obstacles.push(
+          { x: 130, y: y + 90, r: 14, type: 'bumper' },
+          { x: 270, y: y + 90, r: 14, type: 'bumper' },
+          { x: 200, y: y + 110, r: 11, type: 'peg' },
         );
         break;
     }
   });
+
+  // CLUNK FIX v2 — sparse gap obstacles between chambers. The 600px gaps
+  // between chamber Y positions used to be empty channel — just snaking
+  // wall with nothing to interact with. A handful of pegs in each gap
+  // gives marbles something to deflect off and reduces the "long boring
+  // snake" feel without crowding the chambers. Offset alternates left/
+  // right so the pegs don't form a centerline that traps marbles.
+  for (let gi = 0; gi < chambers.length - 1; gi++) {
+    const yMid = (chambers[gi].y + chambers[gi + 1].y) / 2;
+    const xOffset = gi % 2 === 0 ? -40 : 40;
+    obstacles.push(
+      { x: 200 + xOffset, y: yMid - 60, r: 11, type: 'peg' },
+      { x: 200 - xOffset, y: yMid, r: 11, type: 'peg' },
+      { x: 200 + xOffset, y: yMid + 60, r: 11, type: 'peg' },
+    );
+  }
 
   const gpTheme = GP_THEMES[theme] || GP_THEMES.cyber;
 
