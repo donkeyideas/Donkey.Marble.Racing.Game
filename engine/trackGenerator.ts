@@ -57,11 +57,16 @@ interface TrackBlueprint {
 // ═══════════════════════════════════════════
 
 function selectParameters(rng: () => number): TrackBlueprint {
-  const rampCount = 6 + Math.floor(rng() * 4); // 6-9
+  // LENGTH EXTENSION — procedural tracks were averaging 12-15s under the
+  // current physics. Hand-crafted + GP tracks now target 25-30s. Doubling
+  // the ramp count (was 6-9, now 12-15) brings the gen-XXXX tracks into
+  // the same window. Per-zone peg count also bumped (1-2 → 2-3) so the
+  // longer descent isn't dead space between ramp groups.
+  const rampCount = 12 + Math.floor(rng() * 4); // 12-15 (was 6-9)
   const rampDrop = 50 + Math.floor(rng() * 16); // 50-65
   const gravityY = 0.95 + rng() * 0.1; // 0.95-1.05 — natural default gravity
   const pegDensity: PegDensity = rng() < 0.6 ? 'low' : 'medium';
-  const pegZoneCount = 1 + Math.floor(rng() * 2); // 1-2
+  const pegZoneCount = 2 + Math.floor(rng() * 2); // 2-3 (was 1-2)
 
   // Pick 0-2 features
   const allFeatures: FeatureType[] = ['pendulums', 'trampolines', 'cradles', 'ballPits'];
@@ -94,18 +99,29 @@ function selectParameters(rng: () => number): TrackBlueprint {
 // ═══════════════════════════════════════════
 
 function distributeRamps(count: number, rng: () => number): number[][] {
-  // Split ramps into 2-3 groups
+  // Split ramps into 3-4 groups for the extended track length.
   if (count <= 6) {
-    return [[3], [3]]; // 3 + 3
+    return [[3], [3]];
   } else if (count === 7) {
     return rng() < 0.5 ? [[4], [3]] : [[3], [4]];
   } else if (count === 8) {
     if (rng() < 0.4) return [[4], [4]];
     return rng() < 0.5 ? [[3], [2], [3]] : [[3], [3], [2]];
-  } else {
-    // 9
+  } else if (count === 9) {
     if (rng() < 0.5) return [[5], [4]];
     return [[3], [3], [3]];
+  } else if (count <= 12) {
+    // 10-12 ramps → 3 or 4 groups
+    if (rng() < 0.5) return [[3], [3], [3], [count - 9]];
+    return [[4], [4], [count - 8]];
+  } else if (count <= 14) {
+    // 13-14 ramps → 4 groups
+    return rng() < 0.5
+      ? [[4], [3], [3], [count - 10]]
+      : [[3], [4], [3], [count - 10]];
+  } else {
+    // 15 — 4-5 groups
+    return rng() < 0.5 ? [[4], [4], [4], [3]] : [[3], [3], [3], [3], [3]];
   }
 }
 
@@ -612,11 +628,14 @@ export function generateTrack(seed: number): TrackConfig {
   // 5. Place features
   const features = placeFeatures(bp, rampCYs, gapZones, rng);
 
-  // 6. Body count budget check — reduce pegs if over 80
+  // 6. Body count budget check — reduce pegs if over 130 (was 80, bumped
+  // because the extended ramp count alone is now 12-15 vs the old 6-9, so
+  // the prior budget would have culled pegs from every extended track).
+  // 130 keeps physics performance comfortable while letting peg zones
+  // actually populate.
   let bodyCount = estimateBodyCount(ramps.length, obstacles, windmills, funnels, features);
-  if (bodyCount > 80) {
-    // Remove some pegs to fit
-    const excess = bodyCount - 75;
+  if (bodyCount > 130) {
+    const excess = bodyCount - 120;
     const pegs = obstacles.filter(o => o.type === 'peg');
     const toRemove = Math.min(excess, Math.floor(pegs.length * 0.4));
     for (let i = 0; i < toRemove; i++) {
