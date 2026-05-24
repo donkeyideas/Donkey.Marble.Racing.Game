@@ -13,12 +13,16 @@
  * want any chance of accidentally serving Rapier to real users.
  */
 
-// Temporarily flipped TRUE for the TestFlight build (iOS 1.0.7 / build 95)
-// so beta testers exercise the Rapier engine on real devices. Default
-// remains false — Android build 60 still ships Matter.js. Flip back to
-// false before any Play Store / App Store production release until the
-// Rapier engine has soaked successfully on TestFlight.
-export const USE_RAPIER = true;
+// Reverted to false after TestFlight beta on iOS 1.0.7 build 98 showed
+// poor performance on older devices. Root cause: the asm.js compat build
+// of Rapier we ship (because Hermes WASM is fragile in React Native) is
+// ~30-50% slower than true WASM Rapier, which puts it BELOW Matter.js's
+// raw JS speed on older CPUs. The track extensions and tuning work
+// stay in — they're engine-agnostic — but every race now runs on
+// Matter.js for the production path. The Rapier engine implementation
+// is kept in engine/race-rapier.ts behind this flag so we can revisit
+// once Hermes WASM matures or a native-module Rapier bridge ships.
+export const USE_RAPIER = false;
 
 /**
  * Whether Rapier's async init has completed. Set by initRapierEngine() in

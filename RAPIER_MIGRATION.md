@@ -75,8 +75,8 @@ while shipping the proven Matter.js path.
 - [x] Stage 4: Joint elements — pendulums (revolute joints), Newton's cradles (revolute joints + lockRotations to prevent spin, first ball pull-back), ball pits (dynamic ball grids)
 - [x] Stage 5: Full telemetry — per-frame ranking, lead-frame accounting, overtakes/timesPassed, quartile checkpoints (posAt25/50/75), wire-to-wire detection; `canSleep=false` on all marbles as stuck safeguard
 - [x] Stage 6: All 164 courses validated via `scripts/test-all-tracks-rapier.ts` — **161 pass (98.2%)**, 3 fail (specific procedural seeds with stuck geometry — `gen-1620`, `gen-2101`, `gen-2182`)
-- [x] Stage 7: TestFlight build with `USE_RAPIER = true` (iOS 1.0.7 build 95) — beta soak only, Android build 60 stays on Matter.js
-- [ ] Stage 8: On-device performance measurement (iPhone 12, Pixel 6a) — pending physical device runs
+- [x] Stage 7: TestFlight build with `USE_RAPIER = true` (iOS 1.0.7 builds 95/96/97/98) — beta soak
+- [x] Stage 8: On-device performance measurement — **FAILED on older devices**. Rapier asm.js compat build is too slow on older CPUs (~30-50% slower than true WASM Rapier, which puts it below Matter.js raw JS speed on legacy hardware). Reverted to `USE_RAPIER = false` for build 99. Rapier engine kept in repo behind the flag for future revisit.
 - [ ] Stage 9: Per-track fix-or-remove decisions for the 3 failing procedural seeds
 - [ ] Stage 10: Render-state integration verification (Reanimated shared values should keep working since the engine returns the same RaceState shape, but worth confirming on device)
 - [ ] Stage 11: Production rollout decision — if TestFlight beta is positive, promote to remote-config flag `feature_rapier_engine` and A/B 10% → 50% → 100% on iOS first, then enable Android
