@@ -1053,7 +1053,13 @@ const CHAMBER_COMBOS: ChamberCombo[] = ['windmill_pegs', 'pendulum_bumpers', 'sp
 export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
   const rng = gpRng(seed * 7919 + 42);
 
-  const FINISH_Y = 5400;
+  // LENGTH EXTENSION — was FINISH_Y 5400 with 7 chambers averaging
+  // 16-19s. Pushed to 7500 with 11 chambers to match the 25-30s window
+  // hand-crafted tracks now hit. The sine wave still spans almost the
+  // full descent (WAVE_END = 7200) so the F1-sweep identity carries
+  // through to the longer track instead of degenerating into a straight
+  // shot at the bottom.
+  const FINISH_Y = 7500;
   const CHANNEL_DEPTH = 220;
   const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
   const finish = generateFinishZone(FINISH_Y);
@@ -1075,24 +1081,32 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
   const HALF = CH_W / 2;
   const CHAMBER_HALF = 175 + Math.floor(rng() * 15);  // 175-190 (was 160-175)
   const WAVE_START = 250;
-  const WAVE_END = 5200;
-  const N = 200;                                       // high-res sampling — smooth walls
+  const WAVE_END = 7200;
+  // Sample density scales with length to keep per-segment phase ~4°.
+  // Was N=200 over 4950px (~25 px/segment). Now N=290 over 6950px
+  // (~24 px/segment) so wall smoothness stays the same.
+  const N = 290;
 
-  // 7 chamber Y positions — slightly jittered by seed
-  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
+  // 11 chamber Y positions — extended from 7. Original 7 spans 800-4400;
+  // new 4 fill the 5000-7000 range. Slight ±30 jitter per seed.
+  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400, 5000, 5600, 6200, 6800];
   const chambers = baseYs.map(by => ({
-    y: by + Math.floor(rng() * 60 - 30),  // ±30 jitter
+    y: by + Math.floor(rng() * 60 - 30),
     radius: 200,
   }));
 
-  // Shuffle obstacle combos for this seed
+  // Shuffle obstacle combos for this seed — 6 combos for 11 chambers
+  // means each combo gets used 1-2 times. Pad the array so every chamber
+  // has a combo assigned (random fills for the overflow slots).
   const combos = [...CHAMBER_COMBOS];
   for (let i = combos.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [combos[i], combos[j]] = [combos[j], combos[i]];
   }
-  // 7 chambers, 6 combos — last chamber reuses a combo
-  const chamberCombos = [...combos, combos[Math.floor(rng() * combos.length)]];
+  const chamberCombos: ChamberCombo[] = [];
+  for (let i = 0; i < chambers.length; i++) {
+    chamberCombos.push(combos[i % combos.length]);
+  }
 
   const leftPts: { x: number; y: number }[] = [];
   const rightPts: { x: number; y: number }[] = [];
