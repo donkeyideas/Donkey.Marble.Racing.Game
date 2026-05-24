@@ -4,7 +4,11 @@ import { useRouter } from 'expo-router';
 import { Colors, Fonts, MarbleData, MARBLES } from '../theme';
 import { getSkinnedMarble } from '../data/skins';
 import { useGameStore } from '../state/gameStore';
-import { createRaceEngine, RaceState, PendulumState, BallPitBallState, TrampolineState, SpeedBurstState } from '../engine/race';
+import { RaceState, PendulumState, BallPitBallState, TrampolineState, SpeedBurstState } from '../engine/race';
+// Dispatcher-routed engine — picks Matter.js or Rapier based on USE_RAPIER
+// in engine/engineConfig.ts. Same surface, so the rest of this file doesn't
+// care which engine is running.
+import { createRaceEngine } from '../engine/createEngine';
 import { triggerRaceHaptic, raceHaptics, HapticType } from '../utils/haptics';
 import { buildTrack, TrackConfig } from '../engine/tracks';
 import { ALL_COURSES as COURSES } from '../data/courses';

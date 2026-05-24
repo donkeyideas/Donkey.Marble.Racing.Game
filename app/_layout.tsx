@@ -26,6 +26,8 @@ import { useStableWindowDimensions } from '../utils/useStableDimensions';
 import { initRewardedAds, loadRewardedAd } from '../utils/rewardedAds';
 import { onReconnect } from '../lib/networkStatus';
 import OfflineBanner from '../components/OfflineBanner';
+import { initRapierEngine } from '../engine/createEngine';
+import { USE_RAPIER } from '../engine/engineConfig';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -91,6 +93,18 @@ export default function RootLayout() {
       })
       .catch(() => {});
     reconcileLocalBalanceOnce().catch(() => {});
+
+    // Rapier physics engine init — async (loads asm.js module ~1MB). Only
+    // runs when the USE_RAPIER feature flag is on; default flag = false so
+    // production users pay zero cost. Eager-init at boot means the first
+    // race after launch can use Rapier without a startup delay. Failures
+    // are swallowed because the dispatcher gracefully falls back to
+    // Matter.js when RAPIER_READY stays false.
+    if (USE_RAPIER) {
+      initRapierEngine().catch((err) => {
+        if (__DEV__) console.warn('[rapier] init failed, falling back to Matter.js:', err);
+      });
+    }
 
     // Reconnect handler: when we go offline -> online (e.g. subway tunnel
     // ends, or wifi reconnects), drain the queues immediately instead of
