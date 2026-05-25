@@ -1050,211 +1050,323 @@ function gpRng(seed: number) {
 type ChamberCombo = 'windmill_pegs' | 'pendulum_bumpers' | 'speedburst_tramp' | 'windmill_bumpers' | 'pendulum_pegs' | 'tramp_speedburst';
 const CHAMBER_COMBOS: ChamberCombo[] = ['windmill_pegs', 'pendulum_bumpers', 'speedburst_tramp', 'windmill_bumpers', 'pendulum_pegs', 'tramp_speedburst'];
 
-export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
-  const rng = gpRng(seed * 7919 + 42);
+/**
+ * Grand Prix track generator — 10 long-S-curve design variants.
+ *
+ * Each GP seed deterministically picks one of 10 designs via `seed % 10`,
+ * so the 60 GP variants across 14 themes get every design in active
+ * rotation. Each design is a "series of long S curves" but differs in:
+ * S count, channel width, amplitude, and what obstacles live inside.
+ *
+ * All designs target ~150-220 physics bodies (vs the prior sine-wave
+ * channel architecture's 725) so they run smoothly on older phones.
+ * Length stays at FINISH_Y=7500 (~25-30s race window).
+ *
+ * Designs are sourced from mock-gp-redesigns.html; see that file for
+ * visual previews of each.
+ */
 
-  // PERF REVERT — pushed FINISH_Y to 7500 + 11 chambers + N=290 during
-  // the length-extension pass, which bumped per-track body count from
-  // ~445 to ~725 and made GP unplayable on older phones (~25fps drops).
-  // Reverted to the original length / chamber count / sampling that
-  // worked on the test phone. v2 visual improvements (wider channel,
-  // gentler waves, bigger chamber obstacles) stay — they don't add
-  // bodies, just change geometry. GP races land back at the ~16-19s
-  // range from before the extension. If you need both longer GP AND
-  // older-phone perf, the only path is the zone-architecture rewrite
-  // documented in RAPIER_MIGRATION.md.
-  const FINISH_Y = 5400;
-  const CHANNEL_DEPTH = 220;
-  const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
-  const finish = generateFinishZone(FINISH_Y);
+const GP_WALL_START_Y = 280;
+const GP_WALL_END_Y = 7340;
 
-  // Seed-varied parameters.
-  //
-  // CLUNK FIX v2: round-2 widening + sweepier curves + bigger chamber
-  // obstacles. v1 (HALF_WAVES 42-51 → 8-12, N=120 → 200) reduced the
-  // jagged sawtooth but the channel was still too narrow (170-190 wide
-  // around a 55-75 amplitude wave) which forced wall-to-wall ricochet for
-  // the entire 5000px descent. v2 widens the channel to 220-260, halves
-  // the wave amplitude to 30-45, and stretches the half-wave count to
-  // 4-6 so each curve is a long sweeping bend instead of a series of
-  // quick S-turns. Net: marbles flow through with momentum preserved
-  // instead of bleeding off speed in every wall slap.
-  const AMP = 30 + Math.floor(rng() * 15);            // 30-45 (was 55-75)
-  const HALF_WAVES = 4 + Math.floor(rng() * 3);       // 4-6 (was 8-12)
-  const CH_W = 220 + Math.floor(rng() * 40);          // 220-260 (was 170-190)
-  const HALF = CH_W / 2;
-  const CHAMBER_HALF = 175 + Math.floor(rng() * 15);  // 175-190 (was 160-175)
-  const WAVE_START = 250;
-  // PERF REVERT — WAVE_END back to 5200 (was 7200), N back to 200 (was
-  // 290). Original values that worked on older phones. Per-segment
-  // joint angle ~6° at the gentler HALF_WAVES=4-6 we use post-v2, so
-  // walls stay smooth without the elevated body count.
-  const WAVE_END = 5200;
-  const N = 200;
+/**
+ * Build a pair of polyline walls following a series of long S curves.
+ * Returns the two wall polylines as `RampData` entries (the engine
+ * treats long polylines like ramp paths — every adjacent segment pair
+ * becomes a static collision body).
+ *
+ * `centerlineXAt(engineY)` is exposed so obstacle placement code can
+ * snap obstacles to the channel centerline at any depth.
+ */
+function buildSCurveWalls(params: {
+  sCount: number;
+  channelHalfWidth: number | ((t: number) => number);
+  amplitude: number;
+  segments: number;
+  centerlineFn?: (t: number) => number;
+  layerSCount?: number;       // optional secondary wobble (design #6)
+  layerAmplitude?: number;
+}): { walls: RampData[]; centerlineXAt: (engineY: number) => number; centerOf: (t: number) => number } {
+  const { sCount, channelHalfWidth, amplitude, segments, centerlineFn, layerSCount, layerAmplitude } = params;
+  const halfWAt = (t: number) => typeof channelHalfWidth === 'function' ? channelHalfWidth(t) : channelHalfWidth;
+  const centerOf = (t: number) => {
+    if (centerlineFn) return centerlineFn(t);
+    let cx = 200 + amplitude * Math.sin(t * sCount * Math.PI);
+    if (layerSCount && layerAmplitude) cx += layerAmplitude * Math.sin(t * layerSCount * Math.PI);
+    return cx;
+  };
+  const leftPts: { x: number; y: number }[] = [];
+  const rightPts: { x: number; y: number }[] = [];
+  const yRange = GP_WALL_END_Y - GP_WALL_START_Y;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = GP_WALL_START_Y + t * yRange;
+    const cx = centerOf(t);
+    const hw = halfWAt(t);
+    leftPts.push({ x: cx - hw, y });
+    rightPts.push({ x: cx + hw, y });
+  }
+  return {
+    walls: [
+      { points: leftPts, engineCY: (GP_WALL_START_Y + GP_WALL_END_Y) / 2 },
+      { points: rightPts, engineCY: (GP_WALL_START_Y + GP_WALL_END_Y) / 2 },
+    ],
+    centerlineXAt: (engineY: number) => {
+      const t = (engineY - GP_WALL_START_Y) / yRange;
+      return centerOf(Math.max(0, Math.min(1, t)));
+    },
+    centerOf,
+  };
+}
 
-  // PERF REVERT — 7 chambers (was 11). Matches the original layout
-  // that was performance-validated. Combined with the shorter FINISH_Y
-  // this puts GP race times back at the ~16-19s baseline.
-  const baseYs = [800, 1400, 2000, 2600, 3200, 3800, 4400];
-  const chambers = baseYs.map(by => ({
-    y: by + Math.floor(rng() * 60 - 30),
-    radius: 200,
-  }));
-
-  // Shuffle obstacle combos for this seed
+/**
+ * Shared seed-shuffled chamber-combo dispatcher. Returns a closure that
+ * accepts a list of `{x, y, dir}` slots and routes each through the
+ * existing CHAMBER_COMBOS switch — so each design's obstacle slots get
+ * randomized obstacle types per seed, same way the original GP did.
+ */
+function buildObstacleDispatcher(rng: () => number) {
   const combos = [...CHAMBER_COMBOS];
   for (let i = combos.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [combos[i], combos[j]] = [combos[j], combos[i]];
   }
-  // 7 chambers, 6 combos — last chamber reuses a combo
-  const chamberCombos = [...combos, combos[Math.floor(rng() * combos.length)]];
-
-  const leftPts: { x: number; y: number }[] = [];
-  const rightPts: { x: number; y: number }[] = [];
-
-  // Entry funnel: y=20 → WAVE_START
-  const FUNNEL_N = 10;
-  const FUNNEL_TOP_HALF = 170;
-  for (let i = 0; i <= FUNNEL_N; i++) {
-    const t = i / FUNNEL_N;
-    const y = 20 + t * (WAVE_START - 20);
-    const halfW = FUNNEL_TOP_HALF * (1 - t) + HALF * t;
-    leftPts.push({ x: 200 - halfW, y });
-    rightPts.push({ x: 200 + halfW, y });
-  }
-
-  // S-channel with chamber widenings
-  for (let i = 1; i <= N; i++) {
-    const t = i / N;
-    const y = WAVE_START + t * (WAVE_END - WAVE_START);
-
-    let chamberBlend = 0;
-    for (const ch of chambers) {
-      const dist = Math.abs(y - ch.y);
-      if (dist < ch.radius) {
-        const b = 1 - dist / ch.radius;
-        chamberBlend = Math.max(chamberBlend, b * b * (3 - 2 * b));
+  return (
+    slots: { x: number; y: number; dir?: number }[],
+    out: {
+      obstacles: ObstacleInfo[];
+      windmillConfigs: WindmillConfig[];
+      pendulums: PendulumConfig[];
+      trampolines: TrampolineConfig[];
+      speedBursts: SpeedBurstConfig[];
+    },
+  ) => {
+    slots.forEach((slot, ci) => {
+      const combo = combos[ci % combos.length];
+      const x = slot.x;
+      const y = slot.y;
+      const dir = slot.dir ?? (ci % 2 === 0 ? 1 : -1);
+      // Obstacle horizontal extents kept inside ±45 of the slot so they
+      // fit even on the narrowest S-curve channels. At a steep S apex the
+      // wall direction is diagonal, so the wall's actual X at the
+      // obstacle's Y can be ~20px off the centerline. With min channel
+      // half-width 90, ±45 leaves a true margin around 25px (more than
+      // marble radius 11) on the worst-case wall.
+      switch (combo) {
+        case 'windmill_pegs':
+          out.windmillConfigs.push({ x, y, width: 90, speed: 0.008 * dir });
+          out.obstacles.push(
+            { x: x - 40, y: y + 30, r: 11, type: 'peg' },
+            { x, y: y + 10, r: 11, type: 'peg' },
+            { x: x + 40, y: y + 30, r: 11, type: 'peg' },
+            { x: x - 25, y: y + 70, r: 11, type: 'peg' },
+            { x: x + 25, y: y + 70, r: 11, type: 'peg' },
+          );
+          break;
+        case 'pendulum_bumpers':
+          out.pendulums.push({ anchorX: x, anchorY: y, length: 100, bobRadius: 15, startVelocityX: 6 * dir });
+          out.obstacles.push(
+            { x: x - 38, y: y - 30, r: 11, type: 'bumper' },
+            { x: x + 38, y: y - 30, r: 11, type: 'bumper' },
+            { x: x - 28, y: y + 50, r: 11, type: 'bumper' },
+            { x: x + 28, y: y + 50, r: 11, type: 'bumper' },
+          );
+          break;
+        case 'speedburst_tramp':
+          out.speedBursts.push(
+            { x, y: y - 20, width: 60, direction: 'down', activationChance: 0.7 },
+            { x: x - 35, y: y + 10, width: 45, direction: 'right', activationChance: 0.65 },
+            { x: x + 35, y: y + 10, width: 45, direction: 'left', activationChance: 0.65 },
+          );
+          out.trampolines.push(
+            { x: x - 40, y: y + 60, width: 40, strength: 5 },
+            { x: x + 40, y: y + 60, width: 40, strength: 5 },
+          );
+          out.obstacles.push({ x, y: y + 90, r: 12, type: 'bumper' });
+          break;
+        case 'windmill_bumpers':
+          out.windmillConfigs.push({ x, y, width: 90, speed: -0.008 * dir });
+          out.obstacles.push(
+            { x: x - 38, y: y - 20, r: 11, type: 'bumper' },
+            { x: x + 38, y: y - 20, r: 11, type: 'bumper' },
+            { x, y: y + 50, r: 11, type: 'bumper' },
+            { x: x - 32, y: y + 90, r: 11, type: 'bumper' },
+            { x: x + 32, y: y + 90, r: 11, type: 'bumper' },
+          );
+          break;
+        case 'pendulum_pegs':
+          out.pendulums.push({ anchorX: x, anchorY: y, length: 100, bobRadius: 15, startVelocityX: -6 * dir });
+          out.obstacles.push(
+            { x: x - 40, y: y + 20, r: 11, type: 'peg' },
+            { x, y, r: 11, type: 'peg' },
+            { x: x + 40, y: y + 20, r: 11, type: 'peg' },
+            { x: x - 25, y: y + 60, r: 11, type: 'peg' },
+            { x: x + 25, y: y + 60, r: 11, type: 'peg' },
+          );
+          break;
+        case 'tramp_speedburst':
+          out.trampolines.push(
+            { x: x - 35, y: y + 40, width: 35, strength: 5 },
+            { x: x + 35, y: y + 40, width: 35, strength: 5 },
+          );
+          out.speedBursts.push({ x, y: y - 20, width: 50, direction: 'down', activationChance: 0.7 });
+          out.obstacles.push(
+            { x: x - 38, y: y + 90, r: 11, type: 'bumper' },
+            { x: x + 38, y: y + 90, r: 11, type: 'bumper' },
+          );
+          break;
       }
-    }
+    });
+  };
+}
 
-    const localHalf = HALF + chamberBlend * (CHAMBER_HALF - HALF);
-    // Ease the wave amplitude in over the first 8% of the channel so the
-    // centerline leaves the (centered) entry funnel with near-zero slope
-    // instead of the wave's full initial slope — removes the lone sharp
-    // kink at the funnel→wave joint.
-    const easeIn = Math.min(1, t / 0.08);
-    const localAmp = AMP * (1 - chamberBlend * 0.85) * easeIn;
-    const cx = 200 + localAmp * Math.sin(HALF_WAVES * Math.PI * t);
+export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): TrackConfig {
+  const rng = gpRng(seed * 7919 + 42);
 
-    leftPts.push({ x: cx - localHalf, y });
-    rightPts.push({ x: cx + localHalf, y });
-  }
+  // Pick one of 10 designs deterministically from the seed. Each seed
+  // always produces the same design, but the rng-based obstacle combos
+  // inside the design vary per seed for unique variation across the 60
+  // GP variants in rotation.
+  const designIdx = ((seed % 10) + 10) % 10;
 
-  // Build obstacles based on chamber combos
-  const obstacles: ObstacleInfo[] = [];
-  const windmillConfigs: WindmillConfig[] = [];
-  const pendulums: PendulumConfig[] = [];
-  const trampolines: TrampolineConfig[] = [];
-  const speedBursts: SpeedBurstConfig[] = [];
-
-  chambers.forEach((ch, ci) => {
-    const combo = chamberCombos[ci];
-    const y = ch.y;
-    const dir = ci % 2 === 0 ? 1 : -1; // alternate directions
-
-    switch (combo) {
-      // CLUNK FIX v2 — chamber obstacle sizes bumped from r:5 (cosmetic) to
-      // r:11 (peg) / r:14 (bumper) to match hand-crafted tracks. Earlier
-      // 5px obstacles were too small to register as physics theater — the
-      // marble would graze past them and the chambers felt empty. Also
-      // added 2-3 extra obstacles per combo so the wider channel still
-      // has a sense of "stuff happening here."
-      case 'windmill_pegs':
-        windmillConfigs.push({ x: 200, y, width: 120, speed: 0.008 * dir });
-        obstacles.push(
-          { x: 130, y: y + 30, r: 11, type: 'peg' },
-          { x: 200, y: y + 10, r: 11, type: 'peg' },
-          { x: 270, y: y + 30, r: 11, type: 'peg' },
-          { x: 160, y: y + 70, r: 11, type: 'peg' },
-          { x: 240, y: y + 70, r: 11, type: 'peg' },
-          { x: 100, y: y + 100, r: 11, type: 'peg' },
-          { x: 300, y: y + 100, r: 11, type: 'peg' },
-        );
-        break;
-      case 'pendulum_bumpers':
-        pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: 6 * dir });
-        obstacles.push(
-          { x: 110, y: y - 30, r: 14, type: 'bumper' },
-          { x: 290, y: y - 30, r: 14, type: 'bumper' },
-          { x: 140, y: y + 50, r: 14, type: 'bumper' },
-          { x: 260, y: y + 50, r: 14, type: 'bumper' },
-          { x: 200, y: y + 110, r: 14, type: 'bumper' },
-        );
-        break;
-      case 'speedburst_tramp':
-        speedBursts.push(
-          { x: 200, y: y - 20, width: 70, direction: 'down' as const, activationChance: 0.7 },
-          { x: 130, y: y + 10, width: 60, direction: 'right' as const, activationChance: 0.65 },
-          { x: 270, y: y + 10, width: 60, direction: 'left' as const, activationChance: 0.65 },
-        );
-        trampolines.push(
-          { x: 130, y: y + 60, width: 50, strength: 5 },
-          { x: 270, y: y + 60, width: 50, strength: 5 },
-        );
-        obstacles.push(
-          { x: 200, y: y + 90, r: 14, type: 'bumper' },
-          { x: 120, y: y + 110, r: 11, type: 'peg' },
-          { x: 280, y: y + 110, r: 11, type: 'peg' },
-        );
-        break;
-      case 'windmill_bumpers':
-        windmillConfigs.push({ x: 200, y, width: 140, speed: -0.008 * dir });
-        obstacles.push(
-          { x: 120, y: y - 20, r: 14, type: 'bumper' },
-          { x: 280, y: y - 20, r: 14, type: 'bumper' },
-          { x: 200, y: y + 50, r: 14, type: 'bumper' },
-          { x: 140, y: y + 90, r: 14, type: 'bumper' },
-          { x: 260, y: y + 90, r: 14, type: 'bumper' },
-        );
-        break;
-      case 'pendulum_pegs':
-        pendulums.push({ anchorX: 200, anchorY: y, length: 100, bobRadius: 15, startVelocityX: -6 * dir });
-        obstacles.push(
-          { x: 140, y: y + 20, r: 11, type: 'peg' },
-          { x: 200, y: y, r: 11, type: 'peg' },
-          { x: 260, y: y + 20, r: 11, type: 'peg' },
-          { x: 165, y: y + 60, r: 11, type: 'peg' },
-          { x: 235, y: y + 60, r: 11, type: 'peg' },
-          { x: 110, y: y + 90, r: 11, type: 'peg' },
-          { x: 290, y: y + 90, r: 11, type: 'peg' },
-        );
-        break;
-      case 'tramp_speedburst':
-        trampolines.push(
-          { x: 140, y: y + 40, width: 50, strength: 5 },
-          { x: 260, y: y + 40, width: 50, strength: 5 },
-        );
-        speedBursts.push(
-          { x: 200, y: y - 20, width: 70, direction: 'down' as const, activationChance: 0.7 },
-        );
-        obstacles.push(
-          { x: 130, y: y + 90, r: 14, type: 'bumper' },
-          { x: 270, y: y + 90, r: 14, type: 'bumper' },
-          { x: 200, y: y + 110, r: 11, type: 'peg' },
-        );
-        break;
-    }
-  });
-
-  // PERF REVERT — the gap-pegs added during v2 (3 pegs × 10 gaps = 30
-  // extra obstacle bodies) were removed because they pushed older phones
-  // over their per-frame physics budget. The wider channel + gentler
-  // wave + bigger chamber obstacles already do enough to keep the
-  // descent interesting; the gap pegs were marginal value at a high
-  // body-count cost.
-
+  const FINISH_Y = 7500;
+  const CHANNEL_DEPTH = 220;
+  const TOTAL_HEIGHT = FINISH_Y + CHANNEL_DEPTH + 10;
+  const finish = generateFinishZone(FINISH_Y);
   const gpTheme = GP_THEMES[theme] || GP_THEMES.cyber;
+
+  const out = {
+    obstacles: [] as ObstacleInfo[],
+    windmillConfigs: [] as WindmillConfig[],
+    pendulums: [] as PendulumConfig[],
+    trampolines: [] as TrampolineConfig[],
+    speedBursts: [] as SpeedBurstConfig[],
+  };
+  const ramps: RampData[] = [];
+  const springs: SpringData[] = [];
+  const dispatch = buildObstacleDispatcher(rng);
+
+  // Engine-coordinate slot Y positions across the wall range. Helper
+  // returns evenly-spaced Y values that obstacle placement can use.
+  const slotYs = (count: number, startFrac = 0.1, endFrac = 0.95) => {
+    const yStart = GP_WALL_START_Y + startFrac * (GP_WALL_END_Y - GP_WALL_START_Y);
+    const yEnd = GP_WALL_START_Y + endFrac * (GP_WALL_END_Y - GP_WALL_START_Y);
+    return Array.from({ length: count }, (_, i) =>
+      yStart + (i / Math.max(1, count - 1)) * (yEnd - yStart),
+    );
+  };
+
+  switch (designIdx) {
+    case 0: {
+      // 1. Two Big S's — most extreme sweepers. Still the sweepiest design,
+      // but capped amp/halfW to leave wall room for obstacle chambers.
+      const w = buildSCurveWalls({ sCount: 2, channelHalfWidth: 95, amplitude: 65, segments: 60 });
+      ramps.push(...w.walls);
+      const slots = slotYs(5, 0.12, 0.92).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 1: {
+      // 2. Three S's, Wide Channel — classic F1 racing-line shape
+      const w = buildSCurveWalls({ sCount: 3, channelHalfWidth: 105, amplitude: 60, segments: 36 });
+      ramps.push(...w.walls);
+      const slots = slotYs(6, 0.1, 0.93).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 2: {
+      // 3. Four S's, Tight Channel — more wall-rail feel
+      const w = buildSCurveWalls({ sCount: 4, channelHalfWidth: 90, amplitude: 65, segments: 72 });
+      ramps.push(...w.walls);
+      const slots = slotYs(7, 0.08, 0.94).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 3: {
+      // 4. Three S's + Dense Chambers — long S's packed with obstacle chambers,
+      // distinguishing it from design 4 (which has fewer chambers).
+      const w = buildSCurveWalls({ sCount: 3, channelHalfWidth: 105, amplitude: 55, segments: 30 });
+      ramps.push(...w.walls);
+      const slots = slotYs(8, 0.08, 0.95).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 4: {
+      // 5. Three S's + Chambers — chambers at each S apex
+      const w = buildSCurveWalls({ sCount: 3, channelHalfWidth: 105, amplitude: 60, segments: 32 });
+      ramps.push(...w.walls);
+      const slots = slotYs(6, 0.1, 0.92).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 5: {
+      // 6. Big Sweepy S + Mini S wobbles — layered F1 corners
+      const w = buildSCurveWalls({
+        sCount: 2, channelHalfWidth: 95, amplitude: 80,
+        segments: 40, layerSCount: 8, layerAmplitude: 20,
+      });
+      ramps.push(...w.walls);
+      const slots = slotYs(6, 0.1, 0.92).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 6: {
+      // 7. Widening S's — channel narrow at top, wider at bottom.
+      const w = buildSCurveWalls({
+        sCount: 3,
+        channelHalfWidth: (t) => 90 + t * 55, // 90 → 145 wide
+        amplitude: 50,
+        segments: 50,
+      });
+      ramps.push(...w.walls);
+      const slots = slotYs(6, 0.1, 0.93).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 7: {
+      // 8. Asymmetric Long S's — each S has a different shape
+      const w = buildSCurveWalls({
+        sCount: 3, channelHalfWidth: 100, amplitude: 60, segments: 30,
+        centerlineFn: (t) => {
+          if (t < 1/3) return 200 + 50 * Math.sin((t / (1/3)) * Math.PI);
+          if (t < 2/3) return 200 - 90 * Math.sin(((t - 1/3) / (1/3)) * Math.PI);
+          return 200 + 70 * Math.sin(((t - 2/3) / (1/3)) * Math.PI);
+        },
+      });
+      ramps.push(...w.walls);
+      const slots = slotYs(6, 0.1, 0.92).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+    case 8: {
+      // 9. Two S's + Speed Burst — boost pads at apex points
+      const w = buildSCurveWalls({ sCount: 2, channelHalfWidth: 100, amplitude: 80, segments: 24 });
+      ramps.push(...w.walls);
+      // Speed burst slots at S apexes (added directly, not via dispatcher)
+      const burstYs = [0.18, 0.42, 0.68, 0.92];
+      burstYs.forEach((t) => {
+        const y = GP_WALL_START_Y + t * (GP_WALL_END_Y - GP_WALL_START_Y);
+        const x = w.centerOf(t);
+        out.speedBursts.push({ x, y, width: 60, direction: 'down', activationChance: 0.75 });
+      });
+      // 4 obstacle slots between bursts
+      const slots = [0.3, 0.55, 0.78].map((t) => ({
+        x: w.centerOf(t),
+        y: GP_WALL_START_Y + t * (GP_WALL_END_Y - GP_WALL_START_Y),
+      }));
+      dispatch(slots, out);
+      break;
+    }
+    case 9:
+    default: {
+      // 10. Five Quick S's — closest to original GP look, still discrete walls
+      const w = buildSCurveWalls({ sCount: 5, channelHalfWidth: 95, amplitude: 45, segments: 60 });
+      ramps.push(...w.walls);
+      const slots = slotYs(7, 0.08, 0.95).map((y) => ({ x: w.centerlineXAt(y), y }));
+      dispatch(slots, out);
+      break;
+    }
+  }
 
   return {
     id: `grand-prix-${seed || theme}`,
@@ -1262,20 +1374,17 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     totalHeight: TOTAL_HEIGHT,
     finishY: FINISH_Y,
     ...finish,
-    ramps: [
-      { points: leftPts, engineCY: (WAVE_START + WAVE_END) / 2 },
-      { points: rightPts, engineCY: (WAVE_START + WAVE_END) / 2 },
-    ],
-    obstacles,
-    windmillConfigs,
+    ramps,
+    obstacles: out.obstacles,
+    windmillConfigs: out.windmillConfigs,
     funnels: [],
     finishFunnel: finish.finishFunnel,
-    springs: [],
+    springs,
     gravity: { x: 0, y: 1.0, scale: 0.001 },
     bgImage: gpTheme.bg,
-    pendulums,
-    trampolines,
-    speedBursts,
+    pendulums: out.pendulums,
+    trampolines: out.trampolines,
+    speedBursts: out.speedBursts,
     wallColor: gpTheme.wall,
   };
 }
