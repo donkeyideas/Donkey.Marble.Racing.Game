@@ -1146,71 +1146,73 @@ function buildObstacleDispatcher(rng: () => number) {
       const x = slot.x;
       const y = slot.y;
       const dir = slot.dir ?? (ci % 2 === 0 ? 1 : -1);
-      // Obstacle horizontal extents kept inside ±30 of the slot so chambers
-      // ALWAYS fit inside the S-curve channel, even at steep apexes where
-      // the wall has shifted ~20px from the centerline-at-Y. With smallest
-      // channel halfWidth=75 this leaves ~35px clearance on the worst wall.
+      // Obstacle horizontal extents kept inside ±45 of the slot so they
+      // fit even on the narrowest S-curve channels. At a steep S apex the
+      // wall direction is diagonal, so the wall's actual X at the
+      // obstacle's Y can be ~20px off the centerline. With min channel
+      // half-width 90, ±45 leaves a true margin around 25px (more than
+      // marble radius 11) on the worst-case wall.
       switch (combo) {
         case 'windmill_pegs':
-          out.windmillConfigs.push({ x, y, width: 70, speed: 0.008 * dir });
+          out.windmillConfigs.push({ x, y, width: 90, speed: 0.008 * dir });
           out.obstacles.push(
-            { x: x - 28, y: y + 30, r: 10, type: 'peg' },
-            { x, y: y + 10, r: 10, type: 'peg' },
-            { x: x + 28, y: y + 30, r: 10, type: 'peg' },
-            { x: x - 18, y: y + 70, r: 10, type: 'peg' },
-            { x: x + 18, y: y + 70, r: 10, type: 'peg' },
+            { x: x - 40, y: y + 30, r: 11, type: 'peg' },
+            { x, y: y + 10, r: 11, type: 'peg' },
+            { x: x + 40, y: y + 30, r: 11, type: 'peg' },
+            { x: x - 25, y: y + 70, r: 11, type: 'peg' },
+            { x: x + 25, y: y + 70, r: 11, type: 'peg' },
           );
           break;
         case 'pendulum_bumpers':
-          out.pendulums.push({ anchorX: x, anchorY: y, length: 90, bobRadius: 13, startVelocityX: 6 * dir });
+          out.pendulums.push({ anchorX: x, anchorY: y, length: 100, bobRadius: 15, startVelocityX: 6 * dir });
           out.obstacles.push(
-            { x: x - 28, y: y - 30, r: 10, type: 'bumper' },
-            { x: x + 28, y: y - 30, r: 10, type: 'bumper' },
-            { x: x - 20, y: y + 50, r: 10, type: 'bumper' },
-            { x: x + 20, y: y + 50, r: 10, type: 'bumper' },
+            { x: x - 38, y: y - 30, r: 11, type: 'bumper' },
+            { x: x + 38, y: y - 30, r: 11, type: 'bumper' },
+            { x: x - 28, y: y + 50, r: 11, type: 'bumper' },
+            { x: x + 28, y: y + 50, r: 11, type: 'bumper' },
           );
           break;
         case 'speedburst_tramp':
           out.speedBursts.push(
-            { x, y: y - 20, width: 50, direction: 'down', activationChance: 0.7 },
-            { x: x - 25, y: y + 10, width: 35, direction: 'right', activationChance: 0.65 },
-            { x: x + 25, y: y + 10, width: 35, direction: 'left', activationChance: 0.65 },
+            { x, y: y - 20, width: 60, direction: 'down', activationChance: 0.7 },
+            { x: x - 35, y: y + 10, width: 45, direction: 'right', activationChance: 0.65 },
+            { x: x + 35, y: y + 10, width: 45, direction: 'left', activationChance: 0.65 },
           );
           out.trampolines.push(
-            { x: x - 28, y: y + 60, width: 32, strength: 5 },
-            { x: x + 28, y: y + 60, width: 32, strength: 5 },
+            { x: x - 40, y: y + 60, width: 40, strength: 5 },
+            { x: x + 40, y: y + 60, width: 40, strength: 5 },
           );
-          out.obstacles.push({ x, y: y + 90, r: 11, type: 'bumper' });
+          out.obstacles.push({ x, y: y + 90, r: 12, type: 'bumper' });
           break;
         case 'windmill_bumpers':
-          out.windmillConfigs.push({ x, y, width: 80, speed: -0.008 * dir });
+          out.windmillConfigs.push({ x, y, width: 90, speed: -0.008 * dir });
           out.obstacles.push(
-            { x: x - 28, y: y - 20, r: 10, type: 'bumper' },
-            { x: x + 28, y: y - 20, r: 10, type: 'bumper' },
-            { x, y: y + 50, r: 10, type: 'bumper' },
-            { x: x - 22, y: y + 90, r: 10, type: 'bumper' },
-            { x: x + 22, y: y + 90, r: 10, type: 'bumper' },
+            { x: x - 38, y: y - 20, r: 11, type: 'bumper' },
+            { x: x + 38, y: y - 20, r: 11, type: 'bumper' },
+            { x, y: y + 50, r: 11, type: 'bumper' },
+            { x: x - 32, y: y + 90, r: 11, type: 'bumper' },
+            { x: x + 32, y: y + 90, r: 11, type: 'bumper' },
           );
           break;
         case 'pendulum_pegs':
-          out.pendulums.push({ anchorX: x, anchorY: y, length: 90, bobRadius: 13, startVelocityX: -6 * dir });
+          out.pendulums.push({ anchorX: x, anchorY: y, length: 100, bobRadius: 15, startVelocityX: -6 * dir });
           out.obstacles.push(
-            { x: x - 28, y: y + 20, r: 10, type: 'peg' },
-            { x, y, r: 10, type: 'peg' },
-            { x: x + 28, y: y + 20, r: 10, type: 'peg' },
-            { x: x - 18, y: y + 60, r: 10, type: 'peg' },
-            { x: x + 18, y: y + 60, r: 10, type: 'peg' },
+            { x: x - 40, y: y + 20, r: 11, type: 'peg' },
+            { x, y, r: 11, type: 'peg' },
+            { x: x + 40, y: y + 20, r: 11, type: 'peg' },
+            { x: x - 25, y: y + 60, r: 11, type: 'peg' },
+            { x: x + 25, y: y + 60, r: 11, type: 'peg' },
           );
           break;
         case 'tramp_speedburst':
           out.trampolines.push(
-            { x: x - 25, y: y + 40, width: 32, strength: 5 },
-            { x: x + 25, y: y + 40, width: 32, strength: 5 },
+            { x: x - 35, y: y + 40, width: 35, strength: 5 },
+            { x: x + 35, y: y + 40, width: 35, strength: 5 },
           );
-          out.speedBursts.push({ x, y: y - 20, width: 40, direction: 'down', activationChance: 0.7 });
+          out.speedBursts.push({ x, y: y - 20, width: 50, direction: 'down', activationChance: 0.7 });
           out.obstacles.push(
-            { x: x - 28, y: y + 90, r: 10, type: 'bumper' },
-            { x: x + 28, y: y + 90, r: 10, type: 'bumper' },
+            { x: x - 38, y: y + 90, r: 11, type: 'bumper' },
+            { x: x + 38, y: y + 90, r: 11, type: 'bumper' },
           );
           break;
       }
@@ -1256,15 +1258,11 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
 
   switch (designIdx) {
     case 0: {
-      // 1. Two Big S's — most extreme sweepers (mock-faithful amp).
-      // sCount=2 → sin zeros at t = 0, 0.5, 1.0 (one full S period).
-      // Apexes at t = 0.25, 0.75. Slots placed near zeros for safety.
-      const w = buildSCurveWalls({ sCount: 2, channelHalfWidth: 75, amplitude: 90, segments: 70 });
+      // 1. Two Big S's — most extreme sweepers. Still the sweepiest design,
+      // but capped amp/halfW to leave wall room for obstacle chambers.
+      const w = buildSCurveWalls({ sCount: 2, channelHalfWidth: 95, amplitude: 65, segments: 60 });
       ramps.push(...w.walls);
-      const slots = [0.07, 0.45, 0.55, 0.93].map((t) => ({
-        x: w.centerOf(t),
-        y: GP_WALL_START_Y + t * (GP_WALL_END_Y - GP_WALL_START_Y),
-      }));
+      const slots = slotYs(5, 0.12, 0.92).map((y) => ({ x: w.centerlineXAt(y), y }));
       dispatch(slots, out);
       break;
     }
@@ -1277,15 +1275,10 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
       break;
     }
     case 2: {
-      // 3. Four S's, Tight Channel — more wall-rail feel (mock-faithful amp).
-      const w = buildSCurveWalls({ sCount: 4, channelHalfWidth: 75, amplitude: 80, segments: 80 });
+      // 3. Four S's, Tight Channel — more wall-rail feel
+      const w = buildSCurveWalls({ sCount: 4, channelHalfWidth: 90, amplitude: 65, segments: 72 });
       ramps.push(...w.walls);
-      // Slots at sin zero-crossings (t = 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1)
-      // — pick 7 spread across straight wall sections.
-      const slots = [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.92].map((t) => ({
-        x: w.centerOf(t),
-        y: GP_WALL_START_Y + t * (GP_WALL_END_Y - GP_WALL_START_Y),
-      }));
+      const slots = slotYs(7, 0.08, 0.94).map((y) => ({ x: w.centerlineXAt(y), y }));
       dispatch(slots, out);
       break;
     }
@@ -1321,13 +1314,12 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
       // 7. Widening S's — channel narrow at top, wider at bottom.
       const w = buildSCurveWalls({
         sCount: 3,
-        channelHalfWidth: (t) => 85 + t * 60, // 85 → 145 wide
-        amplitude: 55,
-        segments: 70,
+        channelHalfWidth: (t) => 90 + t * 55, // 90 → 145 wide
+        amplitude: 50,
+        segments: 50,
       });
       ramps.push(...w.walls);
-      // Avoid the narrow top by starting slots a bit lower (0.15 instead of 0.1)
-      const slots = slotYs(6, 0.15, 0.93).map((y) => ({ x: w.centerlineXAt(y), y }));
+      const slots = slotYs(6, 0.1, 0.93).map((y) => ({ x: w.centerlineXAt(y), y }));
       dispatch(slots, out);
       break;
     }
@@ -1367,14 +1359,10 @@ export function buildGrandPrix(theme: string = 'cyber', seed: number = 0): Track
     }
     case 9:
     default: {
-      // 10. Five Quick S's — mock-faithful, tighter channel + bigger amp.
-      const w = buildSCurveWalls({ sCount: 5, channelHalfWidth: 80, amplitude: 60, segments: 70 });
+      // 10. Five Quick S's — closest to original GP look, still discrete walls
+      const w = buildSCurveWalls({ sCount: 5, channelHalfWidth: 95, amplitude: 45, segments: 60 });
       ramps.push(...w.walls);
-      // 7 slots spread across sin zeros (avoid apexes of 5 S's).
-      const slots = [0.05, 0.18, 0.31, 0.44, 0.57, 0.70, 0.92].map((t) => ({
-        x: w.centerOf(t),
-        y: GP_WALL_START_Y + t * (GP_WALL_END_Y - GP_WALL_START_Y),
-      }));
+      const slots = slotYs(7, 0.08, 0.95).map((y) => ({ x: w.centerlineXAt(y), y }));
       dispatch(slots, out);
       break;
     }
