@@ -1556,6 +1556,10 @@ export const useGameStore = create<GameState>()(
           }
         });
       }
+      // Defensive: older save states may not have `seasonHistory` defined
+      // (the field was added after season state shipped). Spreading
+      // `undefined` here was crashing the playoff Skip button.
+      const priorHistory = Array.isArray(season.seasonHistory) ? season.seasonHistory : [];
       set({
         coins: prevCoins + playoffPayout,
         coinHistory: playoffPayout > 0 ? [
@@ -1566,7 +1570,7 @@ export const useGameStore = create<GameState>()(
           ...season,
           playoffs,
           seasonHistory: [
-            ...season.seasonHistory,
+            ...priorHistory,
             {
               seasonNumber: season.seasonNumber,
               championId: stillAlive[0],
@@ -2640,7 +2644,7 @@ export const useGameStore = create<GameState>()(
         customTracks: state.customTracks,
         challenges: state.challenges,
       }),
-      version: 10,
+      version: 11,
       migrate: (persisted: any, version: number) => {
         if (version < 3 && persisted?.season) {
           persisted.season = null;
@@ -2734,6 +2738,24 @@ export const useGameStore = create<GameState>()(
            * list is server-populated, so existing installs start clean. */
           persisted.referralCode = persisted.referralCode ?? '';
           persisted.referrals = persisted.referrals ?? [];
+        }
+        if (version < 11) {
+          /* Older season states (pre-Madden update) lacked seasonHistory
+           * and other later-added fields. Backfilling here prevents a
+           * crash on the playoff Skip button when the champion path
+           * spreads `season.seasonHistory`. */
+          if (persisted.season) {
+            persisted.season.seasonHistory = persisted.season.seasonHistory ?? [];
+            persisted.season.seasonStats = persisted.season.seasonStats ?? {};
+            persisted.season.condition = persisted.season.condition ?? {};
+            persisted.season.trainingHistory = persisted.season.trainingHistory ?? [];
+            persisted.season.trainedThisWeek = persisted.season.trainedThisWeek ?? false;
+            persisted.season.rivalMarbleId = persisted.season.rivalMarbleId ?? null;
+            persisted.season.rivalWins = persisted.season.rivalWins ?? 0;
+            persisted.season.rivalLosses = persisted.season.rivalLosses ?? 0;
+            persisted.season.seasonMode = persisted.season.seasonMode ?? 'bettor';
+            persisted.season.seasonMarbleId = persisted.season.seasonMarbleId ?? null;
+          }
         }
         return persisted;
       },

@@ -538,11 +538,12 @@ export default function RaceScreen() {
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0,
   });
-  // Split the canvas state from the HUD state so windmills / doomsday bar /
-  // pendulums / cradles update at full 60Hz while the heavier HUD
-  // (leaderboard, timer) re-renders at ~10Hz. Previously everything shared a
-  // single throttled state which made moving obstacles look like a clock's
-  // second-hand.
+  // Canvas state for the SKIA fallback / view-based render path. The Skia
+  // canvas reads movement from SharedValues at 60-120Hz on the UI thread,
+  // so these React state props are unused mid-race when USE_SKIA_CANVAS is
+  // on. They're refreshed at ~10Hz alongside the HUD state — enough for
+  // structural updates while keeping the React reconciler off the critical
+  // per-frame path on older phones.
   const [canvas, setCanvas] = useState<CanvasState>({
     marbles: [], wm: [], pendulums: [], ballPitBalls: [], cradles: [], trampolines: [],
     speedBursts: [], swingingDoors: [], doomsdayBar: null,
@@ -1009,29 +1010,30 @@ export default function RaceScreen() {
         raceShared.doomsdayBarActive.value = 0;
       }
 
-      // Canvas state — written EVERY frame so moving obstacles AND marbles
-      // animate smoothly. The setState fires a re-render but the heavy HUD
-      // pieces pull from a separate state slice (`frame`) that's throttled
-      // below, so the cost stays bounded.
-      const marblePos = st.marbles.map(m => ({
-        data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime,
-      }));
-      setCanvas({
-        marbles: marblePos,
-        wm: st.windmills,
-        pendulums: st.pendulums,
-        ballPitBalls: st.ballPitBalls,
-        cradles: st.cradles,
-        trampolines: st.trampolines,
-        speedBursts: st.speedBursts,
-        swingingDoors: st.swingingDoors,
-        doomsdayBar: st.doomsdayBar,
-      });
-
-      // HUD update rate — leaderboard + timer + commentary only need ~10Hz.
+      // Canvas + HUD state — throttled to 10Hz. The Skia canvas reads every
+      // moving value from SharedValues on the UI thread (see
+      // raceCanvasPropsEqual in rendering/RaceCanvas.tsx), so the array
+      // props passed via setCanvas are ignored mid-race. Previously this
+      // ran every frame and burned ~60-120 React reconciles/sec on older
+      // phones — a massive cost for a re-render the children skip.
       const hudInterval = 100;
-      if (st.isFinished || t - lastRenderRef.current >= hudInterval) {
+      const shouldUpdate = st.isFinished || t - lastRenderRef.current >= hudInterval;
+      if (shouldUpdate) {
         lastRenderRef.current = t;
+        const marblePos = st.marbles.map(m => ({
+          data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime,
+        }));
+        setCanvas({
+          marbles: marblePos,
+          wm: st.windmills,
+          pendulums: st.pendulums,
+          ballPitBalls: st.ballPitBalls,
+          cradles: st.cradles,
+          trampolines: st.trampolines,
+          speedBursts: st.speedBursts,
+          swingingDoors: st.swingingDoors,
+          doomsdayBar: st.doomsdayBar,
+        });
         setFrame({
           pos: marblePos,
           elapsed: st.elapsed,
