@@ -5,6 +5,7 @@ import {
   PendulumConfig, BallPitConfig, CradleConfig, TrampolineConfig, SpeedBurstConfig, SwingingDoorConfig,
   buildClassicZigzag,
 } from './tracks';
+import { DEFAULT_BUDGET, type PerfBudget } from '../utils/perfBudget';
 
 export interface PendulumState {
   anchorX: number;
@@ -93,13 +94,13 @@ export const TRACK_DATA = DEFAULT_TRACK;
 // === Physics Constants (from Matter.js demos) ===
 
 // Fixed-timestep substeps for precision (from substep demo)
-// 2 substeps × 60Hz = 120 physics ticks/sec. We previously ran 3 substeps for
-// extra stability, but with enableSleeping ON resting marbles cost nothing and
-// the velocity/position iteration counts (10/8 on engine create, up from
-// default 6/4) make 2 substeps perfectly stable. Net result: 33% less physics
-// work per frame, which is most of the mid-race FPS savings.
-const SUBSTEPS = 2;
-const FIXED_DT = (1000 / 60) / SUBSTEPS; // ~8.33ms per substep
+// Substeps + telemetry cadence come from the device's perf budget
+// (utils/perfTier.ts). Low-tier devices run 1 substep (60Hz physics)
+// instead of 2 (120Hz) — halves the per-frame physics cost on older
+// phones. Default budget keeps "medium" devices at the historical
+// 2-substep tuning so nothing changes for the majority of installs.
+// Resolved at engine-create time so a tier flip via remote config
+// applies on the NEXT race, not mid-race.
 
 // Collision categories — simplified, no more DECOR hack
 const CAT_WALL     = 0x0001; // Static: walls, ramps, funnels, pegs, bumpers
@@ -120,6 +121,30 @@ export interface RaceEngineOptions {
   config?: TrackConfig;
   raceMarbles?: MarbleData[];
   onHaptic?: (type: 'bumper' | 'trampoline' | 'speedBurst' | 'pendulum' | 'cradle', marbleId: string) => void;
+  /** Performance budget for this race. The caller (app/race.tsx) resolves
+   *  the device tier from utils/perfTier.ts and passes the budget through
+   *  here. Falls back to DEFAULT_BUDGET (medium tier) when omitted, which
+   *  matches the historical hardcoded tuning. */
+  perfBudget?: PerfBudget;
+}
+
+/**
+ * Apply the device's perf budget to a track config. Only knob right now
+ * is the ball-pit ballCount cap; geometry (walls, ramps, peg positions)
+ * is untouched so the track validator + analytics still see identical
+ * tracks. Returns the original reference when no caps apply.
+ */
+function applyPerfBudgetToTrack(track: TrackConfig, budget: PerfBudget): TrackConfig {
+  if (!track.ballPits?.length) return track;
+  if (!Number.isFinite(budget.ballPitMax)) return track;
+  const cap = budget.ballPitMax;
+  let mutated = false;
+  const cappedPits: BallPitConfig[] = track.ballPits.map((p) => {
+    if (p.ballCount <= cap) return p;
+    mutated = true;
+    return { ...p, ballCount: cap };
+  });
+  return mutated ? { ...track, ballPits: cappedPits } : track;
 }
 
 export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions, raceMarbles?: MarbleData[]) {
@@ -133,7 +158,17 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   const onHaptic = opts.onHaptic;
   const config = opts.config;
   raceMarbles = opts.raceMarbles ?? raceMarbles;
-  const track = config || DEFAULT_TRACK;
+  const sourceTrack = config || DEFAULT_TRACK;
+  const perfBudget = opts.perfBudget ?? DEFAULT_BUDGET;
+  const SUBSTEPS = perfBudget.substeps;
+  const FIXED_DT = (1000 / 60) / SUBSTEPS;
+  // Apply the budget to the track BEFORE building any physics bodies.
+  // Right now the only knob is the ball-pit ballCount cap — low-tier
+  // devices lose ~8-12 dynamic bodies per pit, which is the cheapest
+  // way to shave per-frame cost without changing track shape. Track
+  // identity stays intact (same id, same layout), so analytics keep
+  // working and the validator doesn't see different geometry.
+  const track = applyPerfBudgetToTrack(sourceTrack, perfBudget);
   const engine = Matter.Engine.create({
     gravity: track.gravity,
     positionIterations: 10, // up from default 6 — better stability
@@ -751,11 +786,11 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   // detect direction changes (just at a coarser cadence) and leadFrames
   // becomes a proportional sample of the total — the post-race
   // leadTimeFraction normalises against everyone else's leadFrames sum,
-  // so the ratio stays correct. At 60fps render with TELEMETRY_EVERY=3
-  // we sample at 20Hz — still well above the human perception of
-  // overtakes per second.
+  // so the ratio stays correct. N comes from the perf budget: low-tier
+  // devices sample every 6 frames (10Hz), medium every 3 (20Hz), high
+  // every frame.
   let telemetryTick = 0;
-  const TELEMETRY_EVERY = 3;
+  const TELEMETRY_EVERY = perfBudget.telemetryEvery;
 
   let gateOpen = false;
   let elapsed = 0;

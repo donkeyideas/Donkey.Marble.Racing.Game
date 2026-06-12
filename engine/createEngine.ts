@@ -19,7 +19,7 @@
 
 import { createRaceEngine as createRaceEngineMatter } from './race';
 import { createRaceEngineRapier } from './race-rapier';
-import { USE_RAPIER, RAPIER_READY } from './engineConfig';
+import { useRapier, RAPIER_READY } from './engineConfig';
 import type { TrackConfig } from './tracks';
 import type { RaceEngineOptions } from './race';
 import type { MarbleData } from '../theme';
@@ -28,7 +28,7 @@ export function createRaceEngine(
   configOrOpts?: TrackConfig | RaceEngineOptions,
   raceMarbles?: MarbleData[],
 ): ReturnType<typeof createRaceEngineMatter> {
-  if (USE_RAPIER && RAPIER_READY) {
+  if (useRapier() && RAPIER_READY) {
     // The Rapier engine returns the same surface shape as Matter.js, but
     // TypeScript can't prove it because the two implementations don't share
     // an interface declaration (yet — Stage 2 cleanup). Cast through unknown

@@ -9,6 +9,8 @@ import { RaceState, PendulumState, BallPitBallState, TrampolineState, SpeedBurst
 // in engine/engineConfig.ts. Same surface, so the rest of this file doesn't
 // care which engine is running.
 import { createRaceEngine } from '../engine/createEngine';
+import { getPerfTier } from '../utils/perfTier';
+import { budgetFor } from '../utils/perfBudget';
 import { triggerRaceHaptic, raceHaptics, HapticType } from '../utils/haptics';
 import { buildTrack, TrackConfig } from '../engine/tracks';
 import { ALL_COURSES as COURSES } from '../data/courses';
@@ -809,6 +811,9 @@ export default function RaceScreen() {
           playSound(type);
         }
       },
+      // Pull the device's perf budget so the engine's substeps + telemetry
+      // sample rate scale with the tier (utils/perfTier.ts auto-detects).
+      perfBudget: budgetFor(getPerfTier()),
     });
     engRef.current = eng;
     // CRITICAL: must read marble order FROM the engine, not from the input.

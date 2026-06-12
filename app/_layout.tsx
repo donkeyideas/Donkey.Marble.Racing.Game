@@ -27,7 +27,8 @@ import { initRewardedAds, loadRewardedAd } from '../utils/rewardedAds';
 import { onReconnect } from '../lib/networkStatus';
 import OfflineBanner from '../components/OfflineBanner';
 import { initRapierEngine } from '../engine/createEngine';
-import { USE_RAPIER } from '../engine/engineConfig';
+import { useRapier } from '../engine/engineConfig';
+import { ensurePerfTierLoaded } from '../utils/perfTier';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,8 +53,25 @@ export default function RootLayout() {
   const ready = fontsLoaded && dimensionsStable;
 
   useEffect(() => {
-    // Load cached remote config immediately, then fetch fresh in background
-    loadCachedConfig().then(() => fetchRemoteConfig()).catch(() => {});
+    // Perf tier detection — runs in parallel with the rest of cold-start
+    // so the first race after launch picks up the right substep/telemetry
+    // budget. Cached after first run, so subsequent launches are O(1).
+    ensurePerfTierLoaded().catch(() => {});
+
+    // Load cached remote config immediately, then fetch fresh in background.
+    // We chain the Rapier-init check inside the same .then so the engine
+    // flag (`feature_rapier_engine`) is read AFTER cached config lands —
+    // this avoids racing the fetch and missing a server-side flip.
+    loadCachedConfig()
+      .then(() => {
+        if (useRapier()) {
+          initRapierEngine().catch((err) => {
+            if (__DEV__) console.warn('[rapier] init failed, falling back to Matter.js:', err);
+          });
+        }
+        return fetchRemoteConfig();
+      })
+      .catch(() => {});
     // Fetch live ops data (announcements, promos, messages, A/B tests)
     fetchAllLiveOps().catch(() => {});
 
@@ -94,17 +112,8 @@ export default function RootLayout() {
       .catch(() => {});
     reconcileLocalBalanceOnce().catch(() => {});
 
-    // Rapier physics engine init — async (loads asm.js module ~1MB). Only
-    // runs when the USE_RAPIER feature flag is on; default flag = false so
-    // production users pay zero cost. Eager-init at boot means the first
-    // race after launch can use Rapier without a startup delay. Failures
-    // are swallowed because the dispatcher gracefully falls back to
-    // Matter.js when RAPIER_READY stays false.
-    if (USE_RAPIER) {
-      initRapierEngine().catch((err) => {
-        if (__DEV__) console.warn('[rapier] init failed, falling back to Matter.js:', err);
-      });
-    }
+    // (Rapier init now happens after loadCachedConfig above, so the
+    // remote-config flag can gate it on first launch.)
 
     // Reconnect handler: when we go offline -> online (e.g. subway tunnel
     // ends, or wifi reconnects), drain the queues immediately instead of

@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { PerfTier } from '../utils/perfBudget';
+export type { PerfTier } from '../utils/perfBudget';
 
 /* ------------------------------------------------------------------ */
 /*  Remote Config — fetches economy values from admin API              */
@@ -125,6 +127,33 @@ export interface RemoteConfig {
    * feature stays dark until explicitly turned on per platform.
    */
   feature_rewarded_ads?: boolean;
+  /**
+   * Runtime switch for the Rapier physics engine. When true, races
+   * route through engine/race-rapier.ts; otherwise they use the
+   * Matter.js implementation. Lets us A/B Rapier without an app
+   * rebuild once the native-module bridge ships. Default false (cached
+   * config absent → build-time fallback in engineConfig.ts wins).
+   */
+  feature_rapier_engine?: boolean;
+  /**
+   * Per-device performance tier. Drives how much physics + telemetry
+   * work the race loop does. Used to pull older / mid-range phones
+   * into a playable framerate without dragging flagship devices down.
+   *
+   *   - "low":    1 substep, telemetry every 6 frames, dense
+   *               procedural obstacles trimmed (~25% fewer pegs +
+   *               smaller ball pits).
+   *   - "medium": 2 substeps (default), telemetry every 3 frames.
+   *   - "high":   2 substeps, telemetry every frame, full obstacle
+   *               density. Flagship-tier knobs.
+   *
+   * The device picks a tier locally on first launch via
+   * utils/perfTier.ts; admins can override per-cohort by setting this
+   * field. The remote value, when present, ALWAYS wins over the
+   * locally-detected tier — useful for forcing "low" on a problematic
+   * device model after a support ticket.
+   */
+  perfTier?: PerfTier;
 }
 
 export const DEFAULT_CONFIG: RemoteConfig = {
@@ -188,6 +217,9 @@ export const DEFAULT_CONFIG: RemoteConfig = {
   passXp: { betRace: 250, quickRace: 125, winBonus: 500 },
   trackBgImages: {},
   feature_rewarded_ads: false,
+  feature_rapier_engine: false,
+  // perfTier left undefined here so the device-side auto-detection
+  // (utils/perfTier.ts) governs unless an admin explicitly overrides.
 };
 
 /** XP required to advance one Season Pass level. Reads live remote config
