@@ -12,16 +12,28 @@ function generateUUID(): string {
   });
 }
 
+/**
+ * Tag dev-build device IDs with a "dev-" prefix so the admin dashboard can
+ * filter them out of headline user counts. AsyncStorage gets wiped on every
+ * uninstall/reinstall — which we do constantly during development — so the
+ * dev devices were creating dozens of "fake" GamePlayer rows in production.
+ * The prefix lets us identify and clean them up later without touching real
+ * users. `__DEV__` is true in `expo start` and any non-prod build.
+ */
+function tagForBuild(id: string): string {
+  return __DEV__ ? `dev-${id}` : id;
+}
+
 export async function getOrCreateDeviceId(): Promise<string> {
   try {
     let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
-      id = generateUUID();
+      id = tagForBuild(generateUUID());
       await AsyncStorage.setItem(DEVICE_ID_KEY, id);
     }
     return id;
   } catch {
-    return generateUUID();
+    return tagForBuild(generateUUID());
   }
 }
 
