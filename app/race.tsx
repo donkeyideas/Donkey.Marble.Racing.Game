@@ -525,15 +525,22 @@ export default function RaceScreen() {
     windmills: [], pendulums: [], cradles: [], ballPitRadii: [],
     trampolines: [], speedBursts: [],
   });
-  // Pooled scratch buffers for per-frame physics→SharedValue writes. Reused
-  // across frames instead of allocating a fresh array each tick — reduces
-  // GC pressure that was causing mid-race frame drops.
-  const scratchPosRef = useRef<number[]>([]);
-  const scratchWmRef = useRef<number[]>([]);
-  const scratchPenRef = useRef<number[]>([]);
-  const scratchCrRef = useRef<number[]>([]);
-  const scratchBpRef = useRef<number[]>([]);
-  const scratchSbRef = useRef<number[]>([]);
+  // Double-buffered pools for per-frame physics→SharedValue writes.
+  // Reanimated tracks .value changes by reference equality, so we MUST
+  // hand it a different array each frame for the canvas to re-evaluate
+  // its useDerivedValue() reads. Previous code did `flatPos.slice()` —
+  // that worked but allocated a new array per shared-value per frame
+  // (6 arrays × 60-120 fps = 360-720 allocs/sec, all eligible for GC
+  // on the next collection). Double-buffering pre-allocates two pools
+  // per shared-value at mount time; we write into pool[tick % 2] then
+  // assign that reference. Same copy cost, zero per-frame allocations.
+  const dbufTickRef = useRef(0);
+  const scratchPosRef = useRef<[number[], number[]]>([[], []]);
+  const scratchWmRef = useRef<[number[], number[]]>([[], []]);
+  const scratchPenRef = useRef<[number[], number[]]>([[], []]);
+  const scratchCrRef = useRef<[number[], number[]]>([[], []]);
+  const scratchBpRef = useRef<[number[], number[]]>([[], []]);
+  const scratchSbRef = useRef<[number[], number[]]>([[], []]);
 
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0,
@@ -968,39 +975,46 @@ export default function RaceScreen() {
       // === PERFORMANCE: write every animated value to SharedValues every frame.
       // Skia consumes these on the UI thread — no React re-render needed.
       //
-      // Object-pooled buffers (allocated once in refs below). We mutate in
-      // place, then assign a NEW slice to .value so Reanimated detects the
-      // change. Pre-Object-pool we were `[].push()`ing ~7 fresh arrays/frame
-      // = ~420 allocations/sec, which generated visible GC pauses mid-race.
-      const flatPos = scratchPosRef.current;
+      // Double-buffered pools: each shared value alternates between two
+      // pre-allocated arrays (slot 0 ↔ slot 1). The array is mutated in
+      // place each frame, then assigned to .value — Reanimated sees a
+      // fresh reference (the *other* pool from last frame) so its
+      // useDerivedValue() reads re-evaluate, but zero new arrays are
+      // allocated per tick. Previously this used .slice() per shared
+      // value (~6 fresh arrays/frame = ~360-720 allocs/sec), enough to
+      // trigger young-gen GC sweeps mid-race on Android.
+      const slot = dbufTickRef.current & 1;
+      dbufTickRef.current++;
+
+      const flatPos = scratchPosRef.current[slot];
       flatPos.length = 0;
       for (let i = 0; i < st.marbles.length; i++) flatPos.push(st.marbles[i].x, st.marbles[i].y);
-      raceShared.marblePositions.value = flatPos.slice();
+      raceShared.marblePositions.value = flatPos;
 
-      const wmAngles = scratchWmRef.current;
+      const wmAngles = scratchWmRef.current[slot];
       wmAngles.length = 0;
       for (let i = 0; i < st.windmills.length; i++) wmAngles.push(st.windmills[i].angle);
-      raceShared.windmillAngles.value = wmAngles.slice();
+      raceShared.windmillAngles.value = wmAngles;
 
-      const penBobs = scratchPenRef.current;
+      const penBobs = scratchPenRef.current[slot];
       penBobs.length = 0;
       for (let i = 0; i < st.pendulums.length; i++) penBobs.push(st.pendulums[i].bobX, st.pendulums[i].bobY);
-      raceShared.pendulumBobs.value = penBobs.slice();
+      raceShared.pendulumBobs.value = penBobs;
 
-      const crBobs = scratchCrRef.current;
+      const crBobs = scratchCrRef.current[slot];
       crBobs.length = 0;
       for (let i = 0; i < st.cradles.length; i++) crBobs.push(st.cradles[i].bobX, st.cradles[i].bobY);
-      raceShared.cradleBobs.value = crBobs.slice();
+      raceShared.cradleBobs.value = crBobs;
 
-      const bpPos = scratchBpRef.current;
+      const bpPos = scratchBpRef.current[slot];
       bpPos.length = 0;
       for (let i = 0; i < st.ballPitBalls.length; i++) bpPos.push(st.ballPitBalls[i].x, st.ballPitBalls[i].y);
-      raceShared.ballPitPositions.value = bpPos.slice();
+      raceShared.ballPitPositions.value = bpPos;
 
-      const sbActive = scratchSbRef.current;
+      const sbActive = scratchSbRef.current[slot];
       sbActive.length = 0;
       for (let i = 0; i < st.speedBursts.length; i++) sbActive.push(st.speedBursts[i].active ? 1 : 0);
-      raceShared.speedBurstActive.value = sbActive.slice();
+      raceShared.speedBurstActive.value = sbActive;
 
       // Doomsday bar
       if (st.doomsdayBar) {

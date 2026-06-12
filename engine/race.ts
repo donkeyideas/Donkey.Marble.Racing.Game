@@ -746,6 +746,16 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
   let prevRanking: Record<string, number> = {};
   // Quartile checkpoints — captured the first frame elapsed crosses each threshold.
   let captured25 = false, captured50 = false, captured75 = false;
+  // Telemetry sample tick — the ranking sort + overtake/leadFrame
+  // accounting runs every N steps instead of every step. Overtakes still
+  // detect direction changes (just at a coarser cadence) and leadFrames
+  // becomes a proportional sample of the total — the post-race
+  // leadTimeFraction normalises against everyone else's leadFrames sum,
+  // so the ratio stays correct. At 60fps render with TELEMETRY_EVERY=3
+  // we sample at 20Hz — still well above the human perception of
+  // overtakes per second.
+  let telemetryTick = 0;
+  const TELEMETRY_EVERY = 3;
 
   let gateOpen = false;
   let elapsed = 0;
@@ -1036,7 +1046,8 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
     // Runs once per render frame AFTER physics. Reads velocities + positions
     // and updates counters. Does not call any Matter.Body mutator.
     if (gateOpen) {
-      // Per-marble velocity sampling.
+      // Per-marble velocity sampling — cheap (sqrt + 3 muls × 8 marbles),
+      // runs every frame so peakVelocity is accurate.
       for (const { body, data } of marbleBodies) {
         const t = telemetry.get(data.id);
         if (!t) continue;
@@ -1046,70 +1057,82 @@ export function createRaceEngine(configOrOpts?: TrackConfig | RaceEngineOptions,
         t.velocitySum += v;
         t.velocitySamples++;
       }
-      // Live ranking: a marble further down-track (larger y) is ahead;
-      // finished marbles are ranked by finish time. Mirrors getPositions().
-      const ranked = marbleBodies
-        .map(({ body, data }) => ({
-          id: data.id,
-          finished: !!finishTimes[data.id],
-          time: finishTimes[data.id] || 0,
-          y: body.position.y,
-        }))
-        .sort((a, b) => {
-          if (a.finished && b.finished) return a.time - b.time;
-          if (a.finished) return -1;
-          if (b.finished) return 1;
-          return b.y - a.y;
-        });
-      const ranking: Record<string, number> = {};
-      ranked.forEach((r, i) => { ranking[r.id] = i + 1; });
 
-      // Lead-time accounting — the current rank-1 marble.
-      const leaderId = ranked[0]?.id;
-      if (leaderId) {
-        const lt = telemetry.get(leaderId);
-        if (lt) lt.leadFrames++;
-      }
+      // Ranking + overtake/leadFrame accounting runs every TELEMETRY_EVERY
+      // frames. The sort itself is cheap, but the allocations (ranked
+      // array of 8 objects + ranking record + per-marble closures) added
+      // up to ~30 objects/frame; throttling drops that 3×.
+      telemetryTick++;
+      const prog = elapsed / DOOMSDAY_DEADLINE_MS;
+      const needQuartile =
+        (!captured25 && prog >= 0.25) ||
+        (!captured50 && prog >= 0.50) ||
+        (!captured75 && prog >= 0.75);
+      if (telemetryTick % TELEMETRY_EVERY === 0 || needQuartile) {
+        // Live ranking: a marble further down-track (larger y) is ahead;
+        // finished marbles are ranked by finish time. Mirrors getPositions().
+        const ranked = marbleBodies
+          .map(({ body, data }) => ({
+            id: data.id,
+            finished: !!finishTimes[data.id],
+            time: finishTimes[data.id] || 0,
+            y: body.position.y,
+          }))
+          .sort((a, b) => {
+            if (a.finished && b.finished) return a.time - b.time;
+            if (a.finished) return -1;
+            if (b.finished) return 1;
+            return b.y - a.y;
+          });
+        const ranking: Record<string, number> = {};
+        ranked.forEach((r, i) => { ranking[r.id] = i + 1; });
 
-      // Overtake / passed detection vs previous frame's ranking.
-      if (Object.keys(prevRanking).length > 0) {
-        for (const r of ranked) {
-          const prev = prevRanking[r.id];
-          const now = ranking[r.id];
-          if (prev !== undefined && now < prev) {
-            const t = telemetry.get(r.id);
-            if (t) t.overtakes += prev - now;
-          } else if (prev !== undefined && now > prev) {
-            const t = telemetry.get(r.id);
-            if (t) t.timesPassed += now - prev;
+        // Lead-time accounting — the current rank-1 marble. Counter
+        // increments by TELEMETRY_EVERY so the post-race leadTimeFraction
+        // (leader.leadFrames / sum-of-all-leadFrames) stays correct.
+        const leaderId = ranked[0]?.id;
+        if (leaderId) {
+          const lt = telemetry.get(leaderId);
+          if (lt) lt.leadFrames += TELEMETRY_EVERY;
+        }
+
+        // Overtake / passed detection vs previous sample's ranking.
+        if (Object.keys(prevRanking).length > 0) {
+          for (const r of ranked) {
+            const prev = prevRanking[r.id];
+            const now = ranking[r.id];
+            if (prev !== undefined && now < prev) {
+              const t = telemetry.get(r.id);
+              if (t) t.overtakes += prev - now;
+            } else if (prev !== undefined && now > prev) {
+              const t = telemetry.get(r.id);
+              if (t) t.timesPassed += now - prev;
+            }
           }
         }
-      }
-      prevRanking = ranking;
+        prevRanking = ranking;
 
-      // Quartile checkpoints — capture the first frame past each threshold.
-      // Race progress is measured by elapsed vs the deadline ceiling so it
-      // is independent of how many marbles have finished.
-      const prog = elapsed / DOOMSDAY_DEADLINE_MS;
-      if (!captured25 && prog >= 0.25) {
-        captured25 = true;
-        for (const r of ranked) {
-          const t = telemetry.get(r.id);
-          if (t) t.posAt25 = ranking[r.id];
+        // Quartile checkpoints — capture the first frame past each threshold.
+        if (!captured25 && prog >= 0.25) {
+          captured25 = true;
+          for (const r of ranked) {
+            const t = telemetry.get(r.id);
+            if (t) t.posAt25 = ranking[r.id];
+          }
         }
-      }
-      if (!captured50 && prog >= 0.50) {
-        captured50 = true;
-        for (const r of ranked) {
-          const t = telemetry.get(r.id);
-          if (t) t.posAt50 = ranking[r.id];
+        if (!captured50 && prog >= 0.50) {
+          captured50 = true;
+          for (const r of ranked) {
+            const t = telemetry.get(r.id);
+            if (t) t.posAt50 = ranking[r.id];
+          }
         }
-      }
-      if (!captured75 && prog >= 0.75) {
-        captured75 = true;
-        for (const r of ranked) {
-          const t = telemetry.get(r.id);
-          if (t) t.posAt75 = ranking[r.id];
+        if (!captured75 && prog >= 0.75) {
+          captured75 = true;
+          for (const r of ranked) {
+            const t = telemetry.get(r.id);
+            if (t) t.posAt75 = ranking[r.id];
+          }
         }
       }
     }
