@@ -527,22 +527,17 @@ export default function RaceScreen() {
     windmills: [], pendulums: [], cradles: [], ballPitRadii: [],
     trampolines: [], speedBursts: [],
   });
-  // Double-buffered pools for per-frame physics→SharedValue writes.
-  // Reanimated tracks .value changes by reference equality, so we MUST
-  // hand it a different array each frame for the canvas to re-evaluate
-  // its useDerivedValue() reads. Previous code did `flatPos.slice()` —
-  // that worked but allocated a new array per shared-value per frame
-  // (6 arrays × 60-120 fps = 360-720 allocs/sec, all eligible for GC
-  // on the next collection). Double-buffering pre-allocates two pools
-  // per shared-value at mount time; we write into pool[tick % 2] then
-  // assign that reference. Same copy cost, zero per-frame allocations.
-  const dbufTickRef = useRef(0);
-  const scratchPosRef = useRef<[number[], number[]]>([[], []]);
-  const scratchWmRef = useRef<[number[], number[]]>([[], []]);
-  const scratchPenRef = useRef<[number[], number[]]>([[], []]);
-  const scratchCrRef = useRef<[number[], number[]]>([[], []]);
-  const scratchBpRef = useRef<[number[], number[]]>([[], []]);
-  const scratchSbRef = useRef<[number[], number[]]>([[], []]);
+  // Pooled scratch buffers for per-frame physics→SharedValue writes.
+  // Mutated in place then `.slice()`'d before being assigned to .value —
+  // the slice gives Reanimated a fresh reference each frame. This is the
+  // proven path; an earlier double-buffer attempt that skipped .slice()
+  // shipped visually broken marbles, so we stay here.
+  const scratchPosRef = useRef<number[]>([]);
+  const scratchWmRef = useRef<number[]>([]);
+  const scratchPenRef = useRef<number[]>([]);
+  const scratchCrRef = useRef<number[]>([]);
+  const scratchBpRef = useRef<number[]>([]);
+  const scratchSbRef = useRef<number[]>([]);
 
   const [frame, setFrame] = useState<FrameState>({
     pos: [], elapsed: 0, camY: 0,
@@ -980,46 +975,41 @@ export default function RaceScreen() {
       // === PERFORMANCE: write every animated value to SharedValues every frame.
       // Skia consumes these on the UI thread — no React re-render needed.
       //
-      // Double-buffered pools: each shared value alternates between two
-      // pre-allocated arrays (slot 0 ↔ slot 1). The array is mutated in
-      // place each frame, then assigned to .value — Reanimated sees a
-      // fresh reference (the *other* pool from last frame) so its
-      // useDerivedValue() reads re-evaluate, but zero new arrays are
-      // allocated per tick. Previously this used .slice() per shared
-      // value (~6 fresh arrays/frame = ~360-720 allocs/sec), enough to
-      // trigger young-gen GC sweeps mid-race on Android.
-      const slot = dbufTickRef.current & 1;
-      dbufTickRef.current++;
-
-      const flatPos = scratchPosRef.current[slot];
+      // .slice() per shared value gives Reanimated a fresh array reference
+      // each frame so its useDerivedValue() reads on the UI thread
+      // re-evaluate. Previous experiment with double-buffered pools (no
+      // .slice) shipped visually broken marbles on iOS — the JS-side
+      // pool reuse interacted badly with Reanimated's UI-thread array
+      // serialization. Reverted to .slice() to stay on the proven path.
+      const flatPos = scratchPosRef.current;
       flatPos.length = 0;
       for (let i = 0; i < st.marbles.length; i++) flatPos.push(st.marbles[i].x, st.marbles[i].y);
-      raceShared.marblePositions.value = flatPos;
+      raceShared.marblePositions.value = flatPos.slice();
 
-      const wmAngles = scratchWmRef.current[slot];
+      const wmAngles = scratchWmRef.current;
       wmAngles.length = 0;
       for (let i = 0; i < st.windmills.length; i++) wmAngles.push(st.windmills[i].angle);
-      raceShared.windmillAngles.value = wmAngles;
+      raceShared.windmillAngles.value = wmAngles.slice();
 
-      const penBobs = scratchPenRef.current[slot];
+      const penBobs = scratchPenRef.current;
       penBobs.length = 0;
       for (let i = 0; i < st.pendulums.length; i++) penBobs.push(st.pendulums[i].bobX, st.pendulums[i].bobY);
-      raceShared.pendulumBobs.value = penBobs;
+      raceShared.pendulumBobs.value = penBobs.slice();
 
-      const crBobs = scratchCrRef.current[slot];
+      const crBobs = scratchCrRef.current;
       crBobs.length = 0;
       for (let i = 0; i < st.cradles.length; i++) crBobs.push(st.cradles[i].bobX, st.cradles[i].bobY);
-      raceShared.cradleBobs.value = crBobs;
+      raceShared.cradleBobs.value = crBobs.slice();
 
-      const bpPos = scratchBpRef.current[slot];
+      const bpPos = scratchBpRef.current;
       bpPos.length = 0;
       for (let i = 0; i < st.ballPitBalls.length; i++) bpPos.push(st.ballPitBalls[i].x, st.ballPitBalls[i].y);
-      raceShared.ballPitPositions.value = bpPos;
+      raceShared.ballPitPositions.value = bpPos.slice();
 
-      const sbActive = scratchSbRef.current[slot];
+      const sbActive = scratchSbRef.current;
       sbActive.length = 0;
       for (let i = 0; i < st.speedBursts.length; i++) sbActive.push(st.speedBursts[i].active ? 1 : 0);
-      raceShared.speedBurstActive.value = sbActive;
+      raceShared.speedBurstActive.value = sbActive.slice();
 
       // Doomsday bar
       if (st.doomsdayBar) {
@@ -1029,30 +1019,35 @@ export default function RaceScreen() {
         raceShared.doomsdayBarActive.value = 0;
       }
 
-      // Canvas + HUD state — throttled to 10Hz. The Skia canvas reads every
-      // moving value from SharedValues on the UI thread (see
-      // raceCanvasPropsEqual in rendering/RaceCanvas.tsx), so the array
-      // props passed via setCanvas are ignored mid-race. Previously this
-      // ran every frame and burned ~60-120 React reconciles/sec on older
-      // phones — a massive cost for a re-render the children skip.
+      // Canvas state — written every frame so the Skia canvas always
+      // has fresh structural data (windmill / pendulum / cradle arrays).
+      // An earlier attempt throttled this to 10Hz reasoning that the
+      // canvas reads movement from SharedValues anyway, but it caused
+      // structural mismatches at race start (marbles / obstacles
+      // invisible on iOS) — apparently the canvas needs the synchronous
+      // every-frame React reconcile to wire SkiaMarble instances to
+      // their per-marble SharedValue derived reads. Reverted to the
+      // proven per-frame setCanvas; HUD setFrame stays throttled below
+      // since it does cause meaningful re-render cost.
+      const marblePos = st.marbles.map(m => ({
+        data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime,
+      }));
+      setCanvas({
+        marbles: marblePos,
+        wm: st.windmills,
+        pendulums: st.pendulums,
+        ballPitBalls: st.ballPitBalls,
+        cradles: st.cradles,
+        trampolines: st.trampolines,
+        speedBursts: st.speedBursts,
+        swingingDoors: st.swingingDoors,
+        doomsdayBar: st.doomsdayBar,
+      });
+
+      // HUD update rate — leaderboard + timer + commentary only need ~10Hz.
       const hudInterval = 100;
-      const shouldUpdate = st.isFinished || t - lastRenderRef.current >= hudInterval;
-      if (shouldUpdate) {
+      if (st.isFinished || t - lastRenderRef.current >= hudInterval) {
         lastRenderRef.current = t;
-        const marblePos = st.marbles.map(m => ({
-          data: m.data, x: m.x, y: m.y, finished: m.finished, finishTime: m.finishTime,
-        }));
-        setCanvas({
-          marbles: marblePos,
-          wm: st.windmills,
-          pendulums: st.pendulums,
-          ballPitBalls: st.ballPitBalls,
-          cradles: st.cradles,
-          trampolines: st.trampolines,
-          speedBursts: st.speedBursts,
-          swingingDoors: st.swingingDoors,
-          doomsdayBar: st.doomsdayBar,
-        });
         setFrame({
           pos: marblePos,
           elapsed: st.elapsed,
