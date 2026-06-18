@@ -327,32 +327,45 @@ export default function PlayoffsScreen() {
           {/* Action buttons */}
           <View style={{ height: 20 }} />
           {playoffs?.status === 'active' && (() => {
-            const playerEliminated = isFranchise
-              && playerMarbleId
-              && playoffs.eliminatedIds.includes(playerMarbleId);
+            // Skip is offered when the player has no stake in the
+            // remaining bracket:
+            //   - Franchise marble is already eliminated, OR
+            //   - Franchise marble didn't qualify in the first place
+            //     (regular-season finish was outside the top 6 seeds).
+            // The bettor mode player still has wager opportunities each
+            // round, so we keep them on the live path.
+            const playerOutOfBracket = isFranchise
+              && !!playerMarbleId
+              && (
+                playoffs.eliminatedIds.includes(playerMarbleId)
+                || !playoffs.seeds.includes(playerMarbleId)
+              );
             return (
               <Animated.View style={{ opacity: buttonOpacity, transform: [{ translateY: buttonSlide }] }}>
                 <PrimaryButton
                   label={`RACE \u00B7 ROUND ${playoffs.currentRound + 1}`}
                   onPress={handleRace}
                 />
-                {/* Skip option \u2014 only offered when the player's marble is
-                    already out of the bracket. Watching the rest of the
-                    playoffs is still the default; this just gives an exit
-                    so an eliminated player isn't forced to sit through
-                    multiple races they have no stake in. The simulator
-                    uses the same handlePlayoffResult path so payouts and
-                    Hall of Fame work correctly. */}
-                {playerEliminated && (
+                {/* Skip option \u2014 offered when the player has nothing on
+                    the line. Watching the rest of the playoffs is still
+                    the default; this just gives an exit when the player
+                    is a pure spectator. The simulator uses the same
+                    handlePlayoffResult path so payouts and Hall of Fame
+                    still work correctly. */}
+                {playerOutOfBracket && (
                   <>
                     <View style={{ height: 8 }} />
                     <PrimaryButton
                       label="SKIP TO RESULTS"
                       variant="ghost"
                       onPress={() => {
+                        const didNotQualify = playerMarbleId
+                          && !playoffs.seeds.includes(playerMarbleId);
                         showModal({
                           title: 'Skip remaining rounds?',
-                          message: 'Your marble is eliminated. The remaining rounds will be auto-simulated and you\u2019ll be taken straight to the championship screen.',
+                          message: didNotQualify
+                            ? 'Your marble didn\u2019t qualify for the playoffs. The remaining rounds will be auto-simulated and you\u2019ll be taken straight to the championship screen.'
+                            : 'Your marble is eliminated. The remaining rounds will be auto-simulated and you\u2019ll be taken straight to the championship screen.',
                           buttons: [
                             { label: 'Cancel', variant: 'ghost' },
                             {
