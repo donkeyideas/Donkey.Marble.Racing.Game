@@ -330,8 +330,8 @@ export default function BettingScreen() {
     }
     /* placeBet is async because the coin debit goes through the server's
      * /economy/transaction endpoint. Await before navigating — if the
-     * server rejects, surface the actual reason instead of a generic
-     * "check your connection". */
+     * server rejects, surface the actual reason + full diagnostic so the
+     * tester can paste it back and we can fix root cause. */
     const res = await placeBet();
     if (res.ok) {
       raceHaptics.betPlaced();
@@ -341,14 +341,23 @@ export default function BettingScreen() {
       router.replace('/race');
       return;
     }
-    // Status -1 = client-side validation (handled earlier, but defensive).
-    // 4xx = the server explicitly refused (rate limit, invalid course,
-    // duplicate idempotency, etc.). Show the server's message so the
-    // tester / support can act on it.
-    const detail = res.status > 0 ? ` (server ${res.status})` : '';
+    // Full diagnostic in the modal so we can debug from a screenshot:
+    //   - Server status code (or 0 for network / -1 for client-side)
+    //   - Server message (falls back to a generic if empty)
+    //   - The course id we tried to bet on (so gen-XXXX procedural
+    //     tracks vs hand-crafted ones are distinguishable — the admin
+    //     server may not allow procedural ids in its place_bet allowlist)
+    //   - The marble id and bet amount
+    const cid = useGameStore.getState().selectedCourseId || '(none)';
+    const msg = res.message && res.message.length > 0
+      ? res.message
+      : 'Server returned no message';
+    const serverTag = res.status > 0 ? `server ${res.status}`
+                    : res.status === 0 ? 'network'
+                    : 'client';
     showModal({
       title: 'Bet failed',
-      message: `${res.message}${detail}`,
+      message: `${msg}\n\n[${serverTag}] course=${cid} marble=${selectedMarble?.id ?? '(none)'} amount=${betAmount}`,
       buttons: [{ label: 'OK', variant: 'yellow' }],
     });
   };
