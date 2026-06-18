@@ -18,6 +18,7 @@ import { ALL_COURSES as COURSES } from '../data/courses';
 import { SEASON_POINTS } from '../data/seasonSchedule';
 import MarbleDot from '../components/MarbleDot';
 import CoinPill from '../components/CoinPill';
+import { showModal } from '../components/GameModal';
 
 import { getConfig } from '../lib/remoteConfig';
 
@@ -310,6 +311,18 @@ export default function BettingScreen() {
     if (betType === 'exacta' && exactaPicks.length < 2) return;
     if (betType === 'trifecta' && exactaPicks.length < 3) return;
     if (betType === 'win' && !selectedMarble) return;
+    // Surface "not enough coins" up-front so the button doesn't appear
+    // dead. Previously placeBet just returned false silently when
+    // betAmount > coins, leaving testers confused about why nothing
+    // happened after they tapped Lock In.
+    if (betAmount > coins) {
+      showModal({
+        title: 'Not enough coins',
+        message: `This bet needs ${betAmount} coins; you have ${coins}. Pick a smaller wager.`,
+        buttons: [{ label: 'OK', variant: 'yellow' }],
+      });
+      return;
+    }
     // Tag this as a standard bet mode (unless already set by season/national/tournament)
     const currentMode = useGameStore.getState().activeMode;
     if (currentMode.type !== 'season' && currentMode.type !== 'national_race' && currentMode.type !== 'tournament' && currentMode.type !== 'playoff') {
@@ -318,8 +331,8 @@ export default function BettingScreen() {
     /* placeBet is now async because the coin debit goes through the
      * server's /economy/transaction endpoint. Await before navigating —
      * if the server rejects (e.g. insufficient balance on the server
-     * side, even when the client thinks it has enough), we stay on the
-     * betting screen so the user can adjust. */
+     * side, even when the client thinks it has enough), surface a
+     * modal instead of silently doing nothing. */
     const success = await placeBet();
     if (success) {
       raceHaptics.betPlaced();
@@ -327,7 +340,13 @@ export default function BettingScreen() {
        * the season loop (season→betting→race→results→season) left a
        * stale betting screen behind every week. */
       router.replace('/race');
+      return;
     }
+    showModal({
+      title: 'Bet failed',
+      message: "Couldn't place that bet right now. Check your connection and try again.",
+      buttons: [{ label: 'OK', variant: 'yellow' }],
+    });
   };
 
   // Find favorite (lowest odds) and longshot (highest odds) from displayed marbles
@@ -573,12 +592,23 @@ export default function BettingScreen() {
         )}
 
         {/* Lock in CTA */}
+        {(() => {
+          const pickIncomplete = betType === 'win'
+            ? !selectedMarble
+            : exactaPicks.length < (betType === 'exacta' ? 2 : 3);
+          const cantAfford = betAmount > coins;
+          // Keep the button enabled when the user can't afford so the
+          // tap fires `handleLockIn` and the explanatory modal pops —
+          // otherwise a fresh install with <100 coins just sees a
+          // grayed-out button with no hint.
+          const disabled = pickIncomplete;
+          return (
         <Pressable
           onPress={handleLockIn}
-          disabled={betType === 'win' ? !selectedMarble : exactaPicks.length < (betType === 'exacta' ? 2 : 3)}
+          disabled={disabled}
           style={({ pressed }) => [
             styles.lockInBtn,
-            (betType === 'win' ? !selectedMarble : exactaPicks.length < (betType === 'exacta' ? 2 : 3)) && styles.lockInBtnDisabled,
+            (disabled || cantAfford) && styles.lockInBtnDisabled,
             pressed && styles.pressed,
           ]}
         >
@@ -589,15 +619,19 @@ export default function BettingScreen() {
             style={styles.lockInGradient}
           >
             <Text style={styles.lockInText}>
-              {betType === 'win'
-                ? `LOCK IN ${betAmount} \u2192 WIN UP TO ${potential}`
-                : betType === 'exacta'
-                  ? exactaPicks.length < 2 ? `PICK ${2 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
-                  : exactaPicks.length < 3 ? `PICK ${3 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
+              {cantAfford && !pickIncomplete
+                ? `NEED ${betAmount - coins} MORE COINS`
+                : betType === 'win'
+                  ? `LOCK IN ${betAmount} \u2192 WIN UP TO ${potential}`
+                  : betType === 'exacta'
+                    ? exactaPicks.length < 2 ? `PICK ${2 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
+                    : exactaPicks.length < 3 ? `PICK ${3 - exactaPicks.length} MORE` : `LOCK IN ${betAmount} \u2192 WIN ${potential}`
               }
             </Text>
           </LinearGradient>
         </Pressable>
+          );
+        })()}
 
         {/* Footer */}
         <Text style={styles.footerText}>

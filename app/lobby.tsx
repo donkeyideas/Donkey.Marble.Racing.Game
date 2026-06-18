@@ -397,7 +397,17 @@ export default function LobbyScreen() {
 
           {/* ===== HERO: FEATURED RACE ===== */}
           <Pressable
-            onPress={() => router.push('/betting')}
+            onPress={() => {
+              // Tell the store which course this Hero card is advertising
+              // so the betting + race screens both run on it. Without
+              // this, placeBet's "no course selected" fallback would
+              // randomize and the player would race a different track
+              // than the one the Hero card showed.
+              useGameStore.getState().selectCourse(heroCourse.id);
+              useGameStore.getState().resetBet();
+              useGameStore.getState().setActiveMode({ type: 'bet' });
+              router.push('/betting');
+            }}
             style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] }]}
           >
             <LinearGradient colors={['#1a4fc2', '#0d3a8f']} style={styles.heroCard}>

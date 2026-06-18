@@ -2452,8 +2452,13 @@ export const useGameStore = create<GameState>()(
     const today = new Date().toISOString().slice(0, 10);
     const todayBets = lastBetDate === today ? betsToday : 0;
 
-    // Only pick a random course for bet mode; other modes have pre-set courses
-    const courseId = (activeMode.type === 'bet')
+    // Honor an explicitly-selected course in every mode. Bet mode used
+    // to randomize unconditionally — that was right for the legacy
+    // lobby Hero card (no course pre-selected) but wrong for the Quick
+    // Race → Bet flow where the user just picked a specific course.
+    // Now: random ONLY when bet mode has no selected course (lobby
+    // fallback); otherwise the user races on what they bet on.
+    const courseId = (activeMode.type === 'bet' && !selectedCourseId)
       ? COURSES[Math.floor(Math.random() * COURSES.length)].id
       : selectedCourseId;
 
