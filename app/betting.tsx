@@ -328,13 +328,12 @@ export default function BettingScreen() {
     if (currentMode.type !== 'season' && currentMode.type !== 'national_race' && currentMode.type !== 'tournament' && currentMode.type !== 'playoff') {
       useGameStore.getState().setActiveMode({ type: 'bet' });
     }
-    /* placeBet is now async because the coin debit goes through the
-     * server's /economy/transaction endpoint. Await before navigating —
-     * if the server rejects (e.g. insufficient balance on the server
-     * side, even when the client thinks it has enough), surface a
-     * modal instead of silently doing nothing. */
-    const success = await placeBet();
-    if (success) {
+    /* placeBet is async because the coin debit goes through the server's
+     * /economy/transaction endpoint. Await before navigating — if the
+     * server rejects, surface the actual reason instead of a generic
+     * "check your connection". */
+    const res = await placeBet();
+    if (res.ok) {
       raceHaptics.betPlaced();
       /* replace, not push — keeps the race-flow stack flat. With push
        * the season loop (season→betting→race→results→season) left a
@@ -342,9 +341,14 @@ export default function BettingScreen() {
       router.replace('/race');
       return;
     }
+    // Status -1 = client-side validation (handled earlier, but defensive).
+    // 4xx = the server explicitly refused (rate limit, invalid course,
+    // duplicate idempotency, etc.). Show the server's message so the
+    // tester / support can act on it.
+    const detail = res.status > 0 ? ` (server ${res.status})` : '';
     showModal({
       title: 'Bet failed',
-      message: "Couldn't place that bet right now. Check your connection and try again.",
+      message: `${res.message}${detail}`,
       buttons: [{ label: 'OK', variant: 'yellow' }],
     });
   };

@@ -3,7 +3,7 @@
     "name": "Donkey Marble Racing",
     "slug": "DonkeyMarbleRacing",
     "owner": "donkeyideas",
-    "version": "1.0.9",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.donkeymarble.racing",
-      "buildNumber": "112",
+      "buildNumber": "113",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,7 +36,7 @@
       },
       "googleServicesFile": "./google-services.json",
       "package": "com.donkeymarble.racing",
-      "versionCode": 66,
+      "versionCode": 67,
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.POST_NOTIFICATIONS",

@@ -602,7 +602,11 @@ interface GameState {
   claimChallengeReward: (challengeId: string) => void;
 
   // Actions
-  placeBet: () => Promise<boolean>;
+  /** Server-authoritative bet placement. Returns ok=true on success or
+   *  queued retry; ok=false carries the server status + message so the UI
+   *  can show what actually went wrong (e.g. "rate limit", "invalid course",
+   *  "auth expired") instead of a generic "check your connection". */
+  placeBet: () => Promise<{ ok: true } | { ok: false; status: number; message: string }>;
   /**
    * Server-authoritative bet settlement. Uses currentBetId (set by
    * placeBet()) so the server can look up the canonical bet amount from
@@ -2443,10 +2447,10 @@ export const useGameStore = create<GameState>()(
   placeBet: async () => {
     const { coins, betAmount, selectedMarble, betsToday, lastBetDate, coinHistory, activeMode, selectedCourseId, betType, exactaPicks } = get();
     // For exacta need 2 picks, trifecta need 3, win needs selectedMarble
-    if (betType === 'exacta' && exactaPicks.length < 2) return false;
-    if (betType === 'trifecta' && exactaPicks.length < 3) return false;
-    if (betType === 'win' && !selectedMarble) return false;
-    if (betAmount > coins) return false;
+    if (betType === 'exacta' && exactaPicks.length < 2) return { ok: false, status: -1, message: 'Pick 2 marbles for an exacta.' };
+    if (betType === 'trifecta' && exactaPicks.length < 3) return { ok: false, status: -1, message: 'Pick 3 marbles for a trifecta.' };
+    if (betType === 'win' && !selectedMarble) return { ok: false, status: -1, message: 'Pick a marble.' };
+    if (betAmount > coins) return { ok: false, status: -1, message: `Need ${betAmount} coins, have ${coins}.` };
 
     // Reset daily bet counter if new day
     const today = new Date().toISOString().slice(0, 10);
@@ -2495,15 +2499,16 @@ export const useGameStore = create<GameState>()(
         screen: 'race',
         coinHistory: newCoinHistory,
       });
-      return true;
+      return { ok: true };
     }
 
-    // 401 = signed-out, 0 = network failure (e.g. subway / airplane mode).
-    // Both are "queued for retry" cases — proceed optimistically with local
-    // debit so the user can actually play the race. The queued action
-    // replays via syncQueue once connectivity / auth returns, and the
-    // idempotencyKey prevents double-spend on retry.
-    if (res.status === 401 || res.status === 0) {
+    // Treat 401 (signed-out), 0 (network failure), AND 5xx (server hiccup)
+    // all as "queued for retry" — proceed optimistically with local debit so
+    // the user can play the race. The action is already in the syncQueue
+    // courtesy of applyEconomyAction; idempotencyKey prevents double-spend
+    // on retry. Previously only 401 / 0 took this path; a transient server
+    // 502/503 blocked the bet entirely even though it was queued.
+    if (res.status === 401 || res.status === 0 || (res.status >= 500 && res.status < 600)) {
       set({
         coins: coins - betAmount,
         currentBetId: null,
@@ -2513,14 +2518,15 @@ export const useGameStore = create<GameState>()(
         screen: 'race',
         coinHistory: newCoinHistory,
       });
-      return true;
+      return { ok: true };
     }
 
-    // Permanent failure (4xx other than 401, or refused). Do NOT deduct
-    // locally — the server didn't take the bet. Surface a warning so the
-    // user knows why they're still on the betting screen.
+    // Permanent failure (4xx other than 401, or explicit refusal). Do NOT
+    // deduct locally — the server didn't take the bet. Bubble the actual
+    // status + message so the betting screen can show the user what's
+    // wrong instead of a generic "check your connection".
     if (__DEV__) console.warn('[placeBet] server rejected', res.status, res.message);
-    return false;
+    return { ok: false, status: res.status, message: res.message };
   },
 
   settleBet: async (payout: number) => {
